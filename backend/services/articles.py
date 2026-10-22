@@ -35,6 +35,14 @@ class CategoryExists(ArticleError):
     pass
 
 
+class CategoryInUse(ArticleError):
+    pass
+
+
+class CategoryOrderMismatch(ArticleError):
+    pass
+
+
 class ItemNotFound(ArticleError):
     pass
 
@@ -95,6 +103,54 @@ def get_category(slug: str) -> Category:
     except Category.DoesNotExist:
         known = ", ".join(c.slug for c in Category.objects.all()) or "없음"
         raise CategoryNotFound(f"없는 분야입니다: {slug} (있는 분야: {known})") from None
+
+
+@transaction.atomic
+def update_category(slug: str, *, name: str | None = None, order: int | None = None) -> Category:
+    """이름·순서를 고친다. slug는 바뀌지 않는다(공개 주소가 깨지지 않게)."""
+    category = get_category(slug)
+    if name is not None:
+        name = name.strip()
+        if not name:
+            raise ArticleError("분야 이름이 비어 있습니다.")
+        if Category.objects.filter(name=name).exclude(pk=category.pk).exists():
+            raise CategoryExists(f"이미 있는 분야입니다: {name}")
+        category.name = name
+    if order is not None:
+        category.order = order
+    category.save()
+    return category
+
+
+def delete_category(slug: str) -> None:
+    """기사가 하나라도 있으면 지우지 않는다."""
+    category = get_category(slug)
+    count = category.articles.count()
+    if count:
+        raise CategoryInUse(
+            f"분야 「{category.name}」에는 기사 {count}건이 있어 지울 수 없습니다. "
+            "기사를 다른 분야로 옮긴 뒤 지우세요."
+        )
+    category.delete()
+
+
+@transaction.atomic
+def reorder_categories(slugs: Iterable[str]) -> list[Category]:
+    """모든 분야의 slug를 원하는 순서로 한 번씩 준다. 빠지거나 모르는 slug가 있으면 오류."""
+    wanted = list(slugs)
+    existing = {c.slug: c for c in Category.objects.all()}
+    unknown = sorted(set(wanted) - set(existing))
+    missing = sorted(set(existing) - set(wanted))
+    if unknown or missing or len(wanted) != len(set(wanted)):
+        raise CategoryOrderMismatch(
+            "모든 분야를 한 번씩 주어야 합니다. "
+            f"모르는 slug: {', '.join(unknown) or '없음'}; "
+            f"빠진 slug: {', '.join(missing) or '없음'}; "
+            f"중복: {len(wanted) - len(set(wanted))}건"
+        )
+    for position, slug in enumerate(wanted):
+        Category.objects.filter(pk=existing[slug].pk).update(order=position)
+    return list_categories()
 
 
 # --- 기사 ---

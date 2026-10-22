@@ -42,6 +42,17 @@ EDITOR_TOOLS = {
     "start_editor_run",
     "finish_editor_run",
 }
+ADMIN_TOOLS = {
+    "list_sources",
+    "create_source",
+    "update_source",
+    "set_source_enabled",
+    "update_category",
+    "delete_category",
+    "reorder_categories",
+    "set_article_flags_as_owner",
+    "update_article_as_owner",
+}
 
 
 class McpClient:
@@ -195,7 +206,7 @@ def test_admin_tools_are_hidden_from_editor_tokens(
     assert hidden == {"code": -32602, "message": "unknown tool: admin_probe"}
 
     admin = McpClient(client, token_signer.token(scope="admin editor"))
-    assert admin.tool_names() == EDITOR_TOOLS | {"admin_probe"}
+    assert admin.tool_names() == EDITOR_TOOLS | ADMIN_TOOLS | {"admin_probe"}
     assert admin.ok("admin_probe", {}) == {"ok": True}
 
 
