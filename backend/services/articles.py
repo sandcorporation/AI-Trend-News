@@ -14,7 +14,14 @@ from django.db.models import QuerySet
 from django.utils import timezone
 from django.utils.text import slugify
 
-from articles.models import Article, ArticleItem, Category, Tag
+from articles.models import (
+    CATEGORY_SLUG_RE,
+    Article,
+    ArticleItem,
+    Category,
+    CategorySlugAlias,
+    Tag,
+)
 from collection.models import Item
 
 
@@ -32,6 +39,10 @@ class CategoryNotFound(ArticleError):
 
 
 class CategoryExists(ArticleError):
+    pass
+
+
+class InvalidCategorySlug(ArticleError):
     pass
 
 
@@ -83,7 +94,30 @@ def list_categories() -> list[Category]:
     return list(Category.objects.all())
 
 
-def add_category(name: str, order: int | None = None) -> Category:
+def _check_new_slug(slug: str, *, exclude: Category | None = None) -> str:
+    """대표가 지정한 slug 검증: 형식, 다른 분야의 현재·옛 slug와 겹치지 않음."""
+    slug = slug.strip()
+    if not 1 <= len(slug) <= 60 or not CATEGORY_SLUG_RE.fullmatch(slug):
+        raise InvalidCategorySlug(
+            f"slug는 라틴 소문자·숫자·하이픈 1~60자여야 합니다(앞뒤·연속 하이픈 불가): {slug!r}"
+        )
+    taken = Category.objects.filter(slug=slug)
+    aliased = CategorySlugAlias.objects.filter(slug=slug)
+    if exclude is not None:
+        taken = taken.exclude(pk=exclude.pk)
+        aliased = aliased.exclude(category=exclude)
+    if taken.exists() or aliased.exists():
+        raise CategoryExists(f"이미 쓰는 slug입니다: {slug}")
+    return slug
+
+
+def find_category_by_old_slug(slug: str) -> Category | None:
+    """옛 slug로 들어온 요청의 현재 분야. 없으면 None."""
+    alias = CategorySlugAlias.objects.select_related("category").filter(slug=slug).first()
+    return alias.category if alias else None
+
+
+def add_category(name: str, order: int | None = None, slug: str | None = None) -> Category:
     name = name.strip()
     if not name:
         raise ArticleError("분야 이름이 비어 있습니다.")
@@ -92,9 +126,8 @@ def add_category(name: str, order: int | None = None) -> Category:
     if order is None:
         last = Category.objects.order_by("-order").first()
         order = last.order + 1 if last else 0
-    return Category.objects.create(
-        name=name, order=order, slug=make_slug(name, Category, "category")
-    )
+    slug = _check_new_slug(slug) if slug else make_slug(name, Category, "category")
+    return Category.objects.create(name=name, order=order, slug=slug)
 
 
 def get_category(slug: str) -> Category:
@@ -106,8 +139,14 @@ def get_category(slug: str) -> Category:
 
 
 @transaction.atomic
-def update_category(slug: str, *, name: str | None = None, order: int | None = None) -> Category:
-    """이름·순서를 고친다. slug는 바뀌지 않는다(공개 주소가 깨지지 않게)."""
+def update_category(
+    slug: str,
+    *,
+    name: str | None = None,
+    order: int | None = None,
+    new_slug: str | None = None,
+) -> Category:
+    """이름·순서·slug를 고친다. slug를 바꾸면 옛 값을 기록해 옛 링크가 301로 이어진다."""
     category = get_category(slug)
     if name is not None:
         name = name.strip()
@@ -118,8 +157,18 @@ def update_category(slug: str, *, name: str | None = None, order: int | None = N
         category.name = name
     if order is not None:
         category.order = order
+    if new_slug is not None and new_slug.strip() != category.slug:
+        record_slug_change(category, _check_new_slug(new_slug, exclude=category))
     category.save()
     return category
+
+
+def record_slug_change(category: Category, new_slug: str) -> None:
+    """category.slug를 new_slug로 바꾸고 옛 slug를 기록한다(저장은 호출부)."""
+    CategorySlugAlias.objects.filter(slug=new_slug).delete()
+    if category.slug:
+        CategorySlugAlias.objects.get_or_create(slug=category.slug, category=category)
+    category.slug = new_slug
 
 
 def delete_category(slug: str) -> None:

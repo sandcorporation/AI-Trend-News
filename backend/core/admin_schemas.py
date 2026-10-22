@@ -42,6 +42,11 @@ class EnabledChange(Strict):
 class CategoryChange(Strict):
     name: str | None = Field(default=None, min_length=1, max_length=50, description="새 이름")
     order: int | None = Field(default=None, ge=0, description="새 순서(작을수록 앞)")
+    new_slug: str | None = Field(
+        default=None,
+        max_length=60,
+        description="새 slug(라틴 소문자·숫자·하이픈 1~60자, 유일). 옛 slug 링크는 새 slug로 301",
+    )
 
 
 class CategoryOrder(Strict):

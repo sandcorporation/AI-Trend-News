@@ -162,3 +162,57 @@ def test_admin_adds_category_with_slug(admin_client: Client) -> None:
     resp = admin_client.post(reverse("admin:articles_category_add"), {"name": "정치", "order": 3})
     assert resp.status_code == 302
     assert Category.objects.get(name="정치").slug.startswith("category-")
+
+
+def test_add_category_with_slug_and_validation() -> None:
+    assert svc.add_category("경제", slug="economy").slug == "economy"
+    assert svc.add_category("정치").slug.startswith("category-")
+    with pytest.raises(svc.CategoryExists):
+        svc.add_category("사회", slug="economy")
+    for bad in ("경제", "Economy", "a_b", "-a", "a--b", "a" * 61):
+        with pytest.raises(svc.InvalidCategorySlug):
+            svc.add_category(f"x{bad}", slug=bad)
+
+
+def test_update_category_slug_keeps_old_slug_and_blocks_reuse() -> None:
+    svc.add_category("경제", slug="old")
+    svc.add_category("정치", slug="politics")
+    assert svc.update_category("old", new_slug="economy").slug == "economy"
+    assert svc.find_category_by_old_slug("old").slug == "economy"  # type: ignore[union-attr]
+    with pytest.raises(svc.CategoryExists):
+        svc.update_category("politics", new_slug="old")
+    with pytest.raises(svc.CategoryExists):
+        svc.add_category("세계", slug="old")
+    svc.update_category("economy", new_slug="old")  # 되돌리면 옛 기록이 현재 slug가 된다
+    assert svc.find_category_by_old_slug("old") is None
+    assert svc.find_category_by_old_slug("economy").slug == "old"  # type: ignore[union-attr]
+
+
+def test_admin_form_saves_slug_and_records_old() -> None:
+    from django.contrib import admin as dj_admin
+    from django.forms import modelform_factory
+    from django.test import RequestFactory
+
+    from articles.admin import CategoryAdmin
+    from articles.models import Category
+
+    ma = CategoryAdmin(Category, dj_admin.site)
+    form_cls = modelform_factory(Category, fields=("name", "slug", "order"))
+    blank = form_cls({"name": "경제", "slug": "", "order": 0})
+    assert blank.is_valid()
+    obj = blank.save(commit=False)
+    ma.save_model(RequestFactory().post("/"), obj, blank, False)
+    assert obj.slug.startswith("category-")
+    old = obj.slug
+    form = form_cls(
+        {"name": "경제", "slug": "economy", "order": 0}, instance=Category.objects.get(pk=obj.pk)
+    )
+    assert form.is_valid()
+    changed = form.save(commit=False)
+    ma.save_model(RequestFactory().post("/"), changed, form, True)
+    assert Category.objects.get(pk=obj.pk).slug == "economy"
+    assert svc.find_category_by_old_slug(old).slug == "economy"  # type: ignore[union-attr]
+    bad = form_cls({"name": "정치", "slug": "Bad Slug", "order": 1})
+    assert not bad.is_valid()
+    other = form_cls({"name": "정치", "slug": old, "order": 1})
+    assert not other.is_valid()

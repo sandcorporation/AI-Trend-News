@@ -1,13 +1,29 @@
+import re
+
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
 from django.db import models
 
 from collection.models import Item
+
+CATEGORY_SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+category_slug_validator = RegexValidator(
+    re.compile(rf"\A{CATEGORY_SLUG_RE.pattern}\Z"), "라틴 소문자·숫자·하이픈만 쓸 수 있습니다."
+)
 
 
 class Category(models.Model):
     """기사가 속하는 뉴스 분야 하나(GLOSSARY: 분야)."""
 
     name = models.CharField("이름", max_length=50, unique=True)
-    slug = models.SlugField("슬러그", max_length=60, unique=True, editable=False)
+    slug = models.SlugField(
+        "슬러그",
+        max_length=60,
+        unique=True,
+        blank=True,
+        validators=[category_slug_validator],
+        help_text="공개 주소 ?category= 값(라틴 소문자·숫자·하이픈). 비우면 자동 생성.",
+    )
     order = models.PositiveIntegerField("순서", default=0)
 
     class Meta:
@@ -17,6 +33,31 @@ class Category(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def clean(self) -> None:
+        if (
+            self.slug
+            and CategorySlugAlias.objects.filter(slug=self.slug)
+            .exclude(category_id=self.pk)
+            .exists()
+        ):
+            raise ValidationError({"slug": "다른 분야가 예전에 쓰던 slug입니다."})
+
+
+class CategorySlugAlias(models.Model):
+    """분야가 예전에 쓰던 slug. 옛 ?category= 링크를 새 slug로 301 보내는 데 쓴다."""
+
+    slug = models.SlugField("옛 슬러그", max_length=60, unique=True)
+    category = models.ForeignKey(
+        Category, on_delete=models.CASCADE, related_name="old_slugs", verbose_name="분야"
+    )
+
+    class Meta:
+        verbose_name = "분야 옛 슬러그"
+        verbose_name_plural = "분야 옛 슬러그"
+
+    def __str__(self) -> str:
+        return f"{self.slug} -> {self.category.slug}"
 
 
 class Tag(models.Model):

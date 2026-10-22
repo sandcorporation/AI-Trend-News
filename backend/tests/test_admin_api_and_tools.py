@@ -232,6 +232,22 @@ def test_category_api(api: Api) -> None:
     assert api.call("delete", "/categories/a")[0] == 404
 
 
+def test_category_new_slug_via_api_and_mcp(api: Api, mcp: McpClient) -> None:
+    Category.objects.create(name="경제", slug="category-0ac600", order=0)
+    Category.objects.create(name="정치", slug="politics", order=1)
+    status, body = api.call("patch", "/categories/category-0ac600", {"new_slug": "economy"})
+    assert status == 200 and obj(body)["slug"] == "economy"
+    assert mcp.ok("update_category", {"slug": "economy", "new_slug": "econ"})["slug"] == "econ"
+    assert "이미 쓰는 slug" in mcp.fails(
+        "update_category", {"slug": "econ", "new_slug": "politics"}
+    )
+    assert "이미 쓰는 slug" in mcp.fails(
+        "update_category", {"slug": "politics", "new_slug": "category-0ac600"}
+    )
+    assert "slug는" in mcp.fails("update_category", {"slug": "econ", "new_slug": "경제"})
+    assert api.call("patch", "/categories/econ", {"new_slug": "Bad_Slug"})[0] == 400
+
+
 # --- 거부 ---
 
 

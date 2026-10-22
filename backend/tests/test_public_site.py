@@ -166,3 +166,13 @@ def test_robots_points_at_the_sitemap_and_hides_api(client: Client) -> None:
 
     assert "Sitemap: http://testserver/sitemap.xml" in text
     assert "Disallow: /api/" in text
+
+
+def test_old_category_slug_redirects_301_keeping_query(client: Client) -> None:
+    svc.add_category("경제", slug="old")
+    svc.update_category("old", new_slug="economy")
+    res = client.get("/?category=old&page=1")
+    assert res.status_code == 301
+    assert res["Location"] in ("/?category=economy&page=1",)
+    assert client.get("/?category=nope").status_code == 404
+    assert client.get("/?category=economy").status_code == 200
