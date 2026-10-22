@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "articles",
     "editor",
     "inquiries",
+    "posts",
 ]
 
 MIDDLEWARE = [

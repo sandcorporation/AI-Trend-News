@@ -39,14 +39,16 @@ from core.admin_schemas import (
 )
 from mcpserver.jsontypes import JSON
 from services import articles, collection, editor_runs, sources
+from services import posts as posts_svc
 from services.articles import Actor, ArticleError
 from services.editor_runs import EditorRunError
+from services.posts import PostError
 from services.sources import SourceError
 from services.tokens import AccessToken, Scope
 
 type ToolResult = dict[str, JSON]
 
-SERVICE_ERRORS: tuple[type[Exception], ...] = (ArticleError, EditorRunError, SourceError)
+SERVICE_ERRORS: tuple[type[Exception], ...] = (ArticleError, EditorRunError, SourceError, PostError)
 
 
 class ToolError(Exception):
@@ -160,6 +162,12 @@ class CreateArticleInput(_Input):
     image_url: str = Field(default="", max_length=2000, description="대표 이미지 URL(없으면 빈 값)")
 
 
+class UpsertPostDraftInput(_Input):
+    article_id: int = Field(description="추천이면서 게시된 기사 id")
+    channel: str = Field(description="채널(지금은 kakao)")
+    text: str = Field(min_length=1, max_length=500, description="포스트 문구(기사 url 포함)")
+
+
 class UpdateArticleInput(_Input):
     id: int = Field(description="기사 id")
     add_item_ids: list[int] = Field(default_factory=list, description="더 묶을 미처리 수집물 id들")
@@ -199,6 +207,7 @@ def _article(article: Article) -> ToolResult:
         "id": article.pk,
         "title": article.title,
         "slug": article.slug,
+        "url": posts_svc.article_url(article.slug),
         "category": article.category.slug,
         "published": article.published,
         "featured": article.featured,
@@ -308,6 +317,25 @@ def update_article(token: AccessToken, args: UpdateArticleInput) -> ToolResult:
         image_url=args.image_url,
     )
     return _article(article)
+
+
+@tool(
+    "upsert_post_draft",
+    "포스트 초안 작성",
+    "추천이면서 게시된 기사의 채널별 포스트 초안을 만들거나 고친다(기사·채널당 하나). "
+    "문구에는 기사 url이 "
+    "들어 있어야 한다. 대표가 이미 올린 포스트는 고칠 수 없다(오류).",
+    UpsertPostDraftInput,
+)
+def upsert_post_draft(token: AccessToken, args: UpsertPostDraftInput) -> ToolResult:
+    post = posts_svc.upsert_post_draft(Actor.EDITOR, args.article_id, args.channel, args.text)
+    return {
+        "id": post.pk,
+        "article_id": post.article_id,
+        "channel": post.channel,
+        "status": post.status,
+        "text": post.text,
+    }
 
 
 @tool(
