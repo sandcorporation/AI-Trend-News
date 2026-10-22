@@ -144,7 +144,7 @@ class NoInput(_Input):
 
 class PageInput(_Input):
     page: int = Field(default=1, ge=1, description="1부터 시작하는 쪽 번호")
-    page_size: int = Field(default=20, ge=1, le=100, description="한 쪽의 수집물 수(최대 100)")
+    page_size: int = Field(default=20, ge=1, le=50, description="한 쪽의 수집물 수(최대 50)")
 
 
 class DaysInput(_Input):
@@ -241,11 +241,19 @@ def whoami(token: AccessToken, args: NoInput) -> ToolResult:
     }
 
 
+EXCERPT_LIMIT = 300
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= EXCERPT_LIMIT else text[:EXCERPT_LIMIT] + "…"
+
+
 @tool(
     "list_pending_items",
     "미처리 수집물",
     "아직 기사로 묶이지도 버려지지도 않은 수집물을 수집 시각이 오래된 것부터 한 쪽씩. "
-    "소스 이름·수집 시각·발행 시각·제목·발췌·원문 URL·수집물 id와 전체 건수를 준다.",
+    "소스 이름·수집 시각·발행 시각·제목·발췌(300자까지, 넘으면 …)·원문 URL·수집물 id와 "
+    "전체 건수를 준다. 한 쪽은 최대 50건.",
     PageInput,
     read_only=True,
 )
@@ -262,7 +270,7 @@ def list_pending_items(token: AccessToken, args: PageInput) -> ToolResult:
                 "collected_at": item.collected_at.isoformat(),
                 "published_at": item.published_at.isoformat() if item.published_at else None,
                 "title": item.title,
-                "excerpt": item.excerpt,
+                "excerpt": _clip(item.excerpt),
                 "url": item.url,
             }
             for item in found.items

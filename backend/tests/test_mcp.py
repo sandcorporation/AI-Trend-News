@@ -252,6 +252,21 @@ def make_items(n: int) -> list[Item]:
 
 
 @pytest.mark.django_db
+def test_list_pending_items_clips_excerpt_and_caps_page_size(mcp: McpClient) -> None:
+    item = make_items(1)[0]
+    item.excerpt = "가" * 301
+    item.save()
+    listed = mcp.ok("list_pending_items", {})["items"]
+    assert isinstance(listed, list)
+    first = listed[0]
+    assert isinstance(first, dict)
+    assert first["excerpt"] == "가" * 300 + "…"
+    item.refresh_from_db()
+    assert len(item.excerpt) == 301
+    assert "page_size" in mcp.fails("list_pending_items", {"page_size": 51})
+
+
+@pytest.mark.django_db
 def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     items = make_items(4)
     run_id = mcp.ok("start_editor_run", {})["run_id"]
