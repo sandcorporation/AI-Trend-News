@@ -6,6 +6,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "django>=6.1.2",
     "django-ninja>=1.7.1",
+    "feedparser>=6.0.14",
     "gunicorn>=26.2.0",
     "psycopg[binary]>=3.3.6",
     "whitenoise>=6.12.0",
@@ -45,6 +46,10 @@ exclude = ["^migrations/"]
 [[tool.mypy.overrides]]
 module = ["*.migrations.*"]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["feedparser"]
+ignore_missing_imports = true  # feedparser는 타입 스텁이 없다
 
 [tool.django-stubs]
 django_settings_module = "config.test_settings"

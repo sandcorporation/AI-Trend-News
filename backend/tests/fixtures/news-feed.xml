@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example Tech Daily</title>
+    <link>https://technews.example.com/</link>
+    <description>Daily technology news</description>
+    <item>
+      <title>OpenAI unveils new reasoning model for enterprise</title>
+      <link>https://TechNews.example.com/2026/10/openai-reasoning/?utm_source=rss&amp;utm_medium=feed&amp;utm_campaign=daily</link>
+      <description>The company said the model targets long-running business workflows.</description>
+      <pubDate>Mon, 19 Oct 2026 09:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Chipmakers brace for new export rules</title>
+      <link>https://technews.example.com/2026/10/chip-export-rules#comments</link>
+      <description>Analysts expect supply chains to shift again.</description>
+      <pubDate>Mon, 19 Oct 2026 08:10:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Startup raises $40M to build open-source robotics stack</title>
+      <link>https://technews.example.com/2026/10/robotics-funding/?fbclid=IwAR0abc</link>
+      <description>The round was led by a Seoul-based fund.</description>
+      <pubDate>Sun, 18 Oct 2026 22:45:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Browser vendors agree on new privacy standard</title>
+      <link>https://technews.example.com/2026/10/privacy-standard/</link>
+      <description>Third-party cookies finally go away for good.</description>
+      <pubDate>Sun, 18 Oct 2026 14:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Data center power demand doubles in two years</title>
+      <link>https://technews.example.com/2026/10/datacenter-power?page=2&amp;utm_source=newsletter</link>
+      <description>Utilities are racing to add capacity.</description>
+      <pubDate>Sat, 17 Oct 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>OpenAI unveils new reasoning model for enterprise (repost)</title>
+      <link>https://technews.example.com/2026/10/openai-reasoning</link>
+      <description>Same story, clean URL.</description>
+      <pubDate>Mon, 19 Oct 2026 09:31:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
