@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from io import StringIO
+from typing import Protocol
 
 import pytest
 from django.core.management import call_command
@@ -15,6 +16,11 @@ from services.retention import prune_items
 from services.scheduler import COMMANDS, run_cycle
 from services.urls import normalize_url, url_hash
 from tests.conftest import FakeFetcher
+
+
+class SettingsLike(Protocol):
+    COLLECT_MAX_AGE_DAYS: int
+
 
 pytestmark = pytest.mark.django_db
 
@@ -256,3 +262,57 @@ def test_run_cycle_continues_after_a_failing_command() -> None:
 
 def test_scheduler_commands_list_is_collect_prune_alerts_then_resend() -> None:
     assert COMMANDS == ("collect", "prune_items", "check_alerts", "resend_inquiries")
+
+
+def _feed(entries: list[tuple[str, datetime | None]]) -> bytes:
+    parts = []
+    for slug, at in entries:
+        date = f"<pubDate>{at.strftime('%a, %d %b %Y %H:%M:%S GMT')}</pubDate>" if at else ""
+        parts.append(
+            f"<item><title>{slug}</title><link>https://t.example.com/{slug}</link>{date}</item>"
+        )
+    body = "".join(parts)
+    head = '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>'
+    return f"{head}{body}</channel></rss>".encode()
+
+
+def test_old_items_are_seen_but_not_stored(
+    fake_fetcher: FakeFetcher, settings: SettingsLike
+) -> None:
+    settings.COLLECT_MAX_AGE_DAYS = 3
+    now = timezone.now()
+    source = make_source()
+    fake_fetcher.responses[source.url] = _feed(
+        [
+            ("old", now - timedelta(days=400)),
+            ("fresh", now - timedelta(days=1)),
+            ("undated", None),
+        ]
+    )
+    collect_all()
+    assert set(Item.objects.values_list("title", flat=True)) == {"fresh", "undated"}
+    assert SeenUrl.objects.filter(
+        url_hash=url_hash(normalize_url("https://t.example.com/old"))
+    ).exists()
+    source.refresh_from_db()
+    assert source.last_result == "성공: 새 수집물 2건 / 항목 3건 / 오래돼 건너뜀 1건"
+    # 다시 수집해도 오래된 글은 건너뜀으로 세지 않는다(이미 본 URL)
+    collect_all()
+    source.refresh_from_db()
+    assert source.last_result == "성공: 새 수집물 0건 / 항목 3건"
+
+
+def test_item_older_than_limit_is_skipped_but_exact_boundary_is_kept(
+    fake_fetcher: FakeFetcher, settings: SettingsLike
+) -> None:
+    settings.COLLECT_MAX_AGE_DAYS = 3
+    now = timezone.now()
+    source = make_source()
+    fake_fetcher.responses[source.url] = _feed(
+        [
+            ("just-over", now - timedelta(days=3, minutes=5)),
+            ("just-under", now - timedelta(days=3) + timedelta(minutes=5)),
+        ]
+    )
+    collect_all()
+    assert list(Item.objects.values_list("title", flat=True)) == ["just-under"]

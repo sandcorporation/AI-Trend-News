@@ -107,6 +107,10 @@ AUTH_OWNER_SUB = env("AUTH_OWNER_SUB")
 AUTH_CLIENT_ID = env("AUTH_CLIENT_ID")
 AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
 
+# Collection (#28): items published more than this many days before collection are not stored as
+# Item (only SeenUrl), so a first run on a feed with years of archive does not flood the queue.
+COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
+
 # Discord webhook for operational alerts (#10). Empty = log only, nothing is sent.
 DISCORD_WEBHOOK_URL = env("DISCORD_WEBHOOK_URL")
 # portfolio inquiry API (ADR 0003). Either empty = inquiries are only queued, never sent.
