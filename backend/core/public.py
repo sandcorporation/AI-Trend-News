@@ -9,7 +9,13 @@ from typing import TypedDict
 from urllib.parse import urlencode
 
 from django.core.paginator import Paginator
-from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
+from django.http import (
+    Http404,
+    HttpRequest,
+    HttpResponse,
+    HttpResponsePermanentRedirect,
+    HttpResponseRedirect,
+)
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -164,6 +170,11 @@ def home(request: HttpRequest) -> HttpResponse:
     categories = svc.public_categories()
     current = next((c for c in categories if c.slug == category), None)
     if category and current is None:
+        renamed = svc.find_category_by_old_slug(category)
+        if renamed is not None:
+            params = request.GET.copy()
+            params["category"] = renamed.slug
+            return HttpResponsePermanentRedirect(f"{request.path}?{params.urlencode()}")
         raise Http404("없는 분야입니다.")
     try:
         page_number = int(request.GET.get("page", "1"))

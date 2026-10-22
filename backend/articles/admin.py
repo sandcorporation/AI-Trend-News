@@ -70,6 +70,12 @@ class CategoryAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에
     list_display = ("name", "slug", "order")
     list_editable = ("order",)
 
+    @admin.display(description="옛 슬러그")
+    def old_slugs(self, obj: Category) -> str:
+        return ", ".join(a.slug for a in obj.old_slugs.all()) or "-"
+
+    readonly_fields = ("old_slugs",)
+
     def save_model(
         self,
         request: HttpRequest,
@@ -77,8 +83,14 @@ class CategoryAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에
         form: ModelForm,  # type: ignore[type-arg]
         change: bool,
     ) -> None:
-        if not change:
+        if not obj.slug:
             obj.slug = svc.make_slug(obj.name, Category, "category")
+        elif change:
+            old = Category.objects.get(pk=obj.pk).slug
+            if old != obj.slug:
+                new = obj.slug
+                obj.slug = old
+                svc.record_slug_change(obj, new)
         super().save_model(request, obj, form, change)
 
 
