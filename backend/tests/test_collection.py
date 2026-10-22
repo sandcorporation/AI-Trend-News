@@ -254,5 +254,5 @@ def test_run_cycle_continues_after_a_failing_command() -> None:
     assert results == {"first": True, "boom": False, "last": True}
 
 
-def test_scheduler_commands_list_is_collect_prune_then_alerts() -> None:
-    assert COMMANDS == ("collect", "prune_items", "check_alerts")
+def test_scheduler_commands_list_is_collect_prune_alerts_then_resend() -> None:
+    assert COMMANDS == ("collect", "prune_items", "check_alerts", "resend_inquiries")

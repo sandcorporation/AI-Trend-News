@@ -7,7 +7,12 @@
   --card: #fffdf9;
   --accent: #8a3b12;
   --chip-bg: #ece4d2;
-  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Apple SD Gothic Neo",
+    "Noto Sans KR",
+    sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -294,4 +299,68 @@ h2 {
 
 .cta:empty {
   display: none;
+}
+
+.contact-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.contact-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.95rem;
+}
+
+.contact-form input:not([type="radio"]),
+.contact-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.7rem;
+  font: inherit;
+  color: inherit;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.contact-form .kind {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.contact-form .kind label {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.contact-form button {
+  align-self: flex-start;
+  cursor: pointer;
+}
+
+.hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.field-error,
+.notice.err {
+  margin: -0.4rem 0 0;
+  color: #b3261e;
+  font-size: 0.875rem;
+}
+
+.notice {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }

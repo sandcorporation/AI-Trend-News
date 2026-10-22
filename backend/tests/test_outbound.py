@@ -113,7 +113,7 @@ def test_article_detail_has_cta_and_share(client: Client) -> None:
 
     assert 'data-slot="article-cta"' in html
     assert f"/go/sandcorp?from=article_cta&amp;article={article.slug}" in html
-    assert f"/go/sandcorp?from=contact&amp;article={article.slug}" in html
+    assert 'href="/contact"' in html
     assert "Sandcorp 포트폴리오 보기" in html and "문의하기" in html
     assert "반복 업무를 자동화하고 싶으신가요?" in html
     x = re.search(r'href="(https://twitter\.com/intent/tweet\?[^"]+)"', html)

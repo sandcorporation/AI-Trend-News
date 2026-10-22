@@ -1,0 +1,30 @@
+{% include "core/public/_chrome_top.html" %}
+<main class="main">
+  <section class="contact" data-slot="contact">
+    <h1>문의</h1>
+    {% if data.state == "done" %}
+    <p class="notice ok" role="status">접수했습니다. 남겨 주신 연락처로 답변드리겠습니다.</p>
+    <p><a class="btn" href="/">메인으로</a></p>
+    {% else %}
+    <p class="lead">문의나 제안을 남겨 주세요.</p>
+    {% if data.state == "limited" %}<p class="notice err" role="alert">요청이 너무 많습니다. 잠시 뒤에 다시 시도해 주세요.</p>{% endif %}
+    <form method="post" action="/contact" class="contact-form">
+      <div class="hp" aria-hidden="true"><label>웹사이트 <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+      <fieldset class="kind"><legend>종류</legend>
+        {% for k in data.kinds %}<label><input type="radio" name="kind" value="{{ k }}"{% if k == data.form.kind %} checked{% endif %}> {{ k }}</label>
+        {% endfor %}
+      </fieldset>
+      <label>이름 <input name="name" required maxlength="50" autocomplete="name" value="{{ data.form.name }}"></label>
+      {% if data.form.errors.name %}<p class="field-error">{{ data.form.errors.name }}</p>{% endif %}
+      <label>회사 (선택) <input name="company" maxlength="100" autocomplete="organization" value="{{ data.form.company }}"></label>
+      <label>연락처 (이메일 또는 전화) <input name="contact" required maxlength="200" value="{{ data.form.contact }}"></label>
+      {% if data.form.errors.contact %}<p class="field-error">{{ data.form.errors.contact }}</p>{% endif %}
+      <label>내용 <textarea name="message" required rows="6" maxlength="5000">{{ data.form.message }}</textarea></label>
+      {% if data.form.errors.message %}<p class="field-error">{{ data.form.errors.message }}</p>{% endif %}
+      {% if data.form.errors.kind %}<p class="field-error">{{ data.form.errors.kind }}</p>{% endif %}
+      <button class="btn primary" type="submit">보내기</button>
+    </form>
+    {% endif %}
+  </section>
+</main>
+{% include "core/public/_chrome_bottom.html" %}
