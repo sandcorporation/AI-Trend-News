@@ -34,6 +34,8 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - 전부: `make check`.
 - HTML 소스: `Source.html_rules`(JSON; 키 item·link·title·published, 선택 excerpt — 선택자는 CSS, published는 `datetime` 속성 우선). 검증은 `services/html_rules.py`. 어댑터 인터페이스는 `collect(url, fetcher, rules)`.
 - 수집: `cd backend && uv run python manage.py collect` — 켜진 소스를 모두 수집한다(소스별 독립 실패, 결과는 소스에 기록). 앱은 `backend/collection/`, 규칙은 `services/collection.py`·`services/urls.py`, 페치·소스 어댑터는 `adapters/fetch.py`·`adapters/sources.py`.
+- 정리: `manage.py prune_items` — 미처리·버림 수집물 중 수집 시각 30일 지난 것만 지운다(`services/retention.py`). 묶인 수집물과 `SeenUrl`은 남긴다.
+- 스케줄러: 운영 compose의 `scheduler` 컨테이너(같은 이미지)가 `manage.py run_scheduler`로 시작 즉시 한 번, 이후 매시간(`SCHEDULER_INTERVAL` 초) `services/scheduler.py`의 `COMMANDS`(지금 `collect`, `prune_items`)를 차례로 부른다. 새 주기 작업은 관리 명령을 만들고 `COMMANDS`에 이름을 더한다. 한 명령의 실패는 기록만 하고 계속한다.
 - 작업자는 이 「명령」 절을 명령이 바뀌는 티켓에서 함께 고친다.
 - 로컬 실행: `make dev-frontend`(Vite, :5173)와 `make dev-backend`(Django, :8000)를 따로 띄우고 http://localhost:8000 을 연다. Django가 HTML 셸을 내리고 Vite dev 서버의 스크립트를 붙인다.
 - 운영 compose 로컬 확인: `.env.example`을 `.env`로 복사해 값을 채우고(`DJANGO_ALLOWED_HOSTS`에 `localhost`) `make prod-local`(`news-local` 프로젝트로 `deploy/deploy.sh`를 돌린다) → http://127.0.0.1:18092 . 끝나면 `make prod-local-down`.

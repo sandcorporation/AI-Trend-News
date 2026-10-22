@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Called by Jenkins on the oracle agent from the job workspace, which holds ./.env (not in the repo).
 #   1) build the image  2) make sure postgres is up  3) migrate in a one-off container
-#   4) replace web      5) wait for the health check (it round-trips to Postgres)
+#   4) replace web and scheduler   5) wait for the health check (it round-trips to Postgres)
 # Migrations run while the old web still serves, so destructive schema changes take two deploys.
 set -euo pipefail
 
@@ -43,6 +43,9 @@ echo "== web 교체"
 # --force-recreate: 새로 빌드한 이미지라도 compose가 "Running"으로 두고 넘어가는 경우가 있었다.
 compose up -d --no-deps --force-recreate web
 wait_healthy web
+
+echo "== scheduler 교체 (같은 이미지)"
+compose up -d --no-deps --force-recreate scheduler
 
 echo "== 헬스 확인"
 compose exec -T web python -c "

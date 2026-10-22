@@ -3,8 +3,8 @@
 #
 # Resource budget on the shared oracle host (portfolio already takes ~1.5 CPU / 1.5 GB there):
 # about 1.2 CPU / 1.2 GB for this project.
-#   web 0.6 CPU / 512m, postgres 0.4 CPU / 384m — the rest is headroom for the scheduler container
-#   (hourly crawl/cleanup commands, spec #1) that a later ticket adds.
+#   web 0.6 CPU / 512m, postgres 0.4 CPU / 384m, scheduler 0.2 CPU / 256m (the rest of the budget;
+#   it only wakes hourly to run the management commands in backend/services/scheduler.py).
 name: news
 
 services:
@@ -37,6 +37,23 @@ services:
       start_interval: 2s
     cpus: 0.6
     mem_limit: 512m
+    restart: unless-stopped
+
+  # Same image as web. `run_scheduler` runs services.scheduler.COMMANDS right at start, then every
+  # SCHEDULER_INTERVAL seconds (default 3600). A failing command is logged and never stops the loop.
+  scheduler:
+    image: news-web:latest
+    command: ["python", "manage.py", "run_scheduler", "--interval", "${SCHEDULER_INTERVAL:-3600}"]
+    env_file: [.env]
+    environment:
+      DJANGO_DEBUG: "0"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cpus: 0.2
+    mem_limit: 256m
     restart: unless-stopped
 
   postgres:
