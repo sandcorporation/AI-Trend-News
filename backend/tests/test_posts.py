@@ -28,6 +28,7 @@ def featured_article(mcp: McpClient, **flags: bool) -> dict[str, JSON]:
             "title": "금리 동결",
             "summary": "요약",
             "category": category,
+            "slug": "rates-frozen",
             **({"published": True, "featured": True} | flags),
         },
     )

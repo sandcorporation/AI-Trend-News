@@ -22,7 +22,7 @@
 - `add_category()` — 분야 추가(`name`). 추가된 분야의 `slug`를 돌려준다.
 - `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, 묶인 수집물(`items`의 `id`, `url`)을 준다.
 - `list_pending_items()` — 미처리 수집물을 오래된 것부터(`page`, `page_size` 최대 100). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`, `url`을 준다.
-- `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `tags`, `published`, `featured`, `image_url`.
+- `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`.
 - `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. 게시·추천은 바꾸지 못한다.
 - `set_article_flags()` — 기사의 `published`·`featured` 변경(`id`와 바꿀 것만).
 - `upsert_post_draft()` — 추천이면서 게시된 기사의 포스트 초안 작성·갱신(`article_id`, `channel`, `text`). 아래 「포스트 초안」 절의 규칙을 따른다.
@@ -50,6 +50,10 @@
 ## 제목
 
 한국어, 40자 이내. 낚시성 표현과 과장을 쓰지 않는다. 원문 제목을 직역하지 말고 무슨 일이 있었는지 사실을 전한다. 「충격」「난리」「대박」 같은 말과 물음표로 끝나는 제목을 쓰지 않는다.
+
+## slug
+
+기사 주소다. 제목의 영문 핵심어 2~5개를 하이픈으로 잇는다(소문자·숫자·하이픈 3~60자, 첫 글자는 소문자). 고유명사는 영문 표기로, 숫자는 그대로 쓴다. 예: `chatgpt-ads-89-countries`. 한글·공백·기호를 넣지 않는다. 같은 slug가 있으면 뒤에 `-2`가 붙는다. 만든 뒤에는 바꾸지 못한다.
 
 ## 요약
 

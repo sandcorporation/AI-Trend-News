@@ -216,7 +216,10 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
     try:
         article = svc.public_article(slug)
     except svc.ArticleNotFound:
-        raise Http404("없는 기사입니다.") from None
+        renamed = svc.find_article_by_old_slug(slug)
+        if renamed is None:
+            raise Http404("없는 기사입니다.") from None
+        return HttpResponsePermanentRedirect(f"/a/{renamed.slug}")
     detail = _detail(article)
     data: dict[str, object] = {
         "kind": "article",

@@ -7,6 +7,11 @@ from django.db import models
 from collection.models import Item
 
 CATEGORY_SLUG_RE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+ARTICLE_SLUG_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
+article_slug_validator = RegexValidator(
+    re.compile(rf"\A{ARTICLE_SLUG_RE.pattern}\Z"),
+    "라틴 소문자·숫자·하이픈만 쓰고 첫 글자는 소문자여야 합니다.",
+)
 category_slug_validator = RegexValidator(
     re.compile(rf"\A{CATEGORY_SLUG_RE.pattern}\Z"), "라틴 소문자·숫자·하이픈만 쓸 수 있습니다."
 )
@@ -79,7 +84,14 @@ class Article(models.Model):
 
     title = models.CharField("제목", max_length=300)
     summary = models.TextField("요약", blank=True)
-    slug = models.SlugField("슬러그", max_length=80, unique=True, editable=False)
+    slug = models.SlugField(
+        "슬러그",
+        max_length=80,
+        unique=True,
+        blank=True,
+        validators=[article_slug_validator],
+        help_text="/a/ 주소(라틴 소문자·숫자·하이픈). 비우면 자동. 바꾸면 옛 주소 301.",
+    )
     category = models.ForeignKey(
         Category, on_delete=models.PROTECT, related_name="articles", verbose_name="분야"
     )
@@ -99,6 +111,29 @@ class Article(models.Model):
 
     def __str__(self) -> str:
         return self.title
+
+    def clean(self) -> None:
+        if (
+            self.slug
+            and ArticleSlugAlias.objects.filter(slug=self.slug).exclude(article_id=self.pk).exists()
+        ):
+            raise ValidationError({"slug": "다른 기사가 예전에 쓰던 slug입니다."})
+
+
+class ArticleSlugAlias(models.Model):
+    """기사가 예전에 쓰던 slug. 옛 /a/<slug> 링크를 새 slug로 301 보내는 데 쓴다."""
+
+    slug = models.SlugField("옛 슬러그", max_length=80, unique=True)
+    article = models.ForeignKey(
+        Article, on_delete=models.CASCADE, related_name="old_slugs", verbose_name="기사"
+    )
+
+    class Meta:
+        verbose_name = "기사 옛 슬러그"
+        verbose_name_plural = "기사 옛 슬러그"
+
+    def __str__(self) -> str:
+        return f"{self.slug} -> {self.article.slug}"
 
 
 class ArticleItem(models.Model):

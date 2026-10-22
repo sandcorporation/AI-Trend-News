@@ -176,3 +176,17 @@ def test_old_category_slug_redirects_301_keeping_query(client: Client) -> None:
     assert res["Location"] in ("/?category=economy&page=1",)
     assert client.get("/?category=nope").status_code == 404
     assert client.get("/?category=economy").status_code == 200
+
+
+def test_old_article_slug_redirects_301_to_new(client: Client) -> None:
+    article = make_article("Old address news")
+    old = article.slug
+    svc.record_article_slug_change(article, "new-address")
+    article.save()
+    res = client.get(f"/a/{old}")
+    assert res.status_code == 301 and res["Location"] == "/a/new-address"
+    assert client.get("/a/new-address").status_code == 200
+    assert client.get("/a/nothing-here").status_code == 404
+    article.published = False
+    article.save()
+    assert client.get(f"/a/{old}").status_code == 404
