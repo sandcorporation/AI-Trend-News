@@ -316,3 +316,20 @@ def test_item_older_than_limit_is_skipped_but_exact_boundary_is_kept(
     )
     collect_all()
     assert list(Item.objects.values_list("title", flat=True)) == ["just-under"]
+
+
+def test_rss_excerpt_is_stripped_to_plain_text(fake_fetcher: FakeFetcher) -> None:
+    from adapters.sources import RssAdapter
+
+    feed = (
+        "<?xml version='1.0'?><rss version='2.0'><channel><title>t</title>"
+        "<item><title>a</title><link>https://e.com/1</link>"
+        '<description><![CDATA[<table border="0px"><img src="https://e.com/x.png"></table>]]>'
+        "</description></item>"
+        "<item><title>b</title><link>https://e.com/2</link>"
+        "<description><![CDATA[<p>A &amp; B&nbsp;C</p>\n\n<p>  D\t E </p>]]></description></item>"
+        "</channel></rss>"
+    )
+    fake_fetcher.responses["https://e.com/feed"] = feed.encode()
+    items = RssAdapter().collect("https://e.com/feed", fake_fetcher, {})
+    assert [i.excerpt for i in items] == ["", "A & B C D E"]

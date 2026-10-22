@@ -1,5 +1,6 @@
 """소스 어댑터: 소스 하나를 수집해 원재료 목록으로 만든다. 소스 레코드의 adapter_name이 키다."""
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -33,6 +34,12 @@ def _to_datetime(value: struct_time | None) -> datetime | None:
     return datetime(*value[:6], tzinfo=UTC)
 
 
+def plain_text(markup: str) -> str:
+    """HTML 태그를 벗기고 엔티티를 풀고 연속 공백·줄바꿈을 한 칸으로 줄인다."""
+    text = BeautifulSoup(markup, "html.parser").get_text(" ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
 class RssAdapter:
     def collect(self, url: str, fetcher: Fetcher, rules: Mapping[str, str]) -> list[RawItem]:
         parsed = feedparser.parse(fetcher.fetch(url))
@@ -47,7 +54,7 @@ class RssAdapter:
                 RawItem(
                     url=link,
                     title=str(entry.get("title", "")).strip() or link,
-                    excerpt=str(entry.get("summary", "")).strip(),
+                    excerpt=plain_text(str(entry.get("summary", ""))),
                     published_at=_to_datetime(entry.get("published_parsed")),
                 )
             )
