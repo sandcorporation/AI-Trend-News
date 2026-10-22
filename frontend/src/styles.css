@@ -1,0 +1,25 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f4ee;
+  --fg: #1c1a16;
+  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17140f;
+    --fg: #ece7dd;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.placeholder {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 4rem 1rem;
+}
