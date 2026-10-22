@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .bg { fill: #9a4a1c; }
+    .far { fill: #e3b98a; }
+    .near { fill: #fbf3e4; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #e8a46b; }
+      .far { fill: #b9703a; }
+      .near { fill: #1f1b15; }
+    }
+  </style>
+  <rect class="bg" width="32" height="32" rx="7"/>
+  <path class="far" d="M0 21c5-8 10-9 15-5s10 3 17-4v20H0z"/>
+  <path class="near" d="M0 26c6-6 11-6 16-2s10 2 16-3v11H0z"/>
+</svg>

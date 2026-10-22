@@ -20,5 +20,19 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - 이슈마다 워크트리 `~/workspace/AI-Trend-News-wt/<브랜치>`에서 작업하고 `origin/main`으로 PR을 연다.
 - PR CI는 없다. 시험·린트·타입 검사는 로컬에서 돌린다. 통과하면 작업자가 바로 squash 병합한다(main 직접 push 금지).
 - 배포와 서버 설정(env 파일, NPMplus, DNS, OCI)은 조율자가 다룬다. 작업자는 원격 호스트에 쓰지 않는다.
-- 스택과 명령은 `~/workspace/portfolio`와 같은 형태를 따른다. `backend/`(uv, Python 3.13, Django, django-ninja), `frontend/`(Vite, pnpm), `make test` / `make lint` / `make typecheck` / `make check`. 첫 티켓(#2)이 뼈대를 만들면 이 절의 「명령」을 채운다.
+- 스택과 명령은 `~/workspace/portfolio`와 같은 형태를 따른다. `backend/`(uv, Python 3.13, Django, django-ninja), `frontend/`(Vite, pnpm), `make test` / `make lint` / `make typecheck` / `make check`.
 - 용어는 `GLOSSARY.md`, 결정은 `docs/adr/`를 따른다. 인증은 sandcorp-auth(auth.sandcorp.co.kr)의 리소스 서버로 동작한다.
+
+## 명령
+
+저장소 루트에서 `make <대상>`. 백엔드는 `backend/`(uv, Python 3.13), 프론트는 `frontend/`(pnpm).
+
+- 시험: `make test` (= `make test-backend` + `make test-frontend`). 백엔드 시험은 Postgres를 쓴다 — `make db`가 `news-dev` 프로젝트로 `127.0.0.1:15443`에 띄운다(`make test-backend`가 알아서 부른다). portfolio-dev(15442)와 함께 떠 있어도 된다. 백엔드 시험 전체는 30초 안에 끝나야 한다.
+- 시험 위치: `backend/tests/`(pytest-django, 설정 `config.test_settings`). 공용 픽스처·가짜 어댑터는 `backend/tests/conftest.py`, 고정 파일(RSS/HTML 샘플, Vite manifest)은 `backend/tests/fixtures/`. 프론트는 `frontend/src/**/*.test.tsx`(vitest, jsdom).
+- 린트: `make lint` (ruff format --check, ruff check, eslint). 고치기: `cd backend && uv run ruff format . && uv run ruff check --fix .`
+- 타입: `make typecheck` (mypy strict + django-stubs, `tsc --noEmit`).
+- 전부: `make check`.
+- 작업자는 이 「명령」 절을 명령이 바뀌는 티켓에서 함께 고친다.
+- 로컬 실행: `make dev-frontend`(Vite, :5173)와 `make dev-backend`(Django, :8000)를 따로 띄우고 http://localhost:8000 을 연다. Django가 HTML 셸을 내리고 Vite dev 서버의 스크립트를 붙인다.
+- 운영 compose 로컬 확인: `.env.example`을 `.env`로 복사해 값을 채우고(`DJANGO_ALLOWED_HOSTS`에 `localhost`) `make prod-local`(`news-local` 프로젝트로 `deploy/deploy.sh`를 돌린다) → http://127.0.0.1:18092 . 끝나면 `make prod-local-down`.
+- 운영: Jenkins(`oracle` 에이전트)가 `COMPOSE_PROJECT_NAME=news`로 `deploy/deploy.sh`를 돌린다. web은 `172.17.0.1:18092`에 묶이고 NPMplus가 `news.sandcorp.co.kr`을 거기로 보낸다.
