@@ -1,7 +1,9 @@
 """소스 수집 규칙: 켜진 소스를 순회하고 소스별로 독립 실패하며 결과를 소스에 기록한다."""
 
 from dataclasses import dataclass
+from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -23,6 +25,8 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
     """소스 하나를 수집한다. 실패해도 예외를 던지지 않고 소스에 기록한다."""
     fetcher = fetcher or get_fetcher()
     created = 0
+    too_old = 0
+    cutoff = timezone.now() - timedelta(days=settings.COLLECT_MAX_AGE_DAYS)
     try:
         adapter = ADAPTERS.get(source.adapter_name)
         if adapter is None:
@@ -34,6 +38,9 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                 _, is_new = SeenUrl.objects.get_or_create(url_hash=url_hash(normalized))
                 if not is_new:
                     continue
+                if raw.published_at is not None and raw.published_at < cutoff:
+                    too_old += 1  # 오래된 글은 다시 수집하지 않게 SeenUrl 만 남긴다
+                    continue
                 Item.objects.create(
                     source=source,
                     url=raw.url,
@@ -44,6 +51,8 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                 )
                 created += 1
         ok, message = True, f"성공: 새 수집물 {created}건 / 항목 {len(raw_items)}건"
+        if too_old:
+            message += f" / 오래돼 건너뜀 {too_old}건"
     except Exception as exc:  # 소스별 독립 실패: 어떤 오류든 이 소스의 실패로 기록한다
         ok, message = False, f"실패: {type(exc).__name__}: {exc}"
     source.last_collected_at = timezone.now()
