@@ -104,6 +104,9 @@ AUTH_RESOURCE = f"{SITE_URL}/mcp"
 AUTH_OWNER_SUB = env("AUTH_OWNER_SUB")
 AUTH_CLIENT_ID = env("AUTH_CLIENT_ID")
 AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
+
+# Discord webhook for operational alerts (#10). Empty = log only, nothing is sent.
+DISCORD_WEBHOOK_URL = env("DISCORD_WEBHOOK_URL")
 AUTH_REDIRECT_URI = env("AUTH_REDIRECT_URI", f"{SITE_URL}/auth/callback")
 
 # Static files: whitenoise serves collectstatic output, which includes the Vite build.

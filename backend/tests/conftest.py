@@ -18,6 +18,7 @@ from django.test import override_settings
 
 from adapters.auth_server import AuthEndpoints, AuthServerError, set_auth_server
 from adapters.clock import set_clock
+from adapters.discord import FakeNotifier, set_notifier
 from adapters.fetch import set_fetcher
 from adapters.jwks import Jwk, JwksCache, JwkSet, set_key_source
 from core.vite import _read_manifest
@@ -186,3 +187,12 @@ def fake_auth_server() -> Iterator[FakeAuthServer]:
     previous = set_auth_server(server)
     yield server
     set_auth_server(previous)
+
+
+@pytest.fixture(autouse=True)
+def fake_discord() -> Iterator[FakeNotifier]:
+    """경보는 실제 웹훅으로 나가지 않는다. 보낸 메시지는 `.sent`에 남는다."""
+    notifier = FakeNotifier()
+    previous = set_notifier(notifier)
+    yield notifier
+    set_notifier(previous)
