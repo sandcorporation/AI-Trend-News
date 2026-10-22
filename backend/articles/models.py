@@ -75,3 +75,34 @@ class ArticleItem(models.Model):
 
     def __str__(self) -> str:
         return f"{self.article_id} - {self.item_id}"
+
+
+class OutboundClick(models.Model):
+    """유입 링크 클릭 한 번(GLOSSARY: 유입 링크). 봇은 기록하지 않는다."""
+
+    class Location(models.TextChoices):
+        HEADER = "header", "헤더"
+        FOOTER = "footer", "푸터"
+        ARTICLE_CTA = "article_cta", "기사 하단 CTA"
+        CONTACT = "contact", "문의"
+
+    clicked_at = models.DateTimeField("시각", auto_now_add=True, db_index=True)
+    location = models.CharField("위치", max_length=20, choices=Location.choices)
+    article = models.ForeignKey(
+        Article,
+        verbose_name="기사",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="outbound_clicks",
+    )
+    referrer = models.CharField("referrer", max_length=500, blank=True)
+    user_agent = models.CharField("user agent", max_length=200, blank=True)
+
+    class Meta:
+        verbose_name = "유입 링크 클릭"
+        verbose_name_plural = "유입 링크 클릭"
+        ordering = ["-clicked_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.location} @ {self.clicked_at:%Y-%m-%d %H:%M}"

@@ -166,9 +166,3 @@ def test_robots_points_at_the_sitemap_and_hides_api(client: Client) -> None:
 
     assert "Sitemap: http://testserver/sitemap.xml" in text
     assert "Disallow: /api/" in text
-
-
-def test_public_pages_link_to_sandcorp_in_header_and_footer(client: Client) -> None:
-    html = client.get("/").content.decode()
-
-    assert html.count('href="https://sandcorp.co.kr"') == 2

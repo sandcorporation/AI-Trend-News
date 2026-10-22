@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import type { ArticlePageData, CardData, HomeData } from "./types";
 import { readPageData } from "./pageData";
@@ -21,7 +21,12 @@ test("셸에 심긴 #page-data JSON을 읽고, 없거나 깨지면 null을 돌�
   expect(readPageData(doc)).toBeNull();
 });
 
-const site = { name: "AI Trend News", sandcorp_url: "https://sandcorp.co.kr", sandcorp_label: "Sandcorp" };
+const site = {
+  name: "AI Trend News",
+  sandcorp_label: "Sandcorp",
+  header_url: "/go/sandcorp?from=header",
+  footer_url: "/go/sandcorp?from=footer",
+};
 const card: CardData = {
   slug: "rate-freeze",
   title: "금리 동결",
@@ -52,13 +57,28 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
   expect(screen.getByRole("link", { name: "경제" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "이전" })).toHaveAttribute("href", "?category=economy&page=1");
   expect(screen.getByRole("link", { name: "다음" })).toHaveAttribute("href", "?category=economy&page=3");
-  expect(screen.getAllByRole("link", { name: "Sandcorp" })).toHaveLength(2);
+  const links = screen.getAllByRole("link", { name: "Sandcorp" });
+  expect(links.map((l) => l.getAttribute("href"))).toEqual([
+    "/go/sandcorp?from=header",
+    "/go/sandcorp?from=footer",
+  ]);
 });
 
 test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크를 그린다", () => {
   const data: ArticlePageData = {
     kind: "article",
     site,
+    cta: {
+      text: "반복 업무를 자동화하고 싶으신가요?",
+      portfolio_label: "Sandcorp 포트폴리오 보기",
+      portfolio_url: "/go/sandcorp?from=article_cta&article=rate-freeze",
+      contact_label: "문의하기",
+      contact_url: "/go/sandcorp?from=contact&article=rate-freeze",
+    },
+    share: {
+      url: "https://news.sandcorp.co.kr/a/rate-freeze",
+      x_url: "https://twitter.com/intent/tweet?text=x&url=y",
+    },
     article: {
       ...card,
       items: [
@@ -75,4 +95,59 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
   expect(link).toHaveAttribute("target", "_blank");
   expect(link).toHaveAttribute("rel", "noopener");
   expect(screen.getByText("연합뉴스")).toBeInTheDocument();
+});
+
+function articleData(): ArticlePageData {
+  return {
+    kind: "article",
+    site,
+    cta: {
+      text: "CTA",
+      portfolio_label: "Sandcorp 포트폴리오 보기",
+      portfolio_url: "/go/sandcorp?from=article_cta&article=rate-freeze",
+      contact_label: "문의하기",
+      contact_url: "/go/sandcorp?from=contact&article=rate-freeze",
+    },
+    share: { url: "https://news.sandcorp.co.kr/a/rate-freeze", x_url: "https://twitter.com/intent/tweet?x=1" },
+    article: { ...card, items: [] },
+  };
+}
+
+test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
+  render(<App data={articleData()} />);
+
+  expect(screen.getByRole("link", { name: "Sandcorp 포트폴리오 보기" })).toHaveAttribute(
+    "href",
+    "/go/sandcorp?from=article_cta&article=rate-freeze",
+  );
+  expect(screen.getByRole("link", { name: "문의하기" })).toHaveAttribute(
+    "href",
+    "/go/sandcorp?from=contact&article=rate-freeze",
+  );
+  const x = screen.getByRole("link", { name: "X에 공유" });
+  expect(x).toHaveAttribute("href", "https://twitter.com/intent/tweet?x=1");
+  expect(x).toHaveAttribute("target", "_blank");
+});
+
+test("링크 복사는 주소를 클립보드에 넣고 복사됨을 보여 준다", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  render(<App data={articleData()} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+
+  expect(writeText).toHaveBeenCalledWith("https://news.sandcorp.co.kr/a/rate-freeze");
+  expect(await screen.findByRole("button", { name: "복사됨" })).toBeInTheDocument();
+});
+
+test("클립보드가 막히면 주소를 선택된 입력으로 보여 준다", async () => {
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+    configurable: true,
+  });
+  render(<App data={articleData()} />);
+
+  fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+
+  expect(await screen.findByLabelText("기사 주소")).toHaveValue("https://news.sandcorp.co.kr/a/rate-freeze");
 });
