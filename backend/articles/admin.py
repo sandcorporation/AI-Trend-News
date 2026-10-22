@@ -2,9 +2,11 @@ from django.contrib import admin
 from django.db.models import QuerySet
 from django.forms import ModelForm
 from django.http import HttpRequest
+from django.template.response import TemplateResponse
 
-from articles.models import Article, ArticleItem, Category, Tag
+from articles.models import Article, ArticleItem, Category, OutboundClick, Tag
 from services import articles as svc
+from services import outbound
 
 
 class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
@@ -83,3 +85,24 @@ class CategoryAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에
 @admin.register(Tag)
 class TagAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
     search_fields = ("name",)
+
+
+@admin.register(OutboundClick)
+class OutboundClickAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """유입 링크 클릭. 위에 기간(오늘·7일·30일)별 위치·기사 집계를 보인다. 기록은 읽기 전용."""
+
+    change_list_template = "admin/articles/outboundclick/change_list.html"
+    list_display = ("clicked_at", "location", "article", "referrer")
+    list_filter = ("location", "clicked_at")
+
+    def changelist_view(
+        self, request: HttpRequest, extra_context: dict[str, object] | None = None
+    ) -> TemplateResponse:
+        context = {**(extra_context or {}), "summaries": outbound.summarize()}
+        return super().changelist_view(request, context)  # type: ignore[return-value]
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: OutboundClick | None = None) -> bool:
+        return False

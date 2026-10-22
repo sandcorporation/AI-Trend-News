@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Layout } from "./Layout";
 import type { ArticlePageData } from "./types";
 
@@ -38,9 +39,54 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
             ))}
           </ul>
         </section>
-        {/* #12: article-bottom CTA (Sandcorp inflow) goes in this slot. */}
-        <section className="cta" data-slot="article-cta" />
+        <div className="share" data-slot="share">
+          <a className="btn" href={data.share.x_url} target="_blank" rel="noopener">
+            X에 공유
+          </a>
+          <CopyLinkButton url={data.share.url} />
+        </div>
+        <section className="cta" data-slot="article-cta">
+          <p>{data.cta.text}</p>
+          <p className="cta-actions">
+            <a className="btn primary" href={data.cta.portfolio_url}>
+              {data.cta.portfolio_label}
+            </a>
+            <a className="btn" href={data.cta.contact_url}>
+              {data.cta.contact_label}
+            </a>
+          </p>
+        </section>
       </article>
     </Layout>
+  );
+}
+
+/** Copies the article URL; if the clipboard API is unavailable or refuses, shows the URL to copy by hand. */
+function CopyLinkButton({ url }: { url: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+  };
+  return (
+    <>
+      <button className="btn" type="button" onClick={copy}>
+        {state === "copied" ? "복사됨" : "링크 복사"}
+      </button>
+      {state === "failed" && (
+        <input
+          className="copy-fallback"
+          readOnly
+          value={url}
+          aria-label="기사 주소"
+          onFocus={(e) => e.currentTarget.select()}
+          ref={(el) => el?.select()}
+        />
+      )}
+    </>
   );
 }

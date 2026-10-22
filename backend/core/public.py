@@ -6,9 +6,10 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 
 from datetime import datetime
 from typing import TypedDict
+from urllib.parse import urlencode
 
 from django.core.paginator import Paginator
-from django.http import Http404, HttpRequest, HttpResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseRedirect
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
@@ -17,12 +18,15 @@ from django.utils.dateformat import format as date_format
 from articles.models import Article
 from core.shell import INDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
 from services import articles as svc
+from services import outbound
 
 PAGE_SIZE = 12
 FEATURED_COUNT = 3
-# #12 swaps these for the tracked inflow links; templates and components read them from here.
-SANDCORP_URL = "https://sandcorp.co.kr"
+# Sandcorp links always go through the tracked inflow link (services/outbound.py); label lives here.
 SANDCORP_LABEL = "Sandcorp"
+CTA_TEXT = "뉴스 수집·요약·게시를 자동화한 이 사이트처럼, 반복 업무를 자동화하고 싶으신가요?"
+CTA_PORTFOLIO_LABEL = "Sandcorp 포트폴리오 보기"
+CTA_CONTACT_LABEL = "문의하기"
 
 
 class CategoryData(TypedDict):
@@ -55,8 +59,22 @@ class DetailData(CardData):
 
 class SiteData(TypedDict):
     name: str
-    sandcorp_url: str
     sandcorp_label: str
+    header_url: str
+    footer_url: str
+
+
+class CtaData(TypedDict):
+    text: str
+    portfolio_label: str
+    portfolio_url: str
+    contact_label: str
+    contact_url: str
+
+
+class ShareData(TypedDict):
+    url: str
+    x_url: str
 
 
 def _label(value: datetime | None) -> str:
@@ -64,7 +82,28 @@ def _label(value: datetime | None) -> str:
 
 
 def _site() -> SiteData:
-    return {"name": SITE_NAME, "sandcorp_url": SANDCORP_URL, "sandcorp_label": SANDCORP_LABEL}
+    return {
+        "name": SITE_NAME,
+        "sandcorp_label": SANDCORP_LABEL,
+        "header_url": outbound.go_path("header"),
+        "footer_url": outbound.go_path("footer"),
+    }
+
+
+def _cta(slug: str) -> CtaData:
+    return {
+        "text": CTA_TEXT,
+        "portfolio_label": CTA_PORTFOLIO_LABEL,
+        "portfolio_url": outbound.go_path("article_cta", slug),
+        "contact_label": CTA_CONTACT_LABEL,
+        # #13 replaces this with the /contact form.
+        "contact_url": outbound.go_path("contact", slug),
+    }
+
+
+def _share(title: str, url: str) -> ShareData:
+    query = urlencode({"text": title, "url": url})
+    return {"url": url, "x_url": f"https://twitter.com/intent/tweet?{query}"}
 
 
 def _card(article: Article) -> CardData:
@@ -159,7 +198,13 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
     except svc.ArticleNotFound:
         raise Http404("없는 기사입니다.") from None
     detail = _detail(article)
-    data: dict[str, object] = {"kind": "article", "site": _site(), "article": detail}
+    data: dict[str, object] = {
+        "kind": "article",
+        "site": _site(),
+        "article": detail,
+        "cta": _cta(article.slug),
+        "share": _share(article.title, request.build_absolute_uri(request.path)),
+    }
     meta = PageMeta(
         title=f"{article.title} - {SITE_NAME}",
         description=_snippet(article.summary) or SITE_DESCRIPTION,
@@ -174,6 +219,24 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
         request.build_absolute_uri(request.path),
         og_type="article",
     )
+
+
+def go_sandcorp(request: HttpRequest) -> HttpResponse:
+    """유입 링크: 클릭을 기록하고 UTM을 붙여 sandcorp.co.kr로 302."""
+    try:
+        target = outbound.follow(
+            request.GET.get("from", ""),
+            request.GET.get("article", ""),
+            request.META.get("HTTP_REFERER", ""),
+            request.META.get("HTTP_USER_AGENT", ""),
+        )
+    except outbound.InvalidLocation:
+        return HttpResponse(
+            "잘못된 위치입니다.", status=400, content_type="text/plain; charset=utf-8"
+        )
+    response = HttpResponseRedirect(target)
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def sitemap(request: HttpRequest) -> HttpResponse:

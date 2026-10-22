@@ -29,8 +29,22 @@ export interface DetailData extends CardData {
 
 export interface SiteData {
   name: string;
-  sandcorp_url: string;
   sandcorp_label: string;
+  header_url: string;
+  footer_url: string;
+}
+
+export interface CtaData {
+  text: string;
+  portfolio_label: string;
+  portfolio_url: string;
+  contact_label: string;
+  contact_url: string;
+}
+
+export interface ShareData {
+  url: string;
+  x_url: string;
 }
 
 export interface HomeData {
@@ -48,6 +62,8 @@ export interface ArticlePageData {
   kind: "article";
   site: SiteData;
   article: DetailData;
+  cta: CtaData;
+  share: ShareData;
 }
 
 export type PageData = HomeData | ArticlePageData;

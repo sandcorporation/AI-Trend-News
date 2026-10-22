@@ -1,0 +1,20 @@
+{% extends "admin/change_list.html" %}
+{% block content %}
+<div class="module" id="outbound-summary" style="margin-bottom:1rem">
+  <table style="width:100%">
+    <caption>유입 링크 클릭 집계</caption>
+    <thead><tr><th>기간</th><th>합계</th><th>위치별</th><th>기사별</th></tr></thead>
+    <tbody>
+    {% for s in summaries %}
+      <tr data-period="{{ s.key }}">
+        <td>{{ s.label }}</td>
+        <td>{{ s.total }}</td>
+        <td>{% for r in s.by_location %}{{ r.label }} {{ r.count }}{% if not forloop.last %}, {% endif %}{% empty %}-{% endfor %}</td>
+        <td>{% for r in s.by_article %}{{ r.label }} {{ r.count }}{% if not forloop.last %}<br>{% endif %}{% empty %}-{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ block.super }}
+{% endblock %}

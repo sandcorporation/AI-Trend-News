@@ -13,8 +13,17 @@
         {% endfor %}
       </ul>
     </section>
-    {# #12: article-bottom CTA goes here (Sandcorp inflow). #}
-    <section class="cta" data-slot="article-cta"></section>
+    <div class="share" data-slot="share">
+      <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
+      <button class="btn" type="button" data-copy-url="{{ data.share.url }}">링크 복사</button>
+    </div>
+    <section class="cta" data-slot="article-cta">
+      <p>{{ data.cta.text }}</p>
+      <p class="cta-actions">
+        <a class="btn primary" href="{{ data.cta.portfolio_url }}">{{ data.cta.portfolio_label }}</a>
+        <a class="btn" href="{{ data.cta.contact_url }}">{{ data.cta.contact_label }}</a>
+      </p>
+    </section>
   </article>
 </main>
 {% include "core/public/_chrome_bottom.html" %}
