@@ -64,3 +64,19 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
 def collect_all(fetcher: Fetcher | None = None) -> list[CollectResult]:
     """켜진 소스만 수집한다."""
     return [collect_source(s, fetcher) for s in Source.objects.filter(enabled=True).order_by("id")]
+
+
+@dataclass(frozen=True)
+class PendingPage:
+    items: list[Item]
+    total: int
+    page: int
+    page_size: int
+
+
+def list_pending_items(page: int = 1, page_size: int = 50) -> PendingPage:
+    """미처리 수집물을 오래된 것부터(수집 시각 순) 한 쪽. 편집자가 MCP로 읽는다."""
+    qs = Item.objects.filter(status=Item.Status.PENDING).select_related("source")
+    start = (page - 1) * page_size
+    items = list(qs.order_by("collected_at", "id")[start : start + page_size])
+    return PendingPage(items=items, total=qs.count(), page=page, page_size=page_size)
