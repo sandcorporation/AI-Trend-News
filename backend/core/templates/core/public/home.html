@@ -1,0 +1,26 @@
+{% include "core/public/_chrome_top.html" %}
+<main class="main">
+  <nav class="tabs" aria-label="분야">
+    <a href="/"{% if not data.category %} aria-current="page"{% endif %}>전체</a>
+    {% for c in data.categories %}<a href="/?category={{ c.slug }}"{% if c.slug == data.category %} aria-current="page"{% endif %}>{{ c.name }}</a>
+    {% endfor %}
+  </nav>
+  {% if data.featured %}
+  <section class="featured" aria-labelledby="featured-h">
+    <h2 id="featured-h">추천</h2>
+    {% for card in data.featured %}{% include "core/public/_card.html" %}{% endfor %}
+  </section>
+  {% endif %}
+  <section aria-labelledby="latest-h">
+    <h2 id="latest-h">최신 기사</h2>
+    {% for card in data.articles %}{% include "core/public/_card.html" %}{% empty %}<p class="empty">아직 게시된 기사가 없습니다.</p>{% endfor %}
+  </section>
+  {% if data.num_pages > 1 %}
+  <nav class="pager" aria-label="페이지">
+    {% if data.page > 1 %}<a rel="prev" href="?{% if data.category %}category={{ data.category }}&amp;{% endif %}page={{ data.page|add:-1 }}">이전</a>{% endif %}
+    <span>{{ data.page }} / {{ data.num_pages }}</span>
+    {% if data.page < data.num_pages %}<a rel="next" href="?{% if data.category %}category={{ data.category }}&amp;{% endif %}page={{ data.page|add:1 }}">다음</a>{% endif %}
+  </nav>
+  {% endif %}
+</main>
+{% include "core/public/_chrome_bottom.html" %}

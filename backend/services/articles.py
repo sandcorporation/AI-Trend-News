@@ -9,6 +9,7 @@ from collections.abc import Iterable
 from enum import Enum
 
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils.text import slugify
 
 from articles.models import Article, ArticleItem, Category, Tag
@@ -238,3 +239,45 @@ def discard_item(actor: Actor, item_id: int) -> Item:
     item.status = Item.Status.DISCARDED
     item.save(update_fields=["status"])
     return item
+
+
+# --- 공개 조회 (방문자용: 반드시 게시된 기사만) ---
+# 추천은 게시를 강제하지 않으므로 모든 공개 조회가 published=True 를 직접 건다.
+
+
+def _public() -> QuerySet[Article]:
+    return (
+        Article.objects.filter(published=True).select_related("category").prefetch_related("tags")
+    )
+
+
+def public_featured(limit: int, category: str = "") -> list[Article]:
+    """추천이면서 게시된 기사, 최신순 limit개. category(slug)가 있으면 그 분야만."""
+    qs = _public().filter(featured=True)
+    if category:
+        qs = qs.filter(category__slug=category)
+    return list(qs[:limit])
+
+
+def public_list(category: str = "") -> QuerySet[Article]:
+    """게시된 기사 최신순. category(slug)가 있으면 그 분야만. 페이지는 호출부가 자른다."""
+    qs = _public()
+    return qs.filter(category__slug=category) if category else qs
+
+
+def public_article(slug: str) -> Article:
+    """게시된 기사 하나. 없거나 게시 전이면 ArticleNotFound. 묶인 수집물과 소스를 함께 읽는다."""
+    try:
+        return _public().prefetch_related("article_items__item__source").get(slug=slug)
+    except Article.DoesNotExist:
+        raise ArticleNotFound(f"게시된 기사가 없습니다: {slug}") from None
+
+
+def public_sitemap() -> QuerySet[Article]:
+    """사이트맵용: 게시된 기사만(slug, 수정 시각)."""
+    return Article.objects.filter(published=True).only("slug", "updated_at")
+
+
+def public_categories() -> list[Category]:
+    """탭으로 보일 분야(order 순). 게시된 기사가 없는 분야도 포함한다."""
+    return list_categories()

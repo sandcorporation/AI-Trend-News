@@ -1,0 +1,8 @@
+<article class="card">
+  {% if card.image_url %}<img class="card-image" src="{{ card.image_url }}" alt="" loading="lazy">{% endif %}
+  <div class="card-body">
+    <p class="meta"><span class="chip">{{ card.category.name }}</span> <span>{{ card.published_label }}</span></p>
+    <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
+    <p class="summary">{{ card.summary }}</p>
+  </div>
+</article>

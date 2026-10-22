@@ -30,21 +30,22 @@ def render_shell(
     meta: PageMeta,
     status: int = 200,
     data: Mapping[str, object] | None = None,
+    body: str = "",
+    canonical: str = "",
+    og_type: str = "website",
 ) -> HttpResponse:
-    """Render the shell. `data` is embedded as JSON in #page-data for React's first render."""
+    """Render the shell. `data` is embedded as JSON in #page-data for React's first render.
+
+    `body` is server-rendered HTML placed inside #root (crawlers read it; React replaces it).
+    """
     context = {
         "site_name": SITE_NAME,
         "data": data,
         "meta": meta,
         "og_image": request.build_absolute_uri(meta.image) if meta.image else "",
-        "canonical": request.build_absolute_uri(request.path),
+        "canonical": canonical or request.build_absolute_uri(request.path),
+        "og_type": og_type,
+        "body": body,
         "assets": entry_assets(),
     }
     return render(request, "core/shell.html", context, status=status)
-
-
-def home(request: HttpRequest) -> HttpResponse:
-    return render_shell(
-        request,
-        PageMeta(title=SITE_NAME, description=SITE_DESCRIPTION, robots=INDEX),
-    )

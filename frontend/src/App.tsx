@@ -1,8 +1,12 @@
-/**
- * Root component. Pages arrive with later tickets: pick one from `window.location.pathname`
- * and the shell's #page-data (`readPageData()` in pageData.ts), as portfolio does.
- */
-export function App() {
+import { ArticlePage } from "./ArticlePage";
+import { Home } from "./Home";
+import { isPageData } from "./types";
+
+/** Picks the page from the JSON Django embedded for this route (`readPageData()` in pageData.ts). */
+export function App({ data }: { data: unknown }) {
+  if (isPageData(data)) {
+    return data.kind === "home" ? <Home data={data} /> : <ArticlePage data={data} />;
+  }
   return (
     <main className="placeholder">
       <h1>AI Trend News</h1>

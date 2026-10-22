@@ -1,6 +1,9 @@
 import re
 
+import pytest
 from django.test import Client, override_settings
+
+pytestmark = pytest.mark.django_db
 
 
 def meta(html: str, name: str) -> str | None:
@@ -20,7 +23,7 @@ def test_home_shell_is_indexable_and_mounts_the_vite_bundle(client: Client) -> N
     assert response.status_code == 200
     assert "<title>AI Trend News</title>" in html
     assert meta(html, "robots") == "index, follow"
-    assert '<div id="root"></div>' in html
+    assert '<div id="root">' in html
     assert '<script type="module" src="/static/assets/main-abc123.js"></script>' in html
     assert '<link rel="stylesheet" href="/static/assets/main-def456.css">' in html
 

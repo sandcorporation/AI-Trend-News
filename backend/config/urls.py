@@ -2,7 +2,7 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import path
 
-from core import admin_login, shell
+from core import admin_login, public
 from core.api import api
 from core.auth import protected_resource_metadata
 
@@ -14,5 +14,8 @@ urlpatterns = [
     path(".well-known/oauth-protected-resource", protected_resource_metadata),
     path("api/", api.urls),
     # HTML shell routes: Django fills per-route meta, React takes over in the browser.
-    path("", shell.home, name="home"),
+    path("", public.home, name="home"),
+    path("a/<slug:slug>", public.article_detail, name="article"),
+    path("sitemap.xml", public.sitemap),
+    path("robots.txt", public.robots),
 ]

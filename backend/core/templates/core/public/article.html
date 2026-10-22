@@ -1,0 +1,20 @@
+{% include "core/public/_chrome_top.html" %}
+<main class="main">
+  <article class="detail">
+    <p class="meta"><a class="chip" href="/?category={{ data.article.category.slug }}">{{ data.article.category.name }}</a> <time datetime="{{ data.article.published_at }}">{{ data.article.published_label }}</time></p>
+    <h1>{{ data.article.title }}</h1>
+    {% if data.article.image_url %}<img class="hero" src="{{ data.article.image_url }}" alt="">{% endif %}
+    <p class="summary">{{ data.article.summary }}</p>
+    {% if data.article.tags %}<ul class="tags">{% for t in data.article.tags %}<li>#{{ t }}</li>{% endfor %}</ul>{% endif %}
+    <section aria-labelledby="sources-h">
+      <h2 id="sources-h">원문</h2>
+      <ul class="sources">
+        {% for i in data.article.items %}<li><a href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title }}</a> <span class="source-name">{{ i.source }}{% if i.published_label %} · {{ i.published_label }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {# #12: article-bottom CTA goes here (Sandcorp inflow). #}
+    <section class="cta" data-slot="article-cta"></section>
+  </article>
+</main>
+{% include "core/public/_chrome_bottom.html" %}
