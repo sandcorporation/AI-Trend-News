@@ -5,7 +5,11 @@ from django.db.utils import DatabaseError
 from django.http import HttpRequest
 from ninja import NinjaAPI, Schema, Status
 
+from core.auth import install_auth_handlers
+
 api = NinjaAPI(title="Sandcorp news API", docs_url=None)
+# Protected endpoints use `auth=RequireScope("<scope>")` (core/auth.py).
+install_auth_handlers(api)
 
 
 class Health(Schema):

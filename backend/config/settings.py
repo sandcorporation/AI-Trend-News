@@ -87,8 +87,23 @@ USE_TZ = True
 
 # Absolute-URL base for sitemap.xml and robots.txt (they have no request host to trust).
 SITE_URL = env("SITE_URL", "https://news.sandcorp.co.kr").rstrip("/")
-# Django admin lives on a hard-to-guess path in production.
-ADMIN_PATH = env("DJANGO_ADMIN_PATH", "admin/").strip("/") + "/"
+# Django admin lives on a hard-to-guess path; the default /admin/ is never served (404).
+_admin_path = env("DJANGO_ADMIN_PATH").strip("/")
+if not _admin_path or _admin_path == "admin":
+    if not DEBUG:
+        raise RuntimeError("DJANGO_ADMIN_PATH must be set to a hard-to-guess path (not 'admin')")
+    _admin_path = "dev-admin"
+ADMIN_PATH = _admin_path + "/"
+
+# sandcorp-auth: this site is a resource server (aud = AUTH_RESOURCE) and, for the admin login,
+# a confidential client. Rules: sandcorp-auth docs/resource-server-token-validation.md.
+AUTH_ISSUER = env("AUTH_ISSUER", "https://auth.sandcorp.co.kr").rstrip("/")
+AUTH_RESOURCE = f"{SITE_URL}/mcp"
+# The owner's username at sandcorp-auth; tokens whose `sub` differs are rejected. Empty = nobody.
+AUTH_OWNER_SUB = env("AUTH_OWNER_SUB")
+AUTH_CLIENT_ID = env("AUTH_CLIENT_ID")
+AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
+AUTH_REDIRECT_URI = env("AUTH_REDIRECT_URI", f"{SITE_URL}/auth/callback")
 
 # Static files: whitenoise serves collectstatic output, which includes the Vite build.
 STATIC_URL = "/static/"

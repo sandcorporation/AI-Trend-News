@@ -24,7 +24,7 @@ COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 COPY backend/ ./
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
-RUN DJANGO_SECRET_KEY=collectstatic-only python manage.py collectstatic --noinput \
+RUN DJANGO_SECRET_KEY=collectstatic-only DJANGO_ADMIN_PATH=collectstatic-only python manage.py collectstatic --noinput \
  && useradd --uid 1000 --no-create-home app
 USER app
 EXPOSE 8000

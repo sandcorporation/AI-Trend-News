@@ -9,8 +9,11 @@
 | HTML 파싱 규칙 | 소스별 어댑터 코드. 소스 레코드가 어댑터 이름을 가리킨다 | 픽스처 HTML로 시험 |
 | 문의 전송 | portfolio 문의 API에 서버 간 호출(공유 시크릿 헤더) | 보낸 문의 목록을 남김, 실패를 흉내 냄 |
 | 알림 | Discord 웹훅(실패해도 요청은 실패시키지 않음) | 보낸 알림 목록을 남김 |
-| 토큰 검증 | sandcorp-auth JWKS | 시험용 키 쌍으로 발급한 토큰 |
+| 공개 키(JWKS) | sandcorp-auth JWKS를 HTTP로 받아 캐시(TTL 600초, 모르는 kid 재조회 60초 간격, 실패 후 60초, 타임아웃 5초) | 같은 캐시에 시험용 키 쌍의 JWK를 돌려주는 조회 함수 |
+| 인가 서버 | sandcorp-auth 메타데이터(RFC 8414)와 토큰 엔드포인트(코드 교환, client_secret_basic) | 고정 주소, 정해 둔 액세스 토큰을 돌려주고 교환 기록을 남김 |
+| 시계 | `datetime.now(UTC)` | 고정 시계(`advance`) |
 
 시험은 `tests/conftest.py`의 픽스처로 가짜를 끼우고, 가짜에 남은 기록을 확인한다.
 
 구현 위치: 페치는 `fetch.py`(`Fetcher`, `HttpFetcher`, 등록 지점 `get_fetcher`/`set_fetcher`), 소스 어댑터는 `sources.py`(`ADAPTERS` 이름→구현 사전). 시험의 가짜는 `tests/conftest.py`의 `fake_fetcher`.
+JWKS는 `jwks.py`(`KeySource`, `JwksCache`, 등록 지점 `get_key_source`/`set_key_source`), 인가 서버는 `auth_server.py`(`AuthServer`, `HttpAuthServer`, `get_auth_server`/`set_auth_server`), 시계는 `clock.py`(`get_clock`/`set_clock`). 가짜는 `fake_jwks`·`fake_auth_server`(둘 다 autouse)와 `frozen_clock`, 토큰 서명은 `token_signer`.

@@ -37,6 +37,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - 정리: `manage.py prune_items` — 미처리·버림 수집물 중 수집 시각 30일 지난 것만 지운다(`services/retention.py`). 묶인 수집물과 `SeenUrl`은 남긴다.
 - 기사: 앱 `backend/articles/`(Category, Tag, Article, ArticleItem), 규칙은 `services/articles.py` — 함수가 주체 `Actor.EDITOR`/`Actor.OWNER`를 받고 오류는 `ArticleError` 하위 클래스. admin은 대표 주체로 서비스를 거친다.
 - 스케줄러: 운영 compose의 `scheduler` 컨테이너(같은 이미지)가 `manage.py run_scheduler`로 시작 즉시 한 번, 이후 매시간(`SCHEDULER_INTERVAL` 초) `services/scheduler.py`의 `COMMANDS`(지금 `collect`, `prune_items`)를 차례로 부른다. 새 주기 작업은 관리 명령을 만들고 `COMMANDS`에 이름을 더한다. 한 명령의 실패는 기록만 하고 계속한다.
+- 인증(sandcorp-auth 리소스 서버): 규칙 원본은 sandcorp-auth `docs/resource-server-token-validation.md`. 검증은 `services/tokens.py`, HTTP 의존성은 `core/auth.py` — ninja는 `auth=RequireScope("admin"|"editor"|"login")`, 일반 뷰는 `@require_scope(...)`. 메타데이터 `/.well-known/oauth-protected-resource`. admin은 `DJANGO_ADMIN_PATH`에만 있고 로그인은 sandcorp-auth 코드 플로우(`core/admin_login.py`, 콜백 `/auth/callback`)뿐이다. 시험은 `token_signer`로 서명하고 `fake_jwks`·`fake_auth_server`가 자동으로 끼워진다.
 - 작업자는 이 「명령」 절을 명령이 바뀌는 티켓에서 함께 고친다.
 - 로컬 실행: `make dev-frontend`(Vite, :5173)와 `make dev-backend`(Django, :8000)를 따로 띄우고 http://localhost:8000 을 연다. Django가 HTML 셸을 내리고 Vite dev 서버의 스크립트를 붙인다.
 - 운영 compose 로컬 확인: `.env.example`을 `.env`로 복사해 값을 채우고(`DJANGO_ALLOWED_HOSTS`에 `localhost`) `make prod-local`(`news-local` 프로젝트로 `deploy/deploy.sh`를 돌린다) → http://127.0.0.1:18092 . 끝나면 `make prod-local-down`.
