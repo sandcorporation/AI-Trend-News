@@ -1,7 +1,10 @@
+import json
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.test import Client
+from django.urls import reverse
 
 from adapters.fetch import FetchError
 from collection.models import Item, SeenUrl, Source
@@ -108,3 +111,84 @@ def test_unknown_adapter_is_a_recorded_failure(fake_fetcher: FakeFetcher) -> Non
     source.refresh_from_db()
     assert source.last_succeeded is False
     assert source.consecutive_failures == 1
+
+
+HTML_URL = "https://www.aidaily.example.com/news/"
+HTML_RULES = {
+    "item": "li.article",
+    "link": "a.headline",
+    "title": "h3",
+    "published": "time",
+    "excerpt": "p.summary",
+}
+
+
+def make_html_source(rules: dict[str, str] | None = None) -> Source:
+    return Source.objects.create(
+        name="AI 데일리",
+        kind=Source.Kind.HTML,
+        adapter_name="html",
+        url=HTML_URL,
+        html_rules=HTML_RULES if rules is None else rules,
+    )
+
+
+def test_html_source_collects_items_from_fixture(
+    fake_fetcher: FakeFetcher, html_bytes: bytes
+) -> None:
+    source = make_html_source()
+    fake_fetcher.responses[HTML_URL] = html_bytes
+
+    collect_all()
+
+    assert Item.objects.count() == 6
+    urls = set(Item.objects.values_list("url", flat=True))
+    assert "https://www.aidaily.example.com/news/2026/10/chip-export" in urls  # 상대 링크 절대화
+    assert "https://www.aidaily.example.com/archive/open-weights" in urls
+    item = Item.objects.get(title="AI 반도체 수출 규제 완화")
+    assert item.excerpt == "정부가 규제 완화안을 발표했다."
+    assert item.published_at is not None and item.published_at.isoformat().startswith(
+        "2026-10-19T23:00"
+    )
+    source.refresh_from_db()
+    assert source.last_succeeded is True
+
+
+def test_html_selector_matching_nothing_records_source_failure(
+    fake_fetcher: FakeFetcher, html_bytes: bytes
+) -> None:
+    source = make_html_source({**HTML_RULES, "item": "div.nope"})
+    fake_fetcher.responses[HTML_URL] = html_bytes
+
+    collect_all()
+
+    assert Item.objects.count() == 0
+    source.refresh_from_db()
+    assert source.last_succeeded is False
+    assert source.consecutive_failures == 1
+    assert "div.nope" in source.last_result
+
+
+def test_admin_edits_html_rules_and_rejects_bad_rules(admin_client: Client) -> None:
+    source = make_html_source()
+    url = reverse("admin:collection_source_change", args=[source.pk])
+    base = {
+        "name": source.name,
+        "kind": "html",
+        "url": HTML_URL,
+        "adapter_name": "html",
+        "enabled": "on",
+    }
+
+    ok = admin_client.post(
+        url, {**base, "html_rules": json.dumps({**HTML_RULES, "title": "h3 span"})}
+    )
+    assert ok.status_code == 302
+    source.refresh_from_db()
+    assert source.html_rules["title"] == "h3 span"
+
+    bad = admin_client.post(url, {**base, "html_rules": json.dumps({"item": "li"})})
+    assert bad.status_code == 200
+    assert "필수 키가 없습니다" in bad.content.decode()
+    source.refresh_from_db()
+    assert source.html_rules["title"] == "h3 span"

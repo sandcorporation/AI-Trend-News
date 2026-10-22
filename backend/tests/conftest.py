@@ -54,3 +54,8 @@ def fake_fetcher() -> Iterator[FakeFetcher]:
     previous = set_fetcher(fetcher)
     yield fetcher
     set_fetcher(previous)
+
+
+@pytest.fixture
+def html_bytes() -> bytes:
+    return (FIXTURES / "news-list.html").read_bytes()
