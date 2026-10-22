@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.utils import timezone
 
-from editor.models import EditorRun
+from editor.models import Alert, EditorRun
 
 
 @admin.register(EditorRun)
@@ -33,4 +33,18 @@ class EditorRunAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
         return False
 
     def has_delete_permission(self, request: HttpRequest, obj: EditorRun | None = None) -> bool:
+        return False
+
+
+@admin.register(Alert)
+class AlertAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """읽기 전용: 경보 상태는 점검 명령이 관리한다."""
+
+    list_display = ("kind", "target", "active", "last_sent_at")
+    list_filter = ("kind", "active")
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: Alert | None = None) -> bool:
         return False

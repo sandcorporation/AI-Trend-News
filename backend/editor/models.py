@@ -38,3 +38,29 @@ class EditorRun(models.Model):
         if now - self.started_at >= ABANDON_AFTER:
             return self.State.ABANDONED
         return self.State.RUNNING
+
+
+class Alert(models.Model):
+    """운영 경보 상태(#10): 같은 조건으로 되풀이해 보내지 않으려고 종류·대상별로 한 줄만 둔다.
+
+    조건이 처음 참이 되면 활성으로 켜고 보낸다. 조건이 풀리면 끄고 「복구」를 한 번 보낸다.
+    """
+
+    class Kind(models.TextChoices):
+        EDITOR_MISSING = "editor_missing", "편집자 미실행"
+        SOURCE_FAILING = "source_failing", "소스 연속 실패"
+
+    kind = models.CharField("종류", max_length=30, choices=Kind.choices)
+    target = models.CharField(
+        "대상", max_length=100, blank=True, help_text="소스 id 등. 없으면 빈 값"
+    )
+    active = models.BooleanField("활성", default=False)
+    last_sent_at = models.DateTimeField("마지막 발송 시각", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "경보"
+        verbose_name_plural = "경보"
+        constraints = [models.UniqueConstraint(fields=["kind", "target"], name="alert_kind_target")]
+
+    def __str__(self) -> str:
+        return f"{self.get_kind_display()} {self.target}".strip()
