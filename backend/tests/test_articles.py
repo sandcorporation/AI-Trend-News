@@ -1,0 +1,164 @@
+import pytest
+from django.test import Client
+from django.urls import reverse
+
+from articles.models import Article, Category
+from collection.models import Item, SeenUrl, Source
+from services import articles as svc
+from services.articles import Actor
+
+pytestmark = pytest.mark.django_db
+
+
+def make_items(n: int = 2) -> list[Item]:
+    source = Source.objects.create(name="s", url="https://example.com/feed")
+    return [
+        Item.objects.create(
+            source=source,
+            url=f"https://example.com/{i}",
+            normalized_url=f"https://example.com/{i}",
+            title=f"t{i}",
+        )
+        for i in range(n)
+    ]
+
+
+def make_article(items: list[Item], **kw: object) -> Article:
+    svc.add_category("경제")
+    args: dict[str, object] = {
+        "item_ids": [i.pk for i in items],
+        "title": "금리 동결",
+        "summary": "요약",
+        "category": svc.list_categories()[0].slug,
+    }
+    args.update(kw)
+    return svc.create_article(Actor.EDITOR, **args)  # type: ignore[arg-type]
+
+
+def test_create_article_bundles_both_items() -> None:
+    items = make_items(2)
+    article = make_article(items, tags=["금리", "금리", " 은행 "])
+    assert {i.status for i in Item.objects.all()} == {Item.Status.BUNDLED}
+    assert {a.item_id for a in article.article_items.all()} == {i.pk for i in items}
+    assert sorted(t.name for t in article.tags.all()) == ["금리", "은행"]
+
+
+def test_rebinding_error_names_the_article() -> None:
+    items = make_items(2)
+    article = make_article(items[:1])
+    with pytest.raises(svc.ItemAlreadyBundled) as exc:
+        svc.create_article(
+            Actor.EDITOR,
+            item_ids=[items[0].pk],
+            title="다른",
+            summary="",
+            category=article.category.slug,
+        )
+    assert str(article.pk) in str(exc.value) and "금리 동결" in str(exc.value)
+    assert Article.objects.count() == 1
+
+
+def test_update_adds_items_and_keeps_slug() -> None:
+    items = make_items(2)
+    article = make_article(items[:1])
+    slug = article.slug
+    updated = svc.update_article(
+        Actor.EDITOR, article.pk, add_item_ids=[items[1].pk], title="새 제목", tags=["x"]
+    )
+    assert updated.slug == slug and updated.title == "새 제목"
+    assert updated.article_items.count() == 2
+
+
+def test_unknown_category_is_an_error() -> None:
+    items = make_items(1)
+    with pytest.raises(svc.CategoryNotFound, match="nope"):
+        svc.create_article(
+            Actor.EDITOR, item_ids=[items[0].pk], title="a", summary="", category="nope"
+        )
+    assert Item.objects.get().status == Item.Status.PENDING
+
+
+def test_slug_for_korean_titles_is_unique() -> None:
+    items = make_items(2)
+    a = make_article(items[:1])
+    b = svc.create_article(
+        Actor.EDITOR,
+        item_ids=[items[1].pk],
+        title="금리 동결",
+        summary="",
+        category=a.category.slug,
+    )
+    assert a.slug != b.slug and a.slug.startswith("news-")
+
+
+def test_owner_override_blocks_editor() -> None:
+    article = make_article(make_items(1), published=True)
+    svc.set_flags(Actor.OWNER, article.pk, published=False)
+    article.refresh_from_db()
+    assert article.published_overridden and not article.featured_overridden
+    with pytest.raises(svc.FlagOverridden):
+        svc.set_flags(Actor.EDITOR, article.pk, published=True)
+    article.refresh_from_db()
+    assert not article.published
+    # 덮어쓰지 않은 플래그는 편집자가 바꿀 수 있다
+    assert svc.set_flags(Actor.EDITOR, article.pk, featured=True).featured
+
+
+def test_discard_item() -> None:
+    items = make_items(2)
+    make_article(items[:1])
+    assert svc.discard_item(Actor.EDITOR, items[1].pk).status == Item.Status.DISCARDED
+    with pytest.raises(svc.ItemAlreadyBundled):
+        svc.discard_item(Actor.EDITOR, items[0].pk)
+
+
+def test_deleting_article_keeps_items_and_seen_urls() -> None:
+    items = make_items(2)
+    SeenUrl.objects.create(url_hash="a" * 64)
+    article = make_article(items)
+    svc.delete_article(article.pk)
+    assert Item.objects.count() == 2
+    assert {i.status for i in Item.objects.all()} == {Item.Status.PENDING}
+    assert SeenUrl.objects.count() == 1
+
+
+def test_admin_flag_change_marks_override_and_blocks_editor(admin_client: Client) -> None:
+    article = make_article(make_items(1), published=True)
+    url = reverse("admin:articles_article_change", args=[article.pk])
+    data = {
+        "title": article.title,
+        "summary": article.summary,
+        "category": article.category.pk,
+        "image_url": "",
+        "featured": "",
+        "article_items-TOTAL_FORMS": "0",
+        "article_items-INITIAL_FORMS": "0",
+    }
+    assert admin_client.post(url, data).status_code == 302
+    article.refresh_from_db()
+    assert not article.published and article.published_overridden
+    with pytest.raises(svc.FlagOverridden):
+        svc.set_flags(Actor.EDITOR, article.pk, published=True)
+    page = admin_client.get(url)
+    assert page.status_code == 200
+
+
+def test_admin_deleting_article_leaves_items(admin_client: Client) -> None:
+    items = make_items(2)
+    article = make_article(items)
+    url = reverse("admin:articles_article_delete", args=[article.pk])
+    assert admin_client.post(url, {"post": "yes"}).status_code == 302
+    assert Article.objects.count() == 0
+    assert Item.objects.filter(status=Item.Status.PENDING).count() == 2
+
+
+def test_admin_shows_bundled_items_inline(admin_client: Client) -> None:
+    article = make_article(make_items(2))
+    resp = admin_client.get(reverse("admin:articles_article_change", args=[article.pk]))
+    assert b"https://example.com/0" in resp.content and "묶임".encode() in resp.content
+
+
+def test_admin_adds_category_with_slug(admin_client: Client) -> None:
+    resp = admin_client.post(reverse("admin:articles_category_add"), {"name": "정치", "order": 3})
+    assert resp.status_code == 302
+    assert Category.objects.get(name="정치").slug.startswith("category-")
