@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from django.test import override_settings
 
+from adapters.fetch import set_fetcher
 from core.vite import _read_manifest
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -24,3 +25,32 @@ def vite_manifest() -> Iterator[None]:
     ):
         yield
     _read_manifest.cache_clear()
+
+
+class FakeFetcher:
+    """고정 응답을 URL별로 돌려주는 페처. 값이 예외면 던진다. 요청 기록을 남긴다."""
+
+    def __init__(self, responses: dict[str, bytes | Exception] | None = None) -> None:
+        self.responses: dict[str, bytes | Exception] = responses or {}
+        self.requested: list[str] = []
+
+    def fetch(self, url: str) -> bytes:
+        self.requested.append(url)
+        response = self.responses[url]
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+
+@pytest.fixture
+def rss_bytes() -> bytes:
+    return (FIXTURES / "news-feed.xml").read_bytes()
+
+
+@pytest.fixture
+def fake_fetcher() -> Iterator[FakeFetcher]:
+    """등록 지점에 가짜 페처를 끼운다(실제 네트워크 호출 금지)."""
+    fetcher = FakeFetcher()
+    previous = set_fetcher(fetcher)
+    yield fetcher
+    set_fetcher(previous)

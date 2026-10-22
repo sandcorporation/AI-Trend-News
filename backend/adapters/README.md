@@ -12,3 +12,5 @@
 | 토큰 검증 | sandcorp-auth JWKS | 시험용 키 쌍으로 발급한 토큰 |
 
 시험은 `tests/conftest.py`의 픽스처로 가짜를 끼우고, 가짜에 남은 기록을 확인한다.
+
+구현 위치: 페치는 `fetch.py`(`Fetcher`, `HttpFetcher`, 등록 지점 `get_fetcher`/`set_fetcher`), 소스 어댑터는 `sources.py`(`ADAPTERS` 이름→구현 사전). 시험의 가짜는 `tests/conftest.py`의 `fake_fetcher`.
