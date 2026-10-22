@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+
+from services.html_rules import HtmlRulesError, validate_html_rules
 
 
 class Source(models.Model):
@@ -14,6 +17,12 @@ class Source(models.Model):
     adapter_name = models.CharField(
         "어댑터 이름", max_length=50, default="rss", help_text="adapters.sources.ADAPTERS의 키"
     )
+    html_rules = models.JSONField(
+        "HTML 선택자 규칙",
+        default=dict,
+        blank=True,
+        help_text="kind=html일 때 필수. 키: item, link, title, published, (선택) excerpt.",
+    )
     enabled = models.BooleanField("켜짐", default=True)
     last_collected_at = models.DateTimeField("마지막 수집 시각", null=True, blank=True)
     last_result = models.TextField("마지막 수집 결과", blank=True)
@@ -26,6 +35,16 @@ class Source(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def clean(self) -> None:
+        if self.kind != self.Kind.HTML:
+            return
+        if self.adapter_name == "rss":
+            self.adapter_name = "html"
+        try:
+            self.html_rules = validate_html_rules(self.html_rules)
+        except HtmlRulesError as exc:
+            raise ValidationError({"html_rules": str(exc)}) from exc
 
 
 class Item(models.Model):

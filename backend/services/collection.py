@@ -27,7 +27,7 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
         adapter = ADAPTERS.get(source.adapter_name)
         if adapter is None:
             raise FetchError(f"알 수 없는 어댑터: {source.adapter_name}")
-        raw_items = adapter.collect(source.url, fetcher)
+        raw_items = adapter.collect(source.url, fetcher, source.html_rules)
         for raw in raw_items:
             normalized = normalize_url(raw.url)
             with transaction.atomic():
