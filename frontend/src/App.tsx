@@ -1,11 +1,14 @@
 import { ArticlePage } from "./ArticlePage";
+import { ContactPage } from "./ContactPage";
 import { Home } from "./Home";
 import { isPageData } from "./types";
 
 /** Picks the page from the JSON Django embedded for this route (`readPageData()` in pageData.ts). */
 export function App({ data }: { data: unknown }) {
   if (isPageData(data)) {
-    return data.kind === "home" ? <Home data={data} /> : <ArticlePage data={data} />;
+    if (data.kind === "home") return <Home data={data} />;
+    if (data.kind === "contact") return <ContactPage data={data} />;
+    return <ArticlePage data={data} />;
   }
   return (
     <main className="placeholder">

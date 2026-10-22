@@ -14,10 +14,14 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
+from django.views.decorators.csrf import csrf_exempt
 
+from adapters.clock import get_clock
 from articles.models import Article
-from core.shell import INDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
+from core.shell import INDEX, NOINDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
+from inquiries.models import Inquiry
 from services import articles as svc
+from services import inquiries as inquiry_svc
 from services import outbound
 
 PAGE_SIZE = 12
@@ -27,6 +31,8 @@ SANDCORP_LABEL = "Sandcorp"
 CTA_TEXT = "뉴스 수집·요약·게시를 자동화한 이 사이트처럼, 반복 업무를 자동화하고 싶으신가요?"
 CTA_PORTFOLIO_LABEL = "Sandcorp 포트폴리오 보기"
 CTA_CONTACT_LABEL = "문의하기"
+CONTACT_PATH = "/contact"
+FOOTER_CONTACT_LABEL = "문의"
 
 
 class CategoryData(TypedDict):
@@ -62,6 +68,8 @@ class SiteData(TypedDict):
     sandcorp_label: str
     header_url: str
     footer_url: str
+    contact_label: str
+    contact_url: str
 
 
 class CtaData(TypedDict):
@@ -87,6 +95,8 @@ def _site() -> SiteData:
         "sandcorp_label": SANDCORP_LABEL,
         "header_url": outbound.go_path("header"),
         "footer_url": outbound.go_path("footer"),
+        "contact_label": FOOTER_CONTACT_LABEL,
+        "contact_url": CONTACT_PATH,
     }
 
 
@@ -96,8 +106,7 @@ def _cta(slug: str) -> CtaData:
         "portfolio_label": CTA_PORTFOLIO_LABEL,
         "portfolio_url": outbound.go_path("article_cta", slug),
         "contact_label": CTA_CONTACT_LABEL,
-        # #13 replaces this with the /contact form.
-        "contact_url": outbound.go_path("contact", slug),
+        "contact_url": CONTACT_PATH,
     }
 
 
@@ -260,3 +269,77 @@ def robots(request: HttpRequest) -> HttpResponse:
         "",
     ]
     return HttpResponse("\n".join(lines), content_type="text/plain; charset=utf-8")
+
+
+class ContactForm(TypedDict):
+    name: str
+    company: str
+    contact: str
+    message: str
+    kind: str
+    errors: dict[str, str]
+
+
+def _client_ip(request: HttpRequest) -> str:
+    """NPMplus가 덧붙인 X-Forwarded-For의 오른쪽 끝 한 칸만 믿는다(왼쪽은 방문자가 꾸밀 수 있다)."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    last = forwarded.split(",")[-1].strip()
+    return last or str(request.META.get("REMOTE_ADDR", ""))
+
+
+@csrf_exempt  # 로그인 없는 공개 폼이라 노릴 세션이 없다. 남용은 honeypot과 IP 제한으로 막는다.
+def contact(request: HttpRequest) -> HttpResponse:
+    form: ContactForm = {
+        "name": "",
+        "company": "",
+        "contact": "",
+        "message": "",
+        "kind": Inquiry.Kind.INQUIRY.value,
+        "errors": {},
+    }
+    state = "form"
+    status = 200
+    if request.method == "POST":
+        post = request.POST
+        for key in ("name", "company", "contact", "message", "kind"):
+            form[key] = post.get(key, "")
+        submission = inquiry_svc.Submission(
+            name=form["name"],
+            company=form["company"],
+            contact=form["contact"],
+            message=form["message"],
+            kind=form["kind"],
+            honeypot=post.get("website", ""),
+        )
+        try:
+            inquiry_svc.submit(submission, _client_ip(request), get_clock().now())
+        except inquiry_svc.InquiryInvalid as invalid:
+            form["errors"] = invalid.errors
+            status = 400
+        except inquiry_svc.RateLimited:
+            state = "limited"
+            status = 429
+        else:
+            state = "done"
+            form = {**form, "name": "", "company": "", "contact": "", "message": ""}
+    data: dict[str, object] = {
+        "kind": "contact",
+        "site": _site(),
+        "state": state,
+        "form": form,
+        "kinds": list(Inquiry.Kind.values),
+    }
+    meta = PageMeta(
+        title=f"문의 - {SITE_NAME}", description="문의나 제안을 남겨 주세요.", robots=NOINDEX
+    )
+    body = render_to_string("core/public/contact.html", {"data": data, "site": _site()}, request)
+    response = render_shell(
+        request,
+        meta,
+        status=status,
+        data=data,
+        body=body,
+        canonical=request.build_absolute_uri("/contact"),
+    )
+    response["Cache-Control"] = "no-store"
+    return response

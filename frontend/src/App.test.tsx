@@ -6,7 +6,9 @@ import { readPageData } from "./pageData";
 test("페이지가 아직 없는 경로는 준비 중 안내를 보여 준다", () => {
   render(<App data={null} />);
 
-  expect(screen.getByRole("heading", { name: "AI Trend News" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "AI Trend News" }),
+  ).toBeInTheDocument();
   expect(screen.getByText("사이트를 준비하고 있습니다.")).toBeInTheDocument();
 });
 
@@ -14,10 +16,12 @@ test("셸에 심긴 #page-data JSON을 읽고, 없거나 깨지면 null을 돌�
   const doc = document.implementation.createHTMLDocument();
   expect(readPageData(doc)).toBeNull();
 
-  doc.body.innerHTML = '<script id="page-data" type="application/json">{"a": 1}</script>';
+  doc.body.innerHTML =
+    '<script id="page-data" type="application/json">{"a": 1}</script>';
   expect(readPageData(doc)).toEqual({ a: 1 });
 
-  doc.body.innerHTML = '<script id="page-data" type="application/json">{oops</script>';
+  doc.body.innerHTML =
+    '<script id="page-data" type="application/json">{oops</script>';
   expect(readPageData(doc)).toBeNull();
 });
 
@@ -26,6 +30,8 @@ const site = {
   sandcorp_label: "Sandcorp",
   header_url: "/go/sandcorp?from=header",
   footer_url: "/go/sandcorp?from=footer",
+  contact_label: "문의",
+  contact_url: "/contact",
 };
 const card: CardData = {
   slug: "rate-freeze",
@@ -53,10 +59,22 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
   render(<App data={data} />);
 
   expect(screen.getByRole("heading", { name: "추천" })).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "추천 기사" })).toHaveAttribute("href", "/a/rate-freeze");
-  expect(screen.getByRole("link", { name: "경제" })).toHaveAttribute("aria-current", "page");
-  expect(screen.getByRole("link", { name: "이전" })).toHaveAttribute("href", "?category=economy&page=1");
-  expect(screen.getByRole("link", { name: "다음" })).toHaveAttribute("href", "?category=economy&page=3");
+  expect(screen.getByRole("link", { name: "추천 기사" })).toHaveAttribute(
+    "href",
+    "/a/rate-freeze",
+  );
+  expect(screen.getByRole("link", { name: "경제" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  expect(screen.getByRole("link", { name: "이전" })).toHaveAttribute(
+    "href",
+    "?category=economy&page=1",
+  );
+  expect(screen.getByRole("link", { name: "다음" })).toHaveAttribute(
+    "href",
+    "?category=economy&page=3",
+  );
   const links = screen.getAllByRole("link", { name: "Sandcorp" });
   expect(links.map((l) => l.getAttribute("href"))).toEqual([
     "/go/sandcorp?from=header",
@@ -73,7 +91,7 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
       portfolio_label: "Sandcorp 포트폴리오 보기",
       portfolio_url: "/go/sandcorp?from=article_cta&article=rate-freeze",
       contact_label: "문의하기",
-      contact_url: "/go/sandcorp?from=contact&article=rate-freeze",
+      contact_url: "/contact",
     },
     share: {
       url: "https://news.sandcorp.co.kr/a/rate-freeze",
@@ -82,13 +100,20 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
     article: {
       ...card,
       items: [
-        { source: "연합뉴스", title: "Original", url: "https://example.com/n/1", published_label: "" },
+        {
+          source: "연합뉴스",
+          title: "Original",
+          url: "https://example.com/n/1",
+          published_label: "",
+        },
       ],
     },
   };
   render(<App data={data} />);
 
-  expect(screen.getByRole("heading", { level: 1, name: "금리 동결" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { level: 1, name: "금리 동결" }),
+  ).toBeInTheDocument();
   expect(screen.getByText("#금리")).toBeInTheDocument();
   const link = screen.getByRole("link", { name: "Original" });
   expect(link).toHaveAttribute("href", "https://example.com/n/1");
@@ -106,9 +131,12 @@ function articleData(): ArticlePageData {
       portfolio_label: "Sandcorp 포트폴리오 보기",
       portfolio_url: "/go/sandcorp?from=article_cta&article=rate-freeze",
       contact_label: "문의하기",
-      contact_url: "/go/sandcorp?from=contact&article=rate-freeze",
+      contact_url: "/contact",
     },
-    share: { url: "https://news.sandcorp.co.kr/a/rate-freeze", x_url: "https://twitter.com/intent/tweet?x=1" },
+    share: {
+      url: "https://news.sandcorp.co.kr/a/rate-freeze",
+      x_url: "https://twitter.com/intent/tweet?x=1",
+    },
     article: { ...card, items: [] },
   };
 }
@@ -116,13 +144,15 @@ function articleData(): ArticlePageData {
 test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
   render(<App data={articleData()} />);
 
-  expect(screen.getByRole("link", { name: "Sandcorp 포트폴리오 보기" })).toHaveAttribute(
+  expect(
+    screen.getByRole("link", { name: "Sandcorp 포트폴리오 보기" }),
+  ).toHaveAttribute(
     "href",
     "/go/sandcorp?from=article_cta&article=rate-freeze",
   );
   expect(screen.getByRole("link", { name: "문의하기" })).toHaveAttribute(
     "href",
-    "/go/sandcorp?from=contact&article=rate-freeze",
+    "/contact",
   );
   const x = screen.getByRole("link", { name: "X에 공유" });
   expect(x).toHaveAttribute("href", "https://twitter.com/intent/tweet?x=1");
@@ -131,13 +161,20 @@ test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
 
 test("링크 복사는 주소를 클립보드에 넣고 복사됨을 보여 준다", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  Object.defineProperty(navigator, "clipboard", {
+    value: { writeText },
+    configurable: true,
+  });
   render(<App data={articleData()} />);
 
   fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
 
-  expect(writeText).toHaveBeenCalledWith("https://news.sandcorp.co.kr/a/rate-freeze");
-  expect(await screen.findByRole("button", { name: "복사됨" })).toBeInTheDocument();
+  expect(writeText).toHaveBeenCalledWith(
+    "https://news.sandcorp.co.kr/a/rate-freeze",
+  );
+  expect(
+    await screen.findByRole("button", { name: "복사됨" }),
+  ).toBeInTheDocument();
 });
 
 test("클립보드가 막히면 주소를 선택된 입력으로 보여 준다", async () => {
@@ -149,5 +186,49 @@ test("클립보드가 막히면 주소를 선택된 입력으로 보여 준다",
 
   fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
 
-  expect(await screen.findByLabelText("기사 주소")).toHaveValue("https://news.sandcorp.co.kr/a/rate-freeze");
+  expect(await screen.findByLabelText("기사 주소")).toHaveValue(
+    "https://news.sandcorp.co.kr/a/rate-freeze",
+  );
+});
+
+test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확인을 보여 준다", () => {
+  const form = {
+    name: "",
+    company: "",
+    contact: "",
+    message: "",
+    kind: "문의",
+    errors: {},
+  };
+  const { container, rerender } = render(
+    <App
+      data={{
+        kind: "contact",
+        site,
+        state: "form",
+        form,
+        kinds: ["문의", "제안"],
+      }}
+    />,
+  );
+  expect(screen.getByRole("radio", { name: "문의" })).toBeChecked();
+  expect(screen.getByRole("radio", { name: "제안" })).not.toBeChecked();
+  expect(container.querySelector('input[name="website"]')).not.toBeNull();
+  expect(screen.getByRole("link", { name: "문의" })).toHaveAttribute(
+    "href",
+    "/contact",
+  );
+
+  rerender(
+    <App
+      data={{
+        kind: "contact",
+        site,
+        state: "done",
+        form,
+        kinds: ["문의", "제안"],
+      }}
+    />,
+  );
+  expect(screen.getByText(/접수했습니다/)).toBeInTheDocument();
 });

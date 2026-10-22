@@ -21,6 +21,7 @@ from adapters.clock import set_clock
 from adapters.discord import FakeNotifier, set_notifier
 from adapters.fetch import set_fetcher
 from adapters.jwks import Jwk, JwksCache, JwkSet, set_key_source
+from adapters.portfolio import FakeGateway, set_gateway
 from core.vite import _read_manifest
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -196,3 +197,16 @@ def fake_discord() -> Iterator[FakeNotifier]:
     previous = set_notifier(notifier)
     yield notifier
     set_notifier(previous)
+
+
+@pytest.fixture(autouse=True)
+def fake_portfolio() -> Iterator[FakeGateway]:
+    """문의는 실제 portfolio로 나가지 않는다(설정은 채워진 것으로 본다). 보낸 본문은 `.sent`."""
+    gateway = FakeGateway()
+    previous = set_gateway(gateway)
+    with override_settings(
+        PORTFOLIO_INQUIRY_URL="https://portfolio.test/api/inquiries",
+        PORTFOLIO_INQUIRY_SECRET="test-secret",
+    ):
+        yield gateway
+    set_gateway(previous)

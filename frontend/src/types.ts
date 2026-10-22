@@ -32,6 +32,8 @@ export interface SiteData {
   sandcorp_label: string;
   header_url: string;
   footer_url: string;
+  contact_label: string;
+  contact_url: string;
 }
 
 export interface CtaData {
@@ -66,10 +68,27 @@ export interface ArticlePageData {
   share: ShareData;
 }
 
-export type PageData = HomeData | ArticlePageData;
+export interface ContactFormData {
+  name: string;
+  company: string;
+  contact: string;
+  message: string;
+  kind: string;
+  errors: Record<string, string>;
+}
+
+export interface ContactPageData {
+  kind: "contact";
+  site: SiteData;
+  state: "form" | "done" | "limited";
+  form: ContactFormData;
+  kinds: string[];
+}
+
+export type PageData = HomeData | ArticlePageData | ContactPageData;
 
 export function isPageData(value: unknown): value is PageData {
   if (typeof value !== "object" || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
-  return kind === "home" || kind === "article";
+  return kind === "home" || kind === "article" || kind === "contact";
 }

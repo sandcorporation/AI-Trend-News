@@ -20,6 +20,7 @@ urlpatterns = [
     # HTML shell routes: Django fills per-route meta, React takes over in the browser.
     path("", public.home, name="home"),
     path("a/<slug:slug>", public.article_detail, name="article"),
+    path("contact", public.contact, name="contact"),
     path("go/sandcorp", public.go_sandcorp, name="go_sandcorp"),
     path("sitemap.xml", public.sitemap),
     path("robots.txt", public.robots),
