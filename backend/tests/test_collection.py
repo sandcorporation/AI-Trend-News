@@ -1,15 +1,19 @@
 import json
+from datetime import UTC, datetime, timedelta
 from io import StringIO
 
 import pytest
 from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
+from django.utils import timezone
 
 from adapters.fetch import FetchError
 from collection.models import Item, SeenUrl, Source
 from services.collection import collect_all
-from services.urls import normalize_url
+from services.retention import prune_items
+from services.scheduler import COMMANDS, run_cycle
+from services.urls import normalize_url, url_hash
 from tests.conftest import FakeFetcher
 
 pytestmark = pytest.mark.django_db
@@ -192,3 +196,63 @@ def test_admin_edits_html_rules_and_rejects_bad_rules(admin_client: Client) -> N
     assert "필수 키가 없습니다" in bad.content.decode()
     source.refresh_from_db()
     assert source.html_rules["title"] == "h3 span"
+
+
+def _item(url: str, status: str, age_days: int, now: datetime) -> Item:
+    source = Source.objects.get_or_create(name="S", url="https://f.example.com/s.xml")[0]
+    item = Item.objects.create(
+        source=source, url=url, normalized_url=normalize_url(url), title=url, status=status
+    )
+    SeenUrl.objects.create(url_hash=url_hash(item.normalized_url))
+    Item.objects.filter(pk=item.pk).update(collected_at=now - timedelta(days=age_days))
+    return item
+
+
+def test_prune_items_deletes_old_pending_and_discarded_keeps_urls() -> None:
+    now = datetime(2026, 6, 1, tzinfo=UTC)
+    _item("https://a.example.com/old-pending", Item.Status.PENDING, 31, now)
+    _item("https://a.example.com/old-discarded", Item.Status.DISCARDED, 31, now)
+    _item("https://a.example.com/old-bundled", Item.Status.BUNDLED, 90, now)
+    _item("https://a.example.com/young-pending", Item.Status.PENDING, 29, now)
+
+    result = prune_items(now=lambda: now)
+
+    assert (result.deleted, result.kept) == (2, 2)
+    assert set(Item.objects.values_list("title", flat=True)) == {
+        "https://a.example.com/old-bundled",
+        "https://a.example.com/young-pending",
+    }
+    assert SeenUrl.objects.count() == 4  # 지운 수집물의 URL 해시는 남는다
+
+
+def test_pruned_url_is_not_collected_again(fake_fetcher: FakeFetcher, rss_bytes: bytes) -> None:
+    source = make_source()
+    fake_fetcher.responses[source.url] = rss_bytes
+    collect_all()
+    Item.objects.update(collected_at=timezone.now() - timedelta(days=31))
+
+    out = StringIO()
+    call_command("prune_items", stdout=out)
+    assert Item.objects.count() == 0
+    assert "지움 5개, 남김 0개" in out.getvalue()
+
+    collect_all()
+    assert Item.objects.count() == 0
+
+
+def test_run_cycle_continues_after_a_failing_command() -> None:
+    called: list[str] = []
+
+    def fake_call(name: str) -> None:
+        called.append(name)
+        if name == "boom":
+            raise RuntimeError("실패")
+
+    results = run_cycle(("first", "boom", "last"), call=fake_call)
+
+    assert called == ["first", "boom", "last"]
+    assert results == {"first": True, "boom": False, "last": True}
+
+
+def test_scheduler_commands_list_is_collect_then_prune() -> None:
+    assert COMMANDS == ("collect", "prune_items")
