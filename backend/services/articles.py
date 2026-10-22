@@ -6,10 +6,12 @@
 
 import secrets
 from collections.abc import Iterable
+from datetime import datetime, timedelta
 from enum import Enum
 
 from django.db import transaction
 from django.db.models import QuerySet
+from django.utils import timezone
 from django.utils.text import slugify
 
 from articles.models import Article, ArticleItem, Category, Tag
@@ -215,6 +217,16 @@ def set_flags(
         setattr(article, name, value)
     article.save()
     return article
+
+
+def recent_articles(days: int, now: datetime | None = None) -> list[Article]:
+    """최근 days일 안에 만든 기사(게시 여부 무관) 최신순. 묶인 수집물을 함께 읽는다."""
+    since = (now or timezone.now()) - timedelta(days=days)
+    return list(
+        Article.objects.filter(created_at__gte=since)
+        .select_related("category")
+        .prefetch_related("article_items__item")
+    )
 
 
 def delete_article(article_id: int) -> None:
