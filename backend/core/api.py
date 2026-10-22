@@ -5,11 +5,15 @@ from django.db.utils import DatabaseError
 from django.http import HttpRequest
 from ninja import NinjaAPI, Schema, Status
 
+from core.admin_api import install_error_handlers
+from core.admin_api import router as admin_router
 from core.auth import install_auth_handlers
 
 api = NinjaAPI(title="Sandcorp news API", docs_url=None)
 # Protected endpoints use `auth=RequireScope("<scope>")` (core/auth.py).
 install_auth_handlers(api)
+install_error_handlers(api)
+api.add_router("/admin", admin_router)
 
 
 class Health(Schema):

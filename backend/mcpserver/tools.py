@@ -6,6 +6,9 @@ function `(token: AccessToken, args: InputModel) -> dict[str, JSON]`. The input 
 should read (it becomes an `isError` result, not a protocol error). Service errors
 (`SERVICE_ERRORS`) become `ToolError` on the way out, so a tool just calls the service.
 
+Admin tools (`# --- 관리 도구`) act as `Actor.OWNER` and share their input/output schemas with
+the admin API (`core/admin_schemas.py`).
+
 Every tool runs behind the `/mcp` bearer check (scope `editor`). A tool registered with
 `scope="admin"` is listed and callable only when the token also carries `admin`; to any other
 token it does not exist. Editor tools act as `Actor.EDITOR` (the token's `sub` is always the
@@ -22,15 +25,28 @@ from typing import Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from articles.models import Article
+from core.admin_schemas import (
+    ArticleOut,
+    ArticleTextChange,
+    CategoryChange,
+    CategoryOrder,
+    CategoryOut,
+    EnabledChange,
+    FlagsChange,
+    SourceChange,
+    SourceCreate,
+    SourceOut,
+)
 from mcpserver.jsontypes import JSON
-from services import articles, collection, editor_runs
+from services import articles, collection, editor_runs, sources
 from services.articles import Actor, ArticleError
 from services.editor_runs import EditorRunError
+from services.sources import SourceError
 from services.tokens import AccessToken, Scope
 
 type ToolResult = dict[str, JSON]
 
-SERVICE_ERRORS: tuple[type[Exception], ...] = (ArticleError, EditorRunError)
+SERVICE_ERRORS: tuple[type[Exception], ...] = (ArticleError, EditorRunError, SourceError)
 
 
 class ToolError(Exception):
@@ -375,3 +391,153 @@ def finish_editor_run(token: AccessToken, args: FinishRunInput) -> ToolResult:
         "updated": run.updated,
         "discarded": run.discarded,
     }
+
+
+# --- 관리 도구 (스코프 admin, 주체 대표) ---
+
+
+class SourceIdInput(_Input):
+    id: int = Field(description="소스 id(list_sources로 확인)")
+
+
+class UpdateSourceInput(SourceChange, SourceIdInput):
+    pass
+
+
+class SetSourceEnabledInput(EnabledChange, SourceIdInput):
+    pass
+
+
+class UpdateCategoryInput(CategoryChange):
+    slug: str = Field(description="분야 slug(list_categories로 확인)")
+
+
+class DeleteCategoryInput(_Input):
+    slug: str = Field(description="지울 분야 slug")
+
+
+class ArticleIdInput(_Input):
+    id: int = Field(description="기사 id")
+
+
+class SetFlagsAsOwnerInput(FlagsChange, ArticleIdInput):
+    pass
+
+
+class UpdateArticleAsOwnerInput(ArticleTextChange, ArticleIdInput):
+    pass
+
+
+def _dump(model: BaseModel) -> ToolResult:
+    dumped: ToolResult = model.model_dump(mode="json")
+    return dumped
+
+
+@tool(
+    "list_sources",
+    "소스 목록",
+    "등록된 소스 전체: id·이름·종류·주소·HTML 규칙·켜짐·마지막 수집 결과·연속 실패 횟수.",
+    NoInput,
+    scope="admin",
+    read_only=True,
+)
+def list_sources(token: AccessToken, args: NoInput) -> ToolResult:
+    return {"sources": [_dump(SourceOut.of(s)) for s in sources.list_sources()]}
+
+
+@tool(
+    "create_source",
+    "소스 등록",
+    "새 소스를 등록한다. 켜져 있으면 다음 수집부터 가져온다. html 소스는 html_rules"
+    "(item·link·title·published, 선택 excerpt)가 필수이며 틀리면 오류.",
+    SourceCreate,
+    scope="admin",
+)
+def create_source(token: AccessToken, args: SourceCreate) -> ToolResult:
+    return _dump(SourceOut.of(sources.create_source(**args.model_dump())))
+
+
+@tool(
+    "update_source",
+    "소스 수정",
+    "소스의 이름·종류·주소·HTML 규칙·켜짐을 고친다. 생략한 값은 그대로, 결과는 다시 검증한다.",
+    UpdateSourceInput,
+    scope="admin",
+)
+def update_source(token: AccessToken, args: UpdateSourceInput) -> ToolResult:
+    fields = args.model_dump(exclude={"id"})
+    return _dump(SourceOut.of(sources.update_source(args.id, **fields)))
+
+
+@tool(
+    "set_source_enabled",
+    "소스 켜기·끄기",
+    "소스를 켜거나 끈다. 꺼진 소스는 수집하지 않는다(수집물은 남는다).",
+    SetSourceEnabledInput,
+    scope="admin",
+)
+def set_source_enabled(token: AccessToken, args: SetSourceEnabledInput) -> ToolResult:
+    return _dump(SourceOut.of(sources.set_source_enabled(args.id, args.enabled)))
+
+
+@tool(
+    "update_category",
+    "분야 수정",
+    "분야의 이름·순서를 고친다. slug는 바뀌지 않는다.",
+    UpdateCategoryInput,
+    scope="admin",
+)
+def update_category(token: AccessToken, args: UpdateCategoryInput) -> ToolResult:
+    category = articles.update_category(args.slug, **args.model_dump(exclude={"slug"}))
+    return _dump(CategoryOut.of(category))
+
+
+@tool(
+    "delete_category",
+    "분야 삭제",
+    "분야를 지운다. 기사가 하나라도 있으면 오류.",
+    DeleteCategoryInput,
+    scope="admin",
+)
+def delete_category(token: AccessToken, args: DeleteCategoryInput) -> ToolResult:
+    articles.delete_category(args.slug)
+    return {"deleted": args.slug}
+
+
+@tool(
+    "reorder_categories",
+    "분야 순서",
+    "모든 분야의 slug를 원하는 탭 순서대로 한 번씩 주어 순서를 정한다.",
+    CategoryOrder,
+    scope="admin",
+)
+def reorder_categories(token: AccessToken, args: CategoryOrder) -> ToolResult:
+    return {
+        "categories": [_dump(CategoryOut.of(c)) for c in articles.reorder_categories(args.slugs)]
+    }
+
+
+@tool(
+    "set_article_flags_as_owner",
+    "게시·추천 덮어쓰기",
+    "대표로서 기사의 게시·추천을 정한다. 바꾼 값에는 덮어씀 표시가 남아 편집자가 되돌릴 수 없다.",
+    SetFlagsAsOwnerInput,
+    scope="admin",
+)
+def set_article_flags_as_owner(token: AccessToken, args: SetFlagsAsOwnerInput) -> ToolResult:
+    article = articles.set_flags(
+        Actor.OWNER, args.id, published=args.published, featured=args.featured
+    )
+    return _dump(ArticleOut.of(article))
+
+
+@tool(
+    "update_article_as_owner",
+    "기사 제목·요약 수정",
+    "대표로서 기사의 제목·요약을 고친다. 생략한 값은 그대로.",
+    UpdateArticleAsOwnerInput,
+    scope="admin",
+)
+def update_article_as_owner(token: AccessToken, args: UpdateArticleAsOwnerInput) -> ToolResult:
+    article = articles.update_article(Actor.OWNER, args.id, title=args.title, summary=args.summary)
+    return _dump(ArticleOut.of(article))
