@@ -275,7 +275,13 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     assert mcp.ok("list_categories", {}) == {"categories": [{"name": "Economy", "slug": category}]}
     assert "없는 분야입니다: nope" in mcp.fails(
         "create_article",
-        {"item_ids": [items[0].pk], "title": "x", "summary": "y", "category": "nope"},
+        {
+            "item_ids": [items[0].pk],
+            "title": "x",
+            "summary": "y",
+            "category": "nope",
+            "slug": "x-news",
+        },
     )
 
     article = mcp.ok(
@@ -285,6 +291,7 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
             "title": "Rates held",
             "summary": "요약",
             "category": category,
+            "slug": "rates-held",
             "tags": ["금리"],
             "published": True,
         },
@@ -294,7 +301,13 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
 
     again = mcp.fails(
         "create_article",
-        {"item_ids": [items[1].pk], "title": "dup", "summary": "", "category": category},
+        {
+            "item_ids": [items[1].pk],
+            "title": "dup",
+            "summary": "",
+            "category": category,
+            "slug": "dup-news",
+        },
     )
     assert f"수집물 {items[1].pk}" in again and f"기사 {article_id}" in again
     assert "Rates held" in again and "rates-held" in again
@@ -353,7 +366,13 @@ def test_recent_articles_respects_days(mcp: McpClient) -> None:
     for item in items:
         mcp.ok(
             "create_article",
-            {"item_ids": [item.pk], "title": item.title, "summary": "", "category": category},
+            {
+                "item_ids": [item.pk],
+                "title": item.title,
+                "summary": "",
+                "category": category,
+                "slug": f"rate-decision-{item.pk}",
+            },
         )
     Article.objects.filter(title="rate decision 0").update(
         created_at=timezone.now() - timedelta(days=3)

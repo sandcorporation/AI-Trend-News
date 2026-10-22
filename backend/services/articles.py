@@ -15,9 +15,11 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 from articles.models import (
+    ARTICLE_SLUG_RE,
     CATEGORY_SLUG_RE,
     Article,
     ArticleItem,
+    ArticleSlugAlias,
     Category,
     CategorySlugAlias,
     Tag,
@@ -43,6 +45,10 @@ class CategoryExists(ArticleError):
 
 
 class InvalidCategorySlug(ArticleError):
+    pass
+
+
+class InvalidArticleSlug(ArticleError):
     pass
 
 
@@ -79,12 +85,52 @@ class ArticleNotFound(ArticleError):
 
 
 def make_slug(text: str, exists: "type[Category] | type[Article]", fallback: str) -> str:
-    """텍스트에서 slug를 만든다. 한글처럼 비어 버리면 접두어+무작위 접미, 충돌해도 접미를 붙인다."""
+    """텍스트에서 slug를 만든다. 라틴 문자가 3자 미만이면 접두어+무작위 접미, 충돌해도 접미."""
     base = slugify(text)[:40].strip("-")
+    if sum(c.isalpha() for c in base) < 3:
+        base = ""
     candidate = base or f"{fallback}-{secrets.token_hex(3)}"
-    while exists.objects.filter(slug=candidate).exists():
+    while _slug_taken(exists, candidate):
         candidate = f"{base or fallback}-{secrets.token_hex(3)}"
     return candidate
+
+
+def _slug_taken(model: "type[Category] | type[Article]", slug: str) -> bool:
+    if model.objects.filter(slug=slug).exists():
+        return True
+    return model is Article and ArticleSlugAlias.objects.filter(slug=slug).exists()
+
+
+def unique_article_slug(slug: str) -> str:
+    """편집자가 준 slug를 검증하고, 이미 있으면 -2, -3을 붙여 유일하게 만든다."""
+    slug = slug.strip()
+    if not 3 <= len(slug) <= 60 or not ARTICLE_SLUG_RE.fullmatch(slug):
+        raise InvalidArticleSlug(
+            "slug는 라틴 소문자·숫자·하이픈 3~60자이고 첫 글자는 소문자여야 합니다"
+            f"(앞뒤·연속 하이픈 불가): {slug!r}"
+        )
+    candidate, n = slug, 2
+    while _slug_taken(Article, candidate):
+        suffix = f"-{n}"
+        candidate = f"{slug[: 60 - len(suffix)].rstrip('-')}{suffix}"
+        n += 1
+    return candidate
+
+
+def find_article_by_old_slug(slug: str) -> Article | None:
+    """옛 slug로 들어온 요청의 현재 기사(게시된 것만). 없으면 None."""
+    alias = ArticleSlugAlias.objects.select_related("article").filter(slug=slug).first()
+    if alias is None or not alias.article.published:
+        return None
+    return alias.article
+
+
+def record_article_slug_change(article: Article, new_slug: str) -> None:
+    """article.slug를 new_slug로 바꾸고 옛 slug를 기록한다(저장은 호출부)."""
+    ArticleSlugAlias.objects.filter(slug=new_slug).delete()
+    if article.slug:
+        ArticleSlugAlias.objects.get_or_create(slug=article.slug, article=article)
+    article.slug = new_slug
 
 
 # --- 분야 ---
@@ -244,12 +290,19 @@ def create_article(
     published: bool = False,
     featured: bool = False,
     image_url: str = "",
+    slug: str | None = None,
 ) -> Article:
-    """수집물들을 묶어 기사를 만든다. category는 분야 slug. 처음 정하는 플래그는 덮어씀이 아니다."""
+    """수집물들을 묶어 기사를 만든다. category는 분야 slug, slug가 없으면 제목에서 만든다.
+
+    처음 정하는 플래그는 덮어씀이 아니다.
+    """
     ids = list(dict.fromkeys(item_ids))
     if not ids:
         raise EmptyBundle("기사에는 수집물이 하나 이상 필요합니다.")
     cat = get_category(category)
+    final_slug = (
+        unique_article_slug(slug) if slug is not None else make_slug(title, Article, "news")
+    )
     article = Article.objects.create(
         title=title,
         summary=summary,
@@ -257,7 +310,7 @@ def create_article(
         published=published,
         featured=featured,
         image_url=image_url,
-        slug=make_slug(title, Article, "news"),
+        slug=final_slug,
     )
     _bind(article, ids)
     article.tags.set(_tags(tags))

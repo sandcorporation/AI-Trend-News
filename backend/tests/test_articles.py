@@ -216,3 +216,72 @@ def test_admin_form_saves_slug_and_records_old() -> None:
     assert not bad.is_valid()
     other = form_cls({"name": "정치", "slug": old, "order": 1})
     assert not other.is_valid()
+
+
+def test_editor_slug_is_validated_and_deduplicated() -> None:
+    items = make_items(3)
+    first = make_article(items[:1], slug="chatgpt-ads-89-countries")
+    assert first.slug == "chatgpt-ads-89-countries"
+    slugs = [
+        svc.create_article(
+            Actor.EDITOR,
+            item_ids=[item.pk],
+            title="t",
+            summary="",
+            category=first.category.slug,
+            slug="chatgpt-ads-89-countries",
+        ).slug
+        for item in items[1:]
+    ]
+    assert slugs == ["chatgpt-ads-89-countries-2", "chatgpt-ads-89-countries-3"]
+
+
+@pytest.mark.parametrize("bad", ["ab", "한글-제목", "1-300", "Has-Upper", "a--b", "-abc", "a" * 61])
+def test_editor_slug_format_rejected(bad: str) -> None:
+    items = make_items(1)
+    svc.add_category("경제")
+    with pytest.raises(svc.InvalidArticleSlug):
+        svc.create_article(
+            Actor.EDITOR,
+            item_ids=[items[0].pk],
+            title="t",
+            summary="",
+            category=svc.list_categories()[0].slug,
+            slug=bad,
+        )
+    assert Article.objects.count() == 0
+
+
+def test_auto_slug_needs_three_latin_letters() -> None:
+    assert svc.make_slug("한글 제목 12", Article, "news").startswith("news-")
+    assert svc.make_slug("AI 4", Article, "news").startswith("news-")
+    assert svc.make_slug("Rates held 2", Article, "news") == "rates-held-2"
+
+
+def test_article_slug_change_keeps_old_slug_for_redirect() -> None:
+    article = make_article(make_items(1), slug="old-name", published=True)
+    svc.record_article_slug_change(article, "new-name")
+    article.save()
+    assert svc.find_article_by_old_slug("old-name").slug == "new-name"  # type: ignore[union-attr]
+    assert svc.unique_article_slug("old-name") == "old-name-2"
+
+
+def test_admin_changes_article_slug_and_keeps_old(admin_client: Client) -> None:
+    article = make_article(make_items(1), slug="before-change")
+    url = reverse("admin:articles_article_change", args=[article.pk])
+    data = {
+        "title": article.title,
+        "summary": "",
+        "slug": "after-change",
+        "category": article.category.pk,
+        "image_url": "",
+        "article_items-TOTAL_FORMS": "0",
+        "article_items-INITIAL_FORMS": "0",
+    }
+    assert admin_client.post(url, data).status_code == 302
+    article.refresh_from_db()
+    assert article.slug == "after-change"
+    assert svc.find_article_by_old_slug("before-change") is None  # 미게시
+    assert article.old_slugs.get().slug == "before-change"
+    data["slug"] = "Bad Slug"
+    assert admin_client.post(url, data).status_code == 200  # 검증 오류로 다시 그림

@@ -38,7 +38,12 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     list_display = ("title", "category", "published", "featured", "created_at")
     list_filter = ("category", "published", "featured")
     search_fields = ("title", "summary")
-    readonly_fields = ("slug", "published_overridden", "featured_overridden")
+    readonly_fields = ("old_slugs", "published_overridden", "featured_overridden")
+
+    @admin.display(description="옛 슬러그")
+    def old_slugs(self, obj: Article) -> str:
+        return ", ".join(a.slug for a in obj.old_slugs.all()) or "-"
+
     inlines = [ArticleItemInline]
 
     def save_model(
@@ -50,12 +55,19 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     ) -> None:
         """admin은 대표의 도구다. 플래그 변경은 서비스 함수(대표 주체)를 거쳐 덮어씀을 표시한다."""
         if not change:
-            obj.slug = svc.make_slug(obj.title, Article, "news")
+            if not obj.slug:
+                obj.slug = svc.make_slug(obj.title, Article, "news")
             obj.save()
             return
         published, featured = obj.published, obj.featured
         stored = Article.objects.get(pk=obj.pk)
         obj.published, obj.featured = stored.published, stored.featured
+        if not obj.slug:
+            obj.slug = stored.slug
+        elif obj.slug != stored.slug:
+            new = obj.slug
+            obj.slug = stored.slug
+            svc.record_article_slug_change(obj, new)
         obj.save()
         svc.set_flags(svc.Actor.OWNER, obj.pk, published=published, featured=featured)
         obj.refresh_from_db()

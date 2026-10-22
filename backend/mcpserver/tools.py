@@ -156,6 +156,11 @@ class CreateArticleInput(_Input):
     title: str = Field(min_length=1, max_length=300, description="한국어 제목")
     summary: str = Field(description="한국어 요약")
     category: str = Field(description="분야 slug(list_categories로 확인)")
+    slug: str = Field(
+        description=(
+            "영문 slug: 라틴 소문자·숫자·하이픈 3~60자, 핵심어 2~5개(예 chatgpt-ads-89-countries)"
+        )
+    )
     tags: list[str] = Field(default_factory=list, description="태그 이름들")
     published: bool = Field(default=False, description="게시 여부")
     featured: bool = Field(default=False, description="추천 여부")
@@ -280,7 +285,8 @@ def list_recent_articles(token: AccessToken, args: DaysInput) -> ToolResult:
 @tool(
     "create_article",
     "기사 생성",
-    "미처리 수집물 하나 이상을 묶어 기사를 만든다. 분야는 slug. 이미 다른 기사에 묶인 수집물이면 "
+    "미처리 수집물 하나 이상을 묶어 기사를 만든다. 분야는 slug. 기사 slug는 영문으로 직접 준다"
+    "(같은 값이 있으면 -2·-3이 붙는다). 이미 다른 기사에 묶인 수집물이면 "
     "그 기사를 알려 주는 오류가 난다.",
     CreateArticleInput,
 )
@@ -291,6 +297,7 @@ def create_article(token: AccessToken, args: CreateArticleInput) -> ToolResult:
         title=args.title,
         summary=args.summary,
         category=args.category,
+        slug=args.slug,
         tags=args.tags,
         published=args.published,
         featured=args.featured,
