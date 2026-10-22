@@ -1,0 +1,24 @@
+{% extends "admin/change_form.html" %}
+{% block object-tools-items %}
+  {{ block.super }}
+{% endblock %}
+{% block after_field_sets %}
+  {% if original %}
+  <div class="form-row" data-slot="post-copy">
+    <label for="post-copy-text">복사할 문구</label>
+    <textarea id="post-copy-text" readonly rows="8" cols="80">{{ original.text }}</textarea>
+    <p>
+      <button type="button" id="post-copy-button" class="button">문구 복사</button>
+      <span id="post-copy-result" role="status"></span>
+    </p>
+  </div>
+  <script>
+    document.getElementById("post-copy-button").addEventListener("click", function () {
+      var box = document.getElementById("post-copy-text");
+      var done = function () { document.getElementById("post-copy-result").textContent = "복사했습니다"; };
+      if (navigator.clipboard) { navigator.clipboard.writeText(box.value).then(done); }
+      else { box.select(); document.execCommand("copy"); done(); }
+    });
+  </script>
+  {% endif %}
+{% endblock %}

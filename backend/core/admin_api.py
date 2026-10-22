@@ -18,8 +18,9 @@ from core.admin_schemas import (
     SourceOut,
 )
 from core.auth import RequireScope
-from services import articles, sources
+from services import articles, posts, sources
 from services.articles import Actor, ArticleError
+from services.posts import PostError
 from services.sources import SourceError
 
 router = Router(auth=RequireScope("admin"), tags=["admin"])
@@ -42,7 +43,12 @@ def install_error_handlers(api: NinjaAPI) -> None:
         assert isinstance(exc, SourceError)
         return respond(request, exc, isinstance(exc, sources.SourceNotFound))
 
+    def post_error(request: HttpRequest, exc: PostError | type[PostError]) -> HttpResponse:
+        assert isinstance(exc, PostError)
+        return respond(request, exc, isinstance(exc, posts.PostNotFound))
+
     api.add_exception_handler(ArticleError, article_error)
+    api.add_exception_handler(PostError, post_error)
     api.add_exception_handler(SourceError, source_error)
 
 
