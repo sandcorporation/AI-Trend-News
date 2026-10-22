@@ -32,7 +32,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - 린트: `make lint` (ruff format --check, ruff check, eslint). 고치기: `cd backend && uv run ruff format . && uv run ruff check --fix .`
 - 타입: `make typecheck` (mypy strict + django-stubs, `tsc --noEmit`).
 - 전부: `make check`.
-- HTML 소스: `Source.html_rules`(JSON; 키 item·link·title·published, 선택 excerpt — 선택자는 CSS, published는 `datetime` 속성 우선). 검증은 `services/html_rules.py`. 어댑터 인터페이스는 `collect(url, fetcher, rules)`.
+- HTML 소스: `Source.html_rules`(JSON; 키 item·link·title·published, 선택 excerpt — 선택자는 CSS, published는 `datetime` 속성 우선). 검증은 `services/html_rules.py`. 어댑터 인터페이스는 `collect(url, fetcher, rules)`. 발췌는 HTML을 벗긴 평문(RSS는 `plain_text`: 태그 제거·엔티티 해제·공백 한 칸).
 - 수집: `cd backend && uv run python manage.py collect` — 켜진 소스를 모두 수집한다(소스별 독립 실패, 결과는 소스에 기록). 앱은 `backend/collection/`, 규칙은 `services/collection.py`·`services/urls.py`, 페치·소스 어댑터는 `adapters/fetch.py`·`adapters/sources.py`. 발행 시각이 수집 시각보다 `COLLECT_MAX_AGE_DAYS`(settings, 기본 3일, 환경 변수로 덮음) 넘게 오래된 글은 `Item` 없이 `SeenUrl`에만 남기고(경계 정확히 N일·발행 시각 없음은 수집) 결과 문구 뒤에 「/ 오래돼 건너뜀 N건」을 붙인다.
 - 정리: `manage.py prune_items` — 미처리·버림 수집물 중 수집 시각 30일 지난 것만 지운다(`services/retention.py`). 묶인 수집물과 `SeenUrl`은 남긴다.
 - 기사: 앱 `backend/articles/`(Category, Tag, Article, ArticleItem), 규칙은 `services/articles.py` — 함수가 주체 `Actor.EDITOR`/`Actor.OWNER`를 받고 오류는 `ArticleError` 하위 클래스. admin은 대표 주체로 서비스를 거친다.
