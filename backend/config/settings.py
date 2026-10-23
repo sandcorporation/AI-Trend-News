@@ -120,6 +120,9 @@ AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
 # Item (only SeenUrl), so a first run on a feed with years of archive does not flood the queue.
 COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
 
+# Fetch fallback (#70): URL template with {url}; used once when the direct GET looks bot-blocked.
+FETCH_FALLBACK_URL = env("FETCH_FALLBACK_URL", "")
+
 # Pending items collected longer ago than this are auto-discarded by prune_items (#38).
 PENDING_MAX_AGE_HOURS = int(env("PENDING_MAX_AGE_HOURS", "24"))
 
