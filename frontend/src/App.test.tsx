@@ -32,6 +32,13 @@ test("셸에 심긴 #page-data JSON을 읽고, 없거나 깨지면 null을 돌�
 
 const site = {
   name: "Foresight",
+  today_label: "2026.10.23 (금)",
+  nav: [
+    { label: "전체", url: "/", current: false },
+    { label: "경제", url: "/?category=economy", current: true },
+    { label: "전망 기록표", url: "/predictions", current: false },
+    { label: "문의", url: "/contact", current: false },
+  ],
   monogram: "AT",
   sandcorp_label: "Sandcorp",
   header_url: "/go/sandcorp?from=header",
@@ -83,9 +90,14 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
     "href",
     "/a/rate-freeze",
   );
+  // 머리띠: 서버 시계 날짜와 사이트 내비(현재 위치 표시)
+  expect(screen.getByText("2026.10.23 (금)")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "경제" })).toHaveAttribute(
     "aria-current",
     "page",
+  );
+  expect(screen.getByRole("link", { name: "전체" })).not.toHaveAttribute(
+    "aria-current",
   );
   expect(screen.getByRole("link", { name: "이전" })).toHaveAttribute(
     "href",
@@ -164,7 +176,7 @@ test("메인 첫 쪽은 히어로·최신 그리드·분야 섹션·사이드바
     "4시간 전",
   );
 
-  const more = screen.getAllByRole("link", { name: "더보기 →" });
+  const more = screen.getAllByRole("link", { name: "더 보기 →" });
   expect(more.map((l) => l.getAttribute("href"))).toEqual([
     "/?category=ai",
     "/?category=it",
@@ -343,10 +355,10 @@ test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확�
   expect(screen.getByRole("radio", { name: "문의" })).toBeChecked();
   expect(screen.getByRole("radio", { name: "제안" })).not.toBeChecked();
   expect(container.querySelector('input[name="website"]')).not.toBeNull();
-  expect(screen.getByRole("link", { name: "문의" })).toHaveAttribute(
-    "href",
-    "/contact",
-  );
+  // 머리띠 내비와 푸터 둘 다 /contact
+  expect(
+    screen.getAllByRole("link", { name: "문의" }).map((l) => l.getAttribute("href")),
+  ).toEqual(["/contact", "/contact"]);
 
   rerender(
     <App
@@ -526,10 +538,10 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   expect(q(block, ".predictions")).toHaveTextContent("근거: 물가 둔화");
   expect(q(block, ".predictions")).toHaveTextContent("기한 2027.1.23");
   expect(block.querySelector('[data-slot="verdict"]')).toBeNull(); // 미평가는 배지 없음
-  // 요약 아래, 출처 위
+  // 요약 아래, 출처 목록 다음(#72)
   const html = container.innerHTML;
   expect(html.indexOf('class="summary"')).toBeLessThan(html.indexOf("commentary"));
-  expect(html.indexOf("commentary")).toBeLessThan(html.indexOf('id="sources-h"'));
+  expect(html.indexOf('id="sources-h"')).toBeLessThan(html.indexOf("commentary"));
 
   data.article.commentary = { ...data.article.commentary, predictions: [] };
   rerender(<App data={{ ...data }} />);
@@ -627,7 +639,7 @@ test("전망 기록표: 적중률·기간 탭·목록", () => {
       { key: "all", label: "전체", url: "/predictions" },
       { key: "3m", label: "3개월", url: "/predictions?period=3m" },
     ],
-    rate: { percent: 67, judged: 3, hits: 2, undecidable: 1 },
+    rate: { percent: 67, judged: 3, hits: 2, undecidable: 1, pending: 0 },
     rows: [
       {
         claim: "금리가 내린다",

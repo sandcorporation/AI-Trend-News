@@ -246,12 +246,12 @@ def test_predictions_page_shows_rate_rows_and_filters(
     assert "판단 불가 1건 제외" in html and "평가 대기" in html
     data = page(html)
     assert data["kind"] == "predictions"
-    assert data["rate"] == {"percent": 50, "judged": 4, "hits": 2, "undecidable": 1}
+    assert data["rate"] == {"percent": 50, "judged": 4, "hits": 2, "undecidable": 1, "pending": 1}
     rows = data["rows"]
     assert isinstance(rows, list) and len(rows) == 6
 
     recent = page(client.get("/predictions?period=3m").content.decode())
-    assert recent["rate"] == {"percent": 0, "judged": 1, "hits": 0, "undecidable": 0}
+    assert recent["rate"] == {"percent": 0, "judged": 1, "hits": 0, "undecidable": 0, "pending": 1}
     assert client.get("/predictions?period=1y").status_code == 404
 
 
