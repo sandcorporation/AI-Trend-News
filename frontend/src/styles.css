@@ -667,9 +667,18 @@ h2 {
 }
 
 .sidebar {
+  /* Header is not sticky, so only a small gap. Follows the scroll on wide
+     screens; taller than the viewport scrolls inside itself. */
+  --sidebar-top: 1rem;
   display: grid;
   gap: 1rem;
   margin-top: 1.5rem;
+  position: sticky;
+  top: var(--sidebar-top);
+  align-self: start;
+  max-height: calc(100vh - var(--sidebar-top) * 2);
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .side-block {
@@ -723,6 +732,12 @@ h2 {
   .layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+  }
+
+  .sidebar {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
 }
 
