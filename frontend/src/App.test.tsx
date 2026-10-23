@@ -1,6 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
-import type { ArticlePageData, CardData, HomeData } from "./types";
+import type {
+  ArticlePageData,
+  CardData,
+  HomeData,
+  PredictionsPageData,
+} from "./types";
 import { readPageData } from "./pageData";
 
 test("페이지가 아직 없는 경로는 준비 중 안내를 보여 준다", () => {
@@ -42,6 +47,7 @@ const sidebar = {
   sandcorp_url: "/go/sandcorp?from=sidebar",
   contact_label: "문의하기",
   contact_url: "/contact",
+  prediction_rate: null,
 };
 const card: CardData = {
   slug: "rate-freeze",
@@ -497,6 +503,10 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
         horizon: "3m",
         horizon_label: "3개월 안",
         basis: "물가 둔화",
+        due_label: "2027.1.23",
+        verdict: "",
+        verdict_label: "",
+        verdict_note: "",
       },
     ],
   };
@@ -509,6 +519,8 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   expect(q(block, ".opinion")).toHaveTextContent("의견 문장");
   expect(q(block, ".predictions")).toHaveTextContent("3개월 안");
   expect(q(block, ".predictions")).toHaveTextContent("근거: 물가 둔화");
+  expect(q(block, ".predictions")).toHaveTextContent("기한 2027.1.23");
+  expect(block.querySelector('[data-slot="verdict"]')).toBeNull(); // 미평가는 배지 없음
   // 요약 아래, 출처 위
   const html = container.innerHTML;
   expect(html.indexOf('class="summary"')).toBeLessThan(html.indexOf("commentary"));
@@ -526,4 +538,83 @@ test("분석 배지는 메인 카드에만 있고 캐러셀 장에는 없다", (
   const { container } = render(<App data={data} />);
   expect(container.querySelector('[data-slot="hero"] .badge-analysis')).toBeNull();
   expect(container.querySelectorAll(".card .badge-analysis")).toHaveLength(1);
+});
+
+test("기사 예측 목록: 평가된 것만 결과 배지", () => {
+  const data = articleData();
+  const base = {
+    horizon: "3m",
+    horizon_label: "3개월 안",
+    basis: "근거",
+    due_label: "2027.1.23",
+    verdict_note: "",
+  };
+  data.article.commentary = {
+    background: "b",
+    significance: "s",
+    outlook_bull: "u",
+    outlook_bear: "d",
+    opinion: "o",
+    predictions: [
+      { ...base, claim: "맞은 예측", verdict: "hit", verdict_label: "적중" },
+      { ...base, claim: "대기 예측", verdict: "", verdict_label: "" },
+    ],
+  };
+  const { container } = render(<App data={data} />);
+  const badges = container.querySelectorAll('[data-slot="verdict"]');
+  expect(badges).toHaveLength(1);
+  expect(badges[0]).toHaveTextContent("적중");
+});
+
+test("사이드바 적중률 블록은 값이 있을 때만", () => {
+  const data = homeData();
+  const { container, rerender } = render(<App data={data} />);
+  expect(container.querySelector('[data-slot="prediction-rate"]')).toBeNull();
+
+  data.sidebar = {
+    ...data.sidebar,
+    prediction_rate: {
+      title: "전망 적중률",
+      percent: 60,
+      judged: 5,
+      link_label: "전망 기록표 보기",
+      url: "/predictions",
+    },
+  };
+  rerender(<App data={{ ...data }} />);
+  const block = q(container, '[data-slot="prediction-rate"]');
+  expect(block).toHaveTextContent("전망 적중률");
+  expect(block).toHaveTextContent("60%");
+  expect(q(block, "a")).toHaveAttribute("href", "/predictions");
+});
+
+test("전망 기록표: 적중률·기간 탭·목록", () => {
+  const data: PredictionsPageData = {
+    kind: "predictions",
+    site: homeData().site,
+    period: "all",
+    periods: [
+      { key: "all", label: "전체", url: "/predictions" },
+      { key: "3m", label: "3개월", url: "/predictions?period=3m" },
+    ],
+    rate: { percent: 67, judged: 3, hits: 2, undecidable: 1 },
+    rows: [
+      {
+        claim: "금리가 내린다",
+        horizon_label: "3개월 안",
+        due_label: "2027.1.23",
+        verdict: "hit",
+        verdict_label: "적중",
+        verdict_note: "",
+        article_title: "금리 동결",
+        article_url: "/a/rates",
+      },
+    ],
+  };
+  const { container } = render(<App data={data} />);
+  expect(q(container, '[data-slot="hit-rate"]')).toHaveTextContent("67%");
+  expect(q(container, '[data-slot="hit-rate"]')).toHaveTextContent("판단 불가 1건 제외");
+  expect(q(container, '.tabs a[aria-current="page"]')).toHaveTextContent("전체");
+  expect(q(container, ".prediction-list")).toHaveTextContent("금리가 내린다");
+  expect(q(container, ".prediction-list a")).toHaveAttribute("href", "/a/rates");
 });

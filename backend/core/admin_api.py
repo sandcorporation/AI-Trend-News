@@ -5,6 +5,7 @@ from http import HTTPStatus
 from django.http import HttpRequest, HttpResponse
 from ninja import NinjaAPI, Router
 
+from adapters.clock import get_clock
 from core.admin_schemas import (
     ArticleOut,
     ArticleTextChange,
@@ -14,15 +15,19 @@ from core.admin_schemas import (
     CategoryOut,
     EnabledChange,
     FlagsChange,
+    PredictionJudge,
+    PredictionRowOut,
     SourceChange,
     SourceCreate,
     SourceOut,
 )
 from core.auth import RequireScope
 from services import articles, posts, sources
+from services import predictions as predictions_svc
 from services.articles import Actor, ArticleError
 from services.commentary import CommentaryError
 from services.posts import PostError
+from services.predictions import PredictionError
 from services.sources import SourceError
 
 router = Router(auth=RequireScope("admin"), tags=["admin"])
@@ -55,6 +60,13 @@ def install_error_handlers(api: NinjaAPI) -> None:
         assert isinstance(exc, CommentaryError)
         return respond(request, exc, False)
 
+    def prediction_error(
+        request: HttpRequest, exc: PredictionError | type[PredictionError]
+    ) -> HttpResponse:
+        assert isinstance(exc, PredictionError)
+        return respond(request, exc, isinstance(exc, predictions_svc.PredictionNotFound))
+
+    api.add_exception_handler(PredictionError, prediction_error)
     api.add_exception_handler(ArticleError, article_error)
     api.add_exception_handler(CommentaryError, commentary_error)
     api.add_exception_handler(PostError, post_error)
@@ -117,3 +129,16 @@ def set_article_flags(request: HttpRequest, article_id: int, body: FlagsChange) 
 def update_article(request: HttpRequest, article_id: int, body: ArticleTextChange) -> ArticleOut:
     article = articles.update_article(Actor.OWNER, article_id, **body.model_dump())
     return ArticleOut.of(article)
+
+
+# --- 전망 기록표 ---
+
+
+@router.patch("/predictions/{prediction_id}", response=PredictionRowOut)
+def judge_prediction(
+    request: HttpRequest, prediction_id: int, body: PredictionJudge
+) -> PredictionRowOut:
+    row = predictions_svc.judge_prediction(
+        prediction_id, body.verdict, body.note, now=get_clock().now()
+    )
+    return PredictionRowOut.of(row)

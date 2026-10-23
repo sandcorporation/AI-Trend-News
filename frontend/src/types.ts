@@ -23,6 +23,11 @@ export interface PredictionData {
   horizon: string;
   horizon_label: string;
   basis: string;
+  due_label: string;
+  /** 미평가면 빈 문자열 */
+  verdict: "" | "hit" | "miss" | "undecidable";
+  verdict_label: string;
+  verdict_note: string;
 }
 
 export interface CommentaryData {
@@ -83,6 +88,15 @@ export interface SidebarData {
   sandcorp_url: string;
   contact_label: string;
   contact_url: string;
+  prediction_rate: SidebarRateData | null;
+}
+
+export interface SidebarRateData {
+  title: string;
+  percent: number;
+  judged: number;
+  link_label: string;
+  url: string;
 }
 
 export interface HomeData {
@@ -124,10 +138,42 @@ export interface ContactPageData {
   kinds: string[];
 }
 
-export type PageData = HomeData | ArticlePageData | ContactPageData;
+export interface PredictionRowData {
+  claim: string;
+  horizon_label: string;
+  due_label: string;
+  verdict: "" | "hit" | "miss" | "undecidable";
+  verdict_label: string;
+  verdict_note: string;
+  article_title: string;
+  article_url: string;
+}
+
+export interface PredictionsPageData {
+  kind: "predictions";
+  site: SiteData;
+  period: string;
+  periods: { key: string; label: string; url: string }[];
+  rate: {
+    percent: number | null;
+    judged: number;
+    hits: number;
+    undecidable: number;
+  };
+  rows: PredictionRowData[];
+}
+
+export type PageData =
+  | HomeData
+  | ArticlePageData
+  | ContactPageData
+  | PredictionsPageData;
 
 export function isPageData(value: unknown): value is PageData {
   if (typeof value !== "object" || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
-  return kind === "home" || kind === "article" || kind === "contact";
+  return kind === "home" ||
+    kind === "article" ||
+    kind === "contact" ||
+    kind === "predictions";
 }

@@ -468,7 +468,11 @@ def public_list(category: str = "") -> QuerySet[Article]:
 def public_article(slug: str) -> Article:
     """게시된 기사 하나. 없거나 게시 전이면 ArticleNotFound. 묶인 수집물과 소스를 함께 읽는다."""
     try:
-        return _public().prefetch_related("article_items__item__source").get(slug=slug)
+        return (
+            _public()
+            .prefetch_related("article_items__item__source", "commentary__prediction_rows")
+            .get(slug=slug)
+        )
     except Article.DoesNotExist:
         raise ArticleNotFound(f"게시된 기사가 없습니다: {slug}") from None
 

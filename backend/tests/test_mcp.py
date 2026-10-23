@@ -55,6 +55,7 @@ ADMIN_TOOLS = {
     "reorder_categories",
     "set_article_flags_as_owner",
     "update_article_as_owner",
+    "judge_prediction",
 }
 
 

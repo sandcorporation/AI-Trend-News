@@ -8,6 +8,13 @@
     </ol>
   </section>
   {% endif %}
+  {% if data.sidebar.prediction_rate %}
+  <section class="side-block" data-slot="prediction-rate" aria-labelledby="side-rate-h">
+    <h2 id="side-rate-h">{{ data.sidebar.prediction_rate.title }}</h2>
+    <p class="rate"><strong>{{ data.sidebar.prediction_rate.percent }}%</strong> <span>평가 {{ data.sidebar.prediction_rate.judged }}건 기준</span></p>
+    <a class="side-link" href="{{ data.sidebar.prediction_rate.url }}">{{ data.sidebar.prediction_rate.link_label }}</a>
+  </section>
+  {% endif %}
   <section class="side-block" aria-labelledby="side-sandcorp-h">
     <h2 id="side-sandcorp-h">{{ data.sidebar.sandcorp_title }}</h2>
     <p>{{ data.sidebar.sandcorp_text }}</p>

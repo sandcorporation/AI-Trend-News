@@ -25,7 +25,7 @@
       {% if c.predictions %}
       <h3>예측</h3>
       <ul class="predictions">
-        {% for p in c.predictions %}<li><span class="horizon">{{ p.horizon_label }}</span> {{ p.claim }} <span class="basis">근거: {{ p.basis }}</span></li>
+        {% for p in c.predictions %}<li><span class="horizon">{{ p.horizon_label }}</span> {{ p.claim }} <span class="basis">근거: {{ p.basis }}</span> <span class="due">기한 {{ p.due_label }}</span>{% if p.verdict %} <span class="verdict verdict-{{ p.verdict }}" data-slot="verdict">{{ p.verdict_label }}</span>{% endif %}</li>
         {% endfor %}
       </ul>
       {% endif %}

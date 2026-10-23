@@ -120,7 +120,7 @@ def test_sidebar_link_is_tracked_inflow_link(client: Client) -> None:
     assert "utm_medium=sidebar" in response["Location"]
 
 
-def test_home_runs_at_most_ten_queries(client: Client) -> None:
+def test_home_runs_at_most_eleven_queries(client: Client) -> None:
     for n in range(14):
         make_article(
             f"기사 {n:02d}", category="AI" if n % 2 else "IT", featured=n < 3, tags=("태그",)
@@ -131,7 +131,7 @@ def test_home_runs_at_most_ten_queries(client: Client) -> None:
     with CaptureQueriesContext(connection) as ctx:
         assert client.get("/").status_code == 200
 
-    assert len(ctx) <= 10, [q["sql"][:80] for q in ctx]
+    assert len(ctx) <= 11, [q["sql"][:80] for q in ctx]
 
 
 def test_hero_carries_up_to_five_featured_slides_with_only_the_first_visible(
