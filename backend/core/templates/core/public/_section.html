@@ -1,8 +1,9 @@
 <section class="cat-section" aria-labelledby="sec-{{ section.category.slug }}">
   <div class="section-head">
-    <h2 id="sec-{{ section.category.slug }}"><span class="dot tone-{{ section.articles.0.tone }}"></span>{{ section.category.name }}</h2>
-    <a class="more" href="{{ section.more_url }}">더보기 →</a>
+    <p class="label"><span class="dot tone-{{ section.articles.0.tone }}"></span>분야</p>
+    <a class="more" href="{{ section.more_url }}">더 보기 →</a>
   </div>
+  <h2 id="sec-{{ section.category.slug }}">{{ section.category.name }}</h2>
   <div class="section-body">
     {% for card in section.articles|slice:":1" %}
     <article class="card card-feature">

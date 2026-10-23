@@ -72,10 +72,14 @@ export function Card({ card, site }: { card: CardData; site: SiteData }) {
         <h3>
           <a href={card.url}>{card.title}</a>
         </h3>
+        <p className="summary">{card.summary}</p>
       </div>
     </article>
   );
 }
+
+/** 「01」처럼 두 자리. */
+const pad2 = (n: number) => String(n).padStart(2, "0");
 
 const HERO_INTERVAL_MS = 5000;
 const SWIPE_PX = 40;
@@ -178,6 +182,25 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
             aria-hidden={i === index ? undefined : true}
             inert={i !== index}
           >
+            <div className="hero-text">
+              <p className="meta">
+                <span>추천</span> ·{" "}
+                <span>
+                  № {pad2(i + 1)}/{pad2(total)}
+                </span>{" "}
+                · <span className={`chip tone-${card.tone}`}>{card.category.name}</span>{" "}
+                · <time dateTime={card.published_at}>{card.published_label}</time>
+              </p>
+              <h3>
+                <a href={card.url}>{card.title}</a>
+              </h3>
+              <p className="summary">{card.summary}</p>
+              <p className="read-more">
+                <a href={card.url} tabIndex={-1} aria-hidden="true">
+                  읽기 →
+                </a>
+              </p>
+            </div>
             <a
               className="hero-thumb"
               href={card.url}
@@ -186,13 +209,6 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
             >
               <Thumb card={card} site={site} eager={i === 0} />
             </a>
-            <div className="hero-text">
-              <Meta card={card} badge={false} />
-              <h3>
-                <a href={card.url}>{card.title}</a>
-              </h3>
-              <p className="summary">{card.summary}</p>
-            </div>
           </article>
         ))}
       </div>
@@ -252,14 +268,14 @@ function Section({ section, site }: { section: SectionData; site: SiteData }) {
   return (
     <section className="cat-section" aria-labelledby={id}>
       <div className="section-head">
-        <h2 id={id}>
-          <span className={`dot tone-${first?.tone ?? "ai"}`}></span>
-          {section.category.name}
-        </h2>
+        <p className="label">
+          <span className={`dot tone-${first?.tone ?? "ai"}`}></span>분야
+        </p>
         <a className="more" href={section.more_url}>
-          더보기 →
+          더 보기 →
         </a>
       </div>
+      <h2 id={id}>{section.category.name}</h2>
       <div className="section-body">
         {first && (
           <article className="card card-feature">
@@ -301,8 +317,9 @@ function Sidebar({ data }: { data: HomeData }) {
         <section className="side-block" aria-labelledby="most-read-h">
           <h2 id="most-read-h">{s.most_read_title}</h2>
           <ol className="ranked">
-            {data.most_read.map((card) => (
+            {data.most_read.map((card, i) => (
               <li key={card.slug}>
+                <span className="rank">№ {pad2(i + 1)}</span>{" "}
                 <a href={card.url}>{card.title}</a>
               </li>
             ))}
@@ -350,26 +367,20 @@ export function Home({ data }: { data: HomeData }) {
   const { site } = data;
   return (
     <Layout site={site}>
-      <nav className="tabs" aria-label="분야">
-        <a href="/" aria-current={data.category ? undefined : "page"}>
-          전체
-        </a>
-        {data.categories.map((c) => (
-          <a
-            key={c.slug}
-            href={`/?category=${c.slug}`}
-            aria-current={c.slug === data.category ? "page" : undefined}
-          >
-            {c.name}
-          </a>
-        ))}
-      </nav>
       <div className="layout">
         <div className="primary">
           {data.featured.length > 0 && (
             <Hero cards={data.featured} site={site} />
           )}
-          <section aria-labelledby="latest-h">
+          <section className="latest" aria-labelledby="latest-h">
+            <div className="section-head">
+              <p className="label">Latest</p>
+              {data.num_pages > 1 && (
+                <p className="label">
+                  {data.page} / {data.num_pages}
+                </p>
+              )}
+            </div>
             <h2 id="latest-h">최신 기사</h2>
             <div className="grid">
               {data.articles.length === 0 && (

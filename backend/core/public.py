@@ -4,6 +4,7 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 #root (templates/core/public/*.html) so crawlers and link previews see the text without running JS.
 """
 
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import date, datetime
 from typing import TypedDict
@@ -26,7 +27,7 @@ from django.utils.dateformat import format as date_format
 from django.views.decorators.csrf import csrf_exempt
 
 from adapters.clock import get_clock
-from articles.models import Article, Prediction
+from articles.models import Article, Category, Prediction
 from core.shell import INDEX, NOINDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
 from inquiries.models import Inquiry
 from services import articles as svc
@@ -123,6 +124,7 @@ class RateData(TypedDict):
     judged: int
     hits: int
     undecidable: int
+    pending: int  # 이 기간 목록 중 미평가 건수
 
 
 class SidebarRateData(TypedDict):
@@ -148,8 +150,16 @@ class DetailData(CardData):
     commentary: CommentaryOut | None
 
 
+class NavItemData(TypedDict):
+    label: str
+    url: str
+    current: bool
+
+
 class SiteData(TypedDict):
     name: str
+    today_label: str
+    nav: list[NavItemData]
     monogram: str
     sandcorp_label: str
     header_url: str
@@ -231,9 +241,32 @@ def _sidebar(today: date) -> SidebarData:
     }
 
 
-def _site() -> SiteData:
+WEEKDAYS = "월화수목금토일"
+
+
+def _today_label() -> str:
+    """머리띠 날짜: 서버 시계(Asia/Seoul) 기준 「2026.10.23 (금)」."""
+    today = timezone.localtime(get_clock().now()).date()
+    return f"{today:%Y.%m.%d} ({WEEKDAYS[today.weekday()]})"
+
+
+def _nav(current: str | None, categories: Iterable[Category] | None = None) -> list[NavItemData]:
+    """머리띠 내비: 전체 · 분야들 · 전망 기록표 · 문의.
+
+    current는 ""(전체)·분야 slug·"predictions"·"contact", 해당 없으면 None.
+    """
+    cats = svc.public_categories() if categories is None else categories
+    items: list[tuple[str, str, str]] = [("", "전체", "/")]
+    items += [(c.slug, c.name, f"/?category={c.slug}") for c in cats]
+    items += [("predictions", "전망 기록표", PREDICTIONS_PATH), ("contact", "문의", CONTACT_PATH)]
+    return [{"label": label, "url": url, "current": key == current} for key, label, url in items]
+
+
+def _site(current: str | None = None, categories: Iterable[Category] | None = None) -> SiteData:
     return {
         "name": SITE_NAME,
+        "today_label": _today_label(),
+        "nav": _nav(current, categories),
         "monogram": SITE_MONOGRAM,
         "sandcorp_label": SANDCORP_LABEL,
         "header_url": outbound.go_path("header"),
@@ -380,7 +413,7 @@ def _shell(
     canonical: str,
     og_type: str = "website",
 ) -> HttpResponse:
-    body = render_to_string(fallback, {"data": data, "site": _site()}, request)
+    body = render_to_string(fallback, {"data": data, "site": data["site"]}, request)
     return render_shell(request, meta, data=data, body=body, canonical=canonical, og_type=og_type)
 
 
@@ -422,7 +455,7 @@ def home(request: HttpRequest) -> HttpResponse:
 
     data: dict[str, object] = {
         "kind": "home",
-        "site": _site(),
+        "site": _site(category, categories),
         "categories": [{"name": c.name, "slug": c.slug} for c in categories],
         "category": category,
         "featured": [_card(a) for a in featured],
@@ -550,10 +583,11 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
         "judged": rate.judged,
         "hits": rate.hits,
         "undecidable": rate.undecidable,
+        "pending": sum(1 for r in rows if not r["verdict"]),
     }
     data: dict[str, object] = {
         "kind": "predictions",
-        "site": _site(),
+        "site": _site("predictions"),
         "period": period,
         "periods": [
             {
@@ -667,9 +701,10 @@ def contact(request: HttpRequest) -> HttpResponse:
         else:
             state = "done"
             form = {**form, "name": "", "company": "", "contact": "", "message": ""}
+    site = _site("contact")
     data: dict[str, object] = {
         "kind": "contact",
-        "site": _site(),
+        "site": site,
         "state": state,
         "form": form,
         "kinds": list(Inquiry.Kind.values),
@@ -677,7 +712,7 @@ def contact(request: HttpRequest) -> HttpResponse:
     meta = PageMeta(
         title=f"문의 - {SITE_NAME}", description="문의나 제안을 남겨 주세요.", robots=NOINDEX
     )
-    body = render_to_string("core/public/contact.html", {"data": data, "site": _site()}, request)
+    body = render_to_string("core/public/contact.html", {"data": data, "site": site}, request)
     response = render_shell(
         request,
         meta,

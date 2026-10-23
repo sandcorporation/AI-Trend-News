@@ -23,20 +23,33 @@ export function PredictionsPage({ data }: { data: PredictionsPageData }) {
             </a>
           ))}
         </nav>
-        <p className="hit-rate" data-slot="hit-rate">
-          {rate.percent === null ? (
-            "아직 평가된 예측이 없습니다."
-          ) : (
-            <>
-              적중률 <strong>{rate.percent}%</strong>{" "}
-              <span>
-                평가 {rate.judged}건 중 {rate.hits}건 적중
-                {rate.undecidable > 0 &&
-                  ` · 판단 불가 ${rate.undecidable}건 제외`}
-              </span>
-            </>
-          )}
-        </p>
+        <div className="hit-rate" data-slot="hit-rate">
+          <dl className="metrics">
+            <div className="metric">
+              <dt className="label">적중률</dt>
+              <dd>
+                {rate.percent === null ? "—" : <strong>{rate.percent}%</strong>}
+              </dd>
+            </div>
+            <div className="metric">
+              <dt className="label">평가</dt>
+              <dd>{rate.judged}</dd>
+            </div>
+            <div className="metric">
+              <dt className="label">대기</dt>
+              <dd>{rate.pending}</dd>
+            </div>
+          </dl>
+          <p className="metrics-note">
+            {rate.percent === null
+              ? "아직 평가된 예측이 없습니다."
+              : `평가 ${rate.judged}건 중 ${rate.hits}건 적중${
+                  rate.undecidable > 0
+                    ? ` · 판단 불가 ${rate.undecidable}건 제외`
+                    : ""
+                }`}
+          </p>
+        </div>
         {data.rows.length > 0 ? (
           <ul className="prediction-list">
             {data.rows.map((r) => (

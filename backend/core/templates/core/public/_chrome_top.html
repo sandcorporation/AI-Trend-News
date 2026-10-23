@@ -1,5 +1,11 @@
 <div class="site">
-<header class="site-header">
-  <a class="brand" href="/">{{ site.name }}</a>
-  <a class="header-link" href="{{ site.header_url }}">{{ site.sandcorp_label }}</a>
+<header class="masthead">
+  <div class="masthead-row">
+    <p class="masthead-brand"><a class="brand" href="/">{{ site.name }}</a> <span class="label">포사이트 · AI·IT 뉴스와 전망</span></p>
+    <p class="masthead-meta label"><span>{{ site.today_label }}</span> · <span>하루 3회 07·13·19 KST</span> · <a class="header-link" href="{{ site.header_url }}">{{ site.sandcorp_label }}</a></p>
+  </div>
+  <nav class="site-nav" aria-label="사이트">
+    {% for n in site.nav %}<a href="{{ n.url }}"{% if n.current %} aria-current="page"{% endif %}>{{ n.label }}</a>
+    {% endfor %}
+  </nav>
 </header>

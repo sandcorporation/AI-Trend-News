@@ -1,14 +1,10 @@
 {% include "core/public/_chrome_top.html" %}
 <main class="main">
-  <nav class="tabs" aria-label="분야">
-    <a href="/"{% if not data.category %} aria-current="page"{% endif %}>전체</a>
-    {% for c in data.categories %}<a href="/?category={{ c.slug }}"{% if c.slug == data.category %} aria-current="page"{% endif %}>{{ c.name }}</a>
-    {% endfor %}
-  </nav>
   <div class="layout">
   <div class="primary">
   {% if data.featured %}{% include "core/public/_hero.html" %}{% endif %}
-  <section aria-labelledby="latest-h">
+  <section class="latest" aria-labelledby="latest-h">
+    <div class="section-head"><p class="label">Latest</p>{% if data.num_pages > 1 %}<p class="label">{{ data.page }} / {{ data.num_pages }}</p>{% endif %}</div>
     <h2 id="latest-h">최신 기사</h2>
     <div class="grid">
     {% for card in data.articles %}{% include "core/public/_card.html" %}{% empty %}<p class="empty">아직 게시된 기사가 없습니다.</p>{% endfor %}

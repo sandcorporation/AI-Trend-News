@@ -3,5 +3,6 @@
   <div class="card-body">
     <p class="meta"><span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> <time datetime="{{ card.published_at }}">{{ card.published_label }}</time>{% if card.has_commentary %} <span class="badge-analysis">분석</span>{% endif %}</p>
     <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
+    <p class="summary">{{ card.summary }}</p>
   </div>
 </article>

@@ -52,8 +52,18 @@ export interface DetailData extends CardData {
   commentary: CommentaryData | null;
 }
 
+export interface NavItemData {
+  label: string;
+  url: string;
+  current: boolean;
+}
+
 export interface SiteData {
   name: string;
+  /** 머리띠 날짜(서버 시계, 「2026.10.23 (금)」) */
+  today_label: string;
+  /** 머리띠 내비: 전체 · 분야들 · 전망 기록표 · 문의 */
+  nav: NavItemData[];
   monogram: string;
   sandcorp_label: string;
   header_url: string;
@@ -160,6 +170,7 @@ export interface PredictionsPageData {
     judged: number;
     hits: number;
     undecidable: number;
+    pending: number;
   };
   rows: PredictionRowData[];
 }

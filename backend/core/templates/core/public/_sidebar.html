@@ -3,7 +3,7 @@
   <section class="side-block" aria-labelledby="most-read-h">
     <h2 id="most-read-h">{{ data.sidebar.most_read_title }}</h2>
     <ol class="ranked">
-      {% for card in data.most_read %}<li><a href="{{ card.url }}">{{ card.title }}</a></li>
+      {% for card in data.most_read %}<li><span class="rank">№ {{ forloop.counter|stringformat:"02d" }}</span> <a href="{{ card.url }}">{{ card.title }}</a></li>
       {% endfor %}
     </ol>
   </section>
