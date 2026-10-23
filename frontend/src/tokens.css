@@ -1,14 +1,11 @@
 /*
- * Foresight design tokens (#72). The ONLY file that may contain raw color values
- * (enforced by src/tokens.test.ts). Everything else uses var(--color-*).
+ * Foresight design tokens (#72, palette #86). The ONLY file that may contain raw color
+ * values (enforced by src/tokens.test.ts). Everything else uses var(--color-*).
  *
- * Names and values are shared with the portfolio repo (#73): parchment canvas,
- * blue-black ink, one ochre accent. To swap the accent, change only
- * --color-accent, --color-accent-tint and --color-focus (light + dark, six values);
- * nothing else derives from them.
- *
- * Accent: the spec's #8a6214 is 4.35:1 on tint, under 4.5:1, so it is darkened to
- * #7f5a12 (4.95:1 on tint). Contrast is checked in tokens.test.ts.
+ * Names and values are shared with the portfolio repo: white / near-black / navy.
+ * To swap the accent, change only --color-accent, --color-accent-tint and --color-focus
+ * (light + dark, six values); nothing else derives from them. Contrast is checked in
+ * tokens.test.ts.
  */
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
@@ -17,21 +14,21 @@
   color-scheme: light dark;
 
   /* surfaces */
-  --color-canvas: #f2efe6;
-  --color-paper: #faf8f1;
-  --color-tint: #e9e5da;
-  --color-line: #d9d5ca;
-  --color-line-strong: #1b1d24;
+  --color-canvas: #ffffff;
+  --color-paper: #f8fafc;
+  --color-tint: #f1f4f8;
+  --color-line: #dde3eb;
+  --color-line-strong: #b8c2cf;
   /* text */
-  --color-ink: #1b1d24;
-  --color-text: #2c2f38;
-  --color-muted: #5e626c;
+  --color-ink: #0b0d12;
+  --color-text: #1f2430;
+  --color-muted: #5b6472;
   --color-danger: #9b2c1f;
   /* accent */
-  --color-accent: #7f5a12;
-  --color-accent-tint: #efe4c8;
-  --color-on-accent: #faf8f1;
-  --color-focus: #7f5a12;
+  --color-accent: #1e3a8a;
+  --color-accent-tint: #e3e9f6;
+  --color-on-accent: #ffffff;
+  --color-focus: #1e3a8a;
   /* categories (muted; tone-ai / tone-it) */
   --color-cat-ai: #2f5586;
   --color-cat-it: #1d6650;
@@ -57,19 +54,19 @@
 
 @media screen and (prefers-color-scheme: dark) {
   :root {
-    --color-canvas: #15171c;
-    --color-paper: #1c1f26;
-    --color-tint: #242830;
-    --color-line: #343842;
-    --color-line-strong: #f1eee6;
-    --color-ink: #f1eee6;
-    --color-text: #d6d2c8;
-    --color-muted: #a09c92;
+    --color-canvas: #0b0d12;
+    --color-paper: #12151c;
+    --color-tint: #1a1f29;
+    --color-line: #2a303c;
+    --color-line-strong: #3d4553;
+    --color-ink: #f3f5f8;
+    --color-text: #d5dae2;
+    --color-muted: #9aa3b0;
     --color-danger: #f0a090;
-    --color-accent: #d9ad4c;
-    --color-accent-tint: #3a3221;
-    --color-on-accent: #15171c;
-    --color-focus: #d9ad4c;
+    --color-accent: #8fb3ff;
+    --color-accent-tint: #1c2742;
+    --color-on-accent: #0b0d12;
+    --color-focus: #8fb3ff;
     --color-cat-ai: #7fa6e0;
     --color-cat-it: #58b595;
   }

@@ -29,8 +29,8 @@
   {% for block in ld_blocks %}<script type="application/ld+json">{{ block }}</script>
   {% endfor %}
   <link rel="icon" href="{% static 'core/favicon.svg' %}" type="image/svg+xml">
-  <meta name="theme-color" content="#f2efe6" media="(prefers-color-scheme: light)">
-  <meta name="theme-color" content="#15171c" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
   {% for href in assets.styles %}<link rel="stylesheet" href="{{ href }}">
   {% endfor %}
   {% if assets.dev_server %}<script type="module">
