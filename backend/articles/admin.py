@@ -64,11 +64,16 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         "featured",
         "has_commentary",
         "views_7d",
-        "created_at",
+        "published_at",
     )
     list_filter = ("category", "published", "featured")
     search_fields = ("title", "summary")
-    readonly_fields = ("old_slugs", "published_overridden", "featured_overridden")
+    readonly_fields = (
+        "old_slugs",
+        "published_overridden",
+        "featured_overridden",
+        "published_at_overridden",
+    )
 
     @admin.display(description="옛 슬러그")
     def old_slugs(self, obj: Article) -> str:
@@ -107,6 +112,8 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         published, featured = obj.published, obj.featured
         stored = Article.objects.get(pk=obj.pk)
         obj.published, obj.featured = stored.published, stored.featured
+        if obj.published_at != stored.published_at:
+            obj.published_at_overridden = True
         if not obj.slug:
             obj.slug = stored.slug
         elif obj.slug != stored.slug:

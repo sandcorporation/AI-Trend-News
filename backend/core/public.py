@@ -261,8 +261,8 @@ def _card(article: Article) -> CardData:
         "summary": article.summary,
         "category": {"name": article.category.name, "slug": article.category.slug},
         "tags": [t.name for t in article.tags.all()],
-        "published_at": article.created_at.isoformat(),
-        "published_label": _relative_label(article.created_at),
+        "published_at": article.published_at.isoformat(),
+        "published_label": _relative_label(article.published_at),
         "image_url": article.image_url,
         "tone": _tone(article.category.name),
         "url": reverse("article", args=[article.slug]),
@@ -282,7 +282,7 @@ def _detail(article: Article) -> DetailData:
     ]
     return {
         **_card(article),
-        "published_label": _label(article.created_at),
+        "published_label": _label(article.published_at),
         "items": items,
         "commentary": _commentary(article),
     }

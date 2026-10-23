@@ -291,6 +291,28 @@ def _bind(article: Article, item_ids: Iterable[int]) -> None:
         item.save(update_fields=["status"])
 
 
+def _earliest_published(article: Article) -> datetime:
+    """묶인 수집물 발행 시각 중 가장 이른 것(수집 시각보다 뒤는 제외). 없으면 created_at."""
+    times = [
+        t
+        for t, collected in ArticleItem.objects.filter(
+            article=article, item__published_at__isnull=False
+        ).values_list("item__published_at", "item__collected_at")
+        if t is not None and t <= collected
+    ]
+    return min(times) if times else article.created_at
+
+
+def _sync_published_at(article: Article, *, only_earlier: bool) -> None:
+    """발행 시각을 다시 계산한다. 대표가 덮어쓴 값은 두고, only_earlier면 앞당기기만 한다."""
+    if article.published_at_overridden:
+        return
+    value = _earliest_published(article)
+    if only_earlier and value >= article.published_at:
+        return
+    article.published_at = value
+
+
 @transaction.atomic
 def create_article(
     actor: Actor,
@@ -326,6 +348,8 @@ def create_article(
         slug=final_slug,
     )
     _bind(article, ids)
+    _sync_published_at(article, only_earlier=False)
+    article.save(update_fields=["published_at", "updated_at"])
     article.tags.set(_tags(tags))
     return article
 
@@ -351,6 +375,7 @@ def update_article(
     """slug와 플래그는 건드리지 않는다(플래그는 set_flags)."""
     article = get_article(article_id)
     _bind(article, add_item_ids)
+    _sync_published_at(article, only_earlier=True)
     if title is not None:
         article.title = title
     if summary is not None:
@@ -450,11 +475,11 @@ def public_sections(per_category: int = 4) -> dict[int, list[Article]]:
         rn=Window(
             RowNumber(),
             partition_by=F("category_id"),
-            order_by=[F("created_at").desc(), F("id").desc()],
+            order_by=[F("published_at").desc(), F("id").desc()],
         )
     )
     result: dict[int, list[Article]] = {}
-    for article in ranked.filter(rn__lte=per_category).order_by("-created_at", "-id"):
+    for article in ranked.filter(rn__lte=per_category).order_by("-published_at", "-id"):
         result.setdefault(article.category_id, []).append(article)
     return result
 
@@ -508,7 +533,7 @@ def public_most_read(days: int = 7, limit: int = 5, category: str = "") -> list[
         _public()
         .annotate(read_count=Sum("views__count", filter=Q(views__date__gte=since)))
         .filter(read_count__gt=0)
-        .order_by("-read_count", "-created_at", "-id")
+        .order_by("-read_count", "-published_at", "-id")
     )
     if category:
         qs = qs.filter(category__slug=category)

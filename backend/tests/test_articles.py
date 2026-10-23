@@ -1,6 +1,9 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from django.test import Client
 from django.urls import reverse
+from django.utils import timezone
 
 from articles.models import Article, Category
 from collection.models import Item, SeenUrl, Source
@@ -130,6 +133,8 @@ def test_admin_flag_change_marks_override_and_blocks_editor(admin_client: Client
         "summary": article.summary,
         "category": article.category.pk,
         "image_url": "",
+        "published_at_0": "2026-01-01",
+        "published_at_1": "00:00:00",
         "featured": "",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
@@ -277,6 +282,8 @@ def test_admin_changes_article_slug_and_keeps_old(admin_client: Client) -> None:
         "slug": "after-change",
         "category": article.category.pk,
         "image_url": "",
+        "published_at_0": "2026-01-01",
+        "published_at_1": "00:00:00",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
         "commentary-TOTAL_FORMS": "0",
@@ -289,3 +296,86 @@ def test_admin_changes_article_slug_and_keeps_old(admin_client: Client) -> None:
     assert article.old_slugs.get().slug == "before-change"
     data["slug"] = "Bad Slug"
     assert admin_client.post(url, data).status_code == 200  # 검증 오류로 다시 그림
+
+
+# --- 발행 시각(#56) ---
+
+
+def _at(item: Item, published_at: datetime | None) -> Item:
+    Item.objects.filter(pk=item.pk).update(published_at=published_at)
+    item.refresh_from_db()
+    return item
+
+
+def test_published_at_is_earliest_bundled_item_time() -> None:
+    a, b = make_items()
+    early, late = datetime(2026, 1, 1, tzinfo=UTC), datetime(2026, 1, 2, tzinfo=UTC)
+    _at(a, late)
+    _at(b, early)
+    article = make_article([a, b])
+    assert article.published_at == early
+
+
+def test_published_at_falls_back_to_created_at_without_item_times() -> None:
+    article = make_article(make_items())
+    assert article.published_at == article.created_at
+
+
+def test_future_item_time_is_ignored() -> None:
+    a, b = make_items()
+    _at(a, timezone.now() + timedelta(days=2))
+    article = make_article([a])
+    assert article.published_at == article.created_at
+    ok = datetime(2026, 1, 1, tzinfo=UTC)
+    _at(b, ok)
+    svc.update_article(Actor.EDITOR, article.pk, add_item_ids=[b.pk])
+    article.refresh_from_db()
+    assert article.published_at == ok
+
+
+def test_add_item_only_moves_earlier() -> None:
+    a, b, c = make_items(3)
+    mid = datetime(2026, 1, 5, tzinfo=UTC)
+    _at(a, mid)
+    _at(b, datetime(2026, 1, 9, tzinfo=UTC))
+    _at(c, datetime(2026, 1, 1, tzinfo=UTC))
+    article = make_article([a])
+    svc.update_article(Actor.EDITOR, article.pk, add_item_ids=[b.pk])
+    article.refresh_from_db()
+    assert article.published_at == mid
+    svc.update_article(Actor.EDITOR, article.pk, add_item_ids=[c.pk])
+    article.refresh_from_db()
+    assert article.published_at == datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_owner_override_in_admin_is_kept(admin_client: Client) -> None:
+    a, b = make_items()
+    _at(b, datetime(2026, 1, 1, tzinfo=UTC))
+    article = make_article([a])
+    url = reverse("admin:articles_article_change", args=[article.pk])
+    resp = admin_client.get(url)
+    assert resp.status_code == 200
+    Article.objects.filter(pk=article.pk).update(published_at=datetime(2026, 3, 1, tzinfo=UTC))
+    Article.objects.filter(pk=article.pk).update(published_at_overridden=True)
+    svc.update_article(Actor.EDITOR, article.pk, add_item_ids=[b.pk])
+    article.refresh_from_db()
+    assert article.published_at == datetime(2026, 3, 1, tzinfo=UTC)
+
+
+def test_public_list_orders_by_published_at_then_id() -> None:
+    a, b = make_items()
+    _at(a, datetime(2026, 1, 1, tzinfo=UTC))
+    _at(b, datetime(2026, 1, 9, tzinfo=UTC))
+    old = make_article([a], title="옛 글", published=True, slug="old-news")
+    cat = svc.list_categories()[0].slug
+    new = svc.create_article(
+        Actor.EDITOR,
+        item_ids=[b.pk],
+        title="새 글",
+        summary="s",
+        category=cat,
+        published=True,
+        slug="new-news",
+    )
+    Article.objects.filter(pk=old.pk).update(created_at=timezone.now() + timedelta(hours=1))
+    assert [x.pk for x in svc.public_list()] == [new.pk, old.pk]

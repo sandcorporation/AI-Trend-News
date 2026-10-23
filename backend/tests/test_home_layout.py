@@ -26,7 +26,7 @@ def page_data(html: str) -> dict[str, object]:
 
 
 def age(article: Article, delta: timedelta) -> None:
-    Article.objects.filter(pk=article.pk).update(created_at=NOW - delta)
+    Article.objects.filter(pk=article.pk).update(published_at=NOW - delta)
 
 
 @pytest.fixture(autouse=True)

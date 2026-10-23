@@ -340,6 +340,8 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
         "summary": "요약",
         "category": Article.objects.get().category.pk,
         "image_url": "",
+        "published_at_0": "2026-01-01",
+        "published_at_1": "00:00:00",
         "featured": "",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
