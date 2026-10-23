@@ -1,0 +1,76 @@
+/*
+ * Foresight design tokens (#72). The ONLY file that may contain raw color values
+ * (enforced by src/tokens.test.ts). Everything else uses var(--color-*).
+ *
+ * Names and values are shared with the portfolio repo (#73): parchment canvas,
+ * blue-black ink, one ochre accent. To swap the accent, change only
+ * --color-accent, --color-accent-tint and --color-focus (light + dark, six values);
+ * nothing else derives from them.
+ *
+ * Accent: the spec's #8a6214 is 4.35:1 on tint, under 4.5:1, so it is darkened to
+ * #7f5a12 (4.95:1 on tint). Contrast is checked in tokens.test.ts.
+ */
+@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+
+:root {
+  color-scheme: light dark;
+
+  /* surfaces */
+  --color-canvas: #f2efe6;
+  --color-paper: #faf8f1;
+  --color-tint: #e9e5da;
+  --color-line: #d9d5ca;
+  --color-line-strong: #1b1d24;
+  /* text */
+  --color-ink: #1b1d24;
+  --color-text: #2c2f38;
+  --color-muted: #5e626c;
+  --color-danger: #9b2c1f;
+  /* accent */
+  --color-accent: #7f5a12;
+  --color-accent-tint: #efe4c8;
+  --color-on-accent: #faf8f1;
+  --color-focus: #7f5a12;
+  /* categories (muted; tone-ai / tone-it) */
+  --color-cat-ai: #2f5586;
+  --color-cat-it: #1d6650;
+
+  /* type */
+  --font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Apple SD Gothic Neo",
+    "Malgun Gothic", sans-serif;
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+  --text-display: clamp(3rem, 8vw, 8rem);
+  --text-hero: clamp(2rem, 4.5vw, 3.5rem);
+  --text-h2: clamp(1.75rem, 3.6vw, 2.75rem);
+  --text-metric: clamp(2.5rem, 5vw, 4rem);
+  --text-label: 0.75rem;
+
+  /* shape and layout */
+  --radius: 2px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --measure: 68ch;
+  --section-gap: clamp(3rem, 8vw, 5rem);
+  --rule-width: 7rem;
+}
+
+@media screen and (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #15171c;
+    --color-paper: #1c1f26;
+    --color-tint: #242830;
+    --color-line: #343842;
+    --color-line-strong: #f1eee6;
+    --color-ink: #f1eee6;
+    --color-text: #d6d2c8;
+    --color-muted: #a09c92;
+    --color-danger: #f0a090;
+    --color-accent: #d9ad4c;
+    --color-accent-tint: #3a3221;
+    --color-on-accent: #15171c;
+    --color-focus: #d9ad4c;
+    --color-cat-ai: #7fa6e0;
+    --color-cat-it: #58b595;
+  }
+}
