@@ -7,7 +7,7 @@ from django.http import HttpRequest
 from django.template.response import TemplateResponse
 from django.utils import timezone
 
-from articles.models import Article, ArticleItem, Category, OutboundClick, Tag
+from articles.models import Article, ArticleItem, Category, Commentary, OutboundClick, Tag
 from services import articles as svc
 from services import outbound
 
@@ -36,9 +36,26 @@ class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런�
         return False
 
 
+class CommentaryInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """대표가 분석을 고치거나 숨긴다(편집자는 서비스로만 쓴다)."""
+
+    model = Commentary
+    extra = 0
+    max_num = 1
+    can_delete = True
+
+
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
-    list_display = ("title", "category", "published", "featured", "views_7d", "created_at")
+    list_display = (
+        "title",
+        "category",
+        "published",
+        "featured",
+        "has_commentary",
+        "views_7d",
+        "created_at",
+    )
     list_filter = ("category", "published", "featured")
     search_fields = ("title", "summary")
     readonly_fields = ("old_slugs", "published_overridden", "featured_overridden")
@@ -50,13 +67,19 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Article]:
         since = timezone.localdate() - timedelta(days=6)
         qs: QuerySet[Article] = super().get_queryset(request)
-        return qs.annotate(views_7d_sum=Sum("views__count", filter=Q(views__date__gte=since)))
+        return qs.select_related("commentary").annotate(
+            views_7d_sum=Sum("views__count", filter=Q(views__date__gte=since))
+        )
+
+    @admin.display(description="분석 있음", boolean=True)
+    def has_commentary(self, obj: Article) -> bool:
+        return hasattr(obj, "commentary")
 
     @admin.display(description="7일 조회", ordering="views_7d_sum")
     def views_7d(self, obj: Article) -> int:
         return getattr(obj, "views_7d_sum", None) or 0
 
-    inlines = [ArticleItemInline]
+    inlines = [ArticleItemInline, CommentaryInline]
 
     def save_model(
         self,

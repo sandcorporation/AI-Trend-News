@@ -395,7 +395,7 @@ def recent_articles(days: int, now: datetime | None = None) -> list[Article]:
     since = (now or timezone.now()) - timedelta(days=days)
     return list(
         Article.objects.filter(created_at__gte=since)
-        .select_related("category")
+        .select_related("category", "commentary")
         .prefetch_related("article_items__item")
     )
 

@@ -39,8 +39,10 @@ from core.admin_schemas import (
 )
 from mcpserver.jsontypes import JSON
 from services import articles, collection, editor_runs, sources
+from services import commentary as commentary_svc
 from services import posts as posts_svc
 from services.articles import Actor, ArticleError
+from services.commentary import CommentaryError, PredictionIn
 from services.editor_runs import EditorRunError
 from services.posts import PostError
 from services.sources import SourceError
@@ -48,7 +50,13 @@ from services.tokens import AccessToken, Scope
 
 type ToolResult = dict[str, JSON]
 
-SERVICE_ERRORS: tuple[type[Exception], ...] = (ArticleError, EditorRunError, SourceError, PostError)
+SERVICE_ERRORS: tuple[type[Exception], ...] = (
+    ArticleError,
+    CommentaryError,
+    EditorRunError,
+    SourceError,
+    PostError,
+)
 
 
 class ToolError(Exception):
@@ -173,6 +181,19 @@ class UpsertPostDraftInput(_Input):
     text: str = Field(min_length=1, max_length=500, description="포스트 문구(기사 url 포함)")
 
 
+class UpsertCommentaryInput(_Input):
+    article_id: int = Field(description="추천이면서 게시된 기사 id")
+    background: str = Field(description="배경: 왜 일어났나(1~3문장, 400자 이내)")
+    significance: str = Field(description="의미: 왜 중요한가(1~3문장, 400자 이내)")
+    outlook_bull: str = Field(description="낙관 관점(1~2문장, 400자 이내)")
+    outlook_bear: str = Field(description="회의 관점. 낙관과 다른 전제(1~2문장, 400자 이내)")
+    opinion: str = Field(description="한 줄 의견(1문장, 120자 이내)")
+    predictions: list[PredictionIn] = Field(
+        default_factory=list,
+        description="검증 가능한 예측 0~3개: claim(120자), horizon(1m|3m|6m|12m), basis(200자)",
+    )
+
+
 class UpdateArticleInput(_Input):
     id: int = Field(description="기사 id")
     add_item_ids: list[int] = Field(default_factory=list, description="더 묶을 미처리 수집물 id들")
@@ -216,6 +237,7 @@ def _article(article: Article) -> ToolResult:
         "category": article.category.slug,
         "published": article.published,
         "featured": article.featured,
+        "has_commentary": hasattr(article, "commentary"),
         "items": [
             {"id": link.item.pk, "url": link.item.url} for link in article.article_items.all()
         ],
@@ -351,6 +373,36 @@ def upsert_post_draft(token: AccessToken, args: UpsertPostDraftInput) -> ToolRes
         "channel": post.channel,
         "status": post.status,
         "text": post.text,
+    }
+
+
+@tool(
+    "upsert_commentary",
+    "AI 분석 작성",
+    "추천이면서 게시된 기사의 AI 분석(배경·의미·낙관/회의 전망·의견·예측 문장)을 만들거나 "
+    "고친다(기사당 하나). 대표가 숨긴 분석은 덮어쓸 수 없다(오류).",
+    UpsertCommentaryInput,
+)
+def upsert_commentary(token: AccessToken, args: UpsertCommentaryInput) -> ToolResult:
+    c = commentary_svc.upsert_commentary(
+        Actor.EDITOR,
+        args.article_id,
+        background=args.background,
+        significance=args.significance,
+        outlook_bull=args.outlook_bull,
+        outlook_bear=args.outlook_bear,
+        opinion=args.opinion,
+        predictions=args.predictions,
+    )
+    return {
+        "article_id": c.article_id,
+        "background": c.background,
+        "significance": c.significance,
+        "outlook_bull": c.outlook_bull,
+        "outlook_bear": c.outlook_bear,
+        "opinion": c.opinion,
+        "predictions": [dict(p) for p in c.predictions],
+        "hidden": c.hidden,
     }
 
 
