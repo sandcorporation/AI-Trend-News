@@ -97,6 +97,44 @@ def test_featured_only(client: Client) -> None:
     assert [i["title"] for i in items] == ["추천"]
 
 
+def _comment(a: Article, hidden: bool = False) -> None:
+    Commentary.objects.create(
+        article=a, background="b", significance="s", outlook_bull="u", outlook_bear="d",
+        opinion="o", hidden=hidden,
+    )  # fmt: skip
+
+
+def test_commentary_filter_excludes_none_hidden_unpublished_and_applies_limit(
+    client: Client,
+) -> None:
+    make_article("분석 없음")
+    _comment(make_article("숨김"), hidden=True)
+    unpub = make_article("미게시")
+    _comment(unpub)
+    Article.objects.filter(pk=unpub.pk).update(published=False)
+    for i in range(3):
+        _comment(make_article(f"분석 {i}"))
+    items = client.get(API, {"commentary": "true", "limit": "2"}).json()["items"]
+    assert [i["title"] for i in items] == ["분석 2", "분석 1"]
+    assert all(i["has_commentary"] for i in items)
+    all_items = client.get(API, {"commentary": "true"}).json()["items"]
+    assert sorted(i["title"] for i in all_items) == ["분석 0", "분석 1", "분석 2"]
+
+
+def test_commentary_filter_combines_with_featured_and_default_unchanged(client: Client) -> None:
+    _comment(make_article("분석만"))
+    _comment(make_article("분석 추천", featured=True))
+    make_article("추천만", featured=True)
+    both = client.get(API, {"commentary": "true", "featured": "true"}).json()["items"]
+    assert [i["title"] for i in both] == ["분석 추천"]
+    base = client.get(API).content
+    assert client.get(API, {"commentary": "false"}).content == base
+    assert len(client.get(API).json()["items"]) == 3
+    with CaptureQueriesContext(connection) as ctx:
+        client.get(API, {"commentary": "true", "limit": "20"})
+    assert len(ctx) <= 2
+
+
 def test_cache_header_no_cors_and_query_count(client: Client) -> None:
     for i in range(6):
         make_article(f"글 {i}")

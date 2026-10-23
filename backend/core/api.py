@@ -79,6 +79,7 @@ class PublicArticlesQuery(Schema):
     limit: int = 5
     category: str = ""
     featured: bool = False
+    commentary: bool = False
 
 
 @api.get("/public/articles", response=PublicArticles, auth=None)
@@ -87,7 +88,7 @@ def public_articles(
 ) -> PublicArticles:
     """인증 없는 최근 기사 목록(서버 간 호출용, 포트폴리오 홈 등). CORS 헤더는 두지 않는다."""
     limit = min(max(params.limit, 1), PUBLIC_MAX_LIMIT)
-    found = svc.public_recent(limit, params.category, params.featured)
+    found = svc.public_recent(limit, params.category, params.featured, params.commentary)
     response["Cache-Control"] = PUBLIC_CACHE
     return PublicArticles(
         items=[
