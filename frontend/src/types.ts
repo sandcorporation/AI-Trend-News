@@ -15,6 +15,23 @@ export interface CardData {
   image_url: string;
   tone: "ai" | "it";
   url: string;
+  has_commentary: boolean;
+}
+
+export interface PredictionData {
+  claim: string;
+  horizon: string;
+  horizon_label: string;
+  basis: string;
+}
+
+export interface CommentaryData {
+  background: string;
+  significance: string;
+  outlook_bull: string;
+  outlook_bear: string;
+  opinion: string;
+  predictions: PredictionData[];
 }
 
 export interface SourceItemData {
@@ -26,6 +43,7 @@ export interface SourceItemData {
 
 export interface DetailData extends CardData {
   items: SourceItemData[];
+  commentary: CommentaryData | null;
 }
 
 export interface SiteData {

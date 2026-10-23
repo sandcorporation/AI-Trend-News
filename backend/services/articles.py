@@ -430,7 +430,9 @@ def discard_item(actor: Actor, item_id: int) -> Item:
 
 def _public() -> QuerySet[Article]:
     return (
-        Article.objects.filter(published=True).select_related("category").prefetch_related("tags")
+        Article.objects.filter(published=True)
+        .select_related("category", "commentary")
+        .prefetch_related("tags")
     )
 
 

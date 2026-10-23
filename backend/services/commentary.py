@@ -123,4 +123,8 @@ def public_commentary(article: Article) -> Commentary | None:
     """공개 화면용: 숨기지 않았고 기사가 게시 상태일 때만."""
     if not article.published:
         return None
-    return Commentary.objects.filter(article=article, hidden=False).first()
+    try:
+        found = article.commentary  # 공개 조회가 select_related로 이미 읽어 둔다
+    except Commentary.DoesNotExist:
+        return None
+    return None if found.hidden else found

@@ -31,13 +31,27 @@ function Thumb({
   );
 }
 
-function Meta({ card, chip = true }: { card: CardData; chip?: boolean }) {
+function Meta({
+  card,
+  chip = true,
+  badge = true,
+}: {
+  card: CardData;
+  chip?: boolean;
+  badge?: boolean;
+}) {
   return (
     <p className="meta">
       {chip && (
         <span className={`chip tone-${card.tone}`}>{card.category.name}</span>
       )}{" "}
       <time dateTime={card.published_at}>{card.published_label}</time>
+      {badge && card.has_commentary && (
+        <>
+          {" "}
+          <span className="badge-analysis">분석</span>
+        </>
+      )}
     </p>
   );
 }
@@ -173,7 +187,7 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
               <Thumb card={card} site={site} eager={i === 0} />
             </a>
             <div className="hero-text">
-              <Meta card={card} />
+              <Meta card={card} badge={false} />
               <h3>
                 <a href={card.url}>{card.title}</a>
               </h3>

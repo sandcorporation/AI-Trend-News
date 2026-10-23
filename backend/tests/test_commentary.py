@@ -3,7 +3,9 @@
 from typing import TypedDict
 
 import pytest
+from django.db import connection
 from django.test import Client
+from django.test.utils import CaptureQueriesContext
 
 from articles.models import Article, Commentary
 from mcpserver.jsontypes import JSON
@@ -11,7 +13,9 @@ from services import articles as article_service
 from services import commentary as svc
 from services.articles import Actor
 from tests.conftest import Signer
+from tests.test_home_layout import page_data
 from tests.test_mcp import McpClient, make_items
+from tests.test_public_site import make_article as make_public
 
 
 @pytest.fixture
@@ -143,7 +147,7 @@ def test_public_commentary_conditions_and_survival(mcp: McpClient) -> None:
     assert svc.public_commentary(obj) is not None
 
     Commentary.objects.update(hidden=True)
-    assert svc.public_commentary(obj) is None
+    assert svc.public_commentary(Article.objects.get()) is None
     Commentary.objects.update(hidden=False)
 
     obj.featured = False  # 추천이 풀려도 분석은 남고 게시 상태면 보인다
@@ -152,3 +156,102 @@ def test_public_commentary_conditions_and_survival(mcp: McpClient) -> None:
     obj.published = False
     obj.save()
     assert Commentary.objects.count() == 1 and svc.public_commentary(obj) is None
+
+
+# --- 화면(#51): 서버 HTML과 #page-data ---
+
+
+def _commentary_for(article: Article) -> Commentary:
+    return svc.upsert_commentary(
+        Actor.OWNER,
+        article.pk,
+        background="물가 둔화가 이어졌다.",
+        significance="대출 부담이 달라진다.",
+        outlook_bull="낙관 전제 문장",
+        outlook_bear="회의 전제 문장",
+        opinion="당분간 동결이다.",
+        predictions=[
+            svc.PredictionIn(claim="금리가 내린다", horizon="3m", basis="물가 둔화"),
+        ],
+    )
+
+
+@pytest.mark.django_db
+def test_article_page_shows_commentary_in_html_and_page_data(client: Client) -> None:
+    article = make_public("분석 있는 기사")
+    _commentary_for(article)
+    html = client.get(f"/a/{article.slug}").content.decode()
+
+    assert 'data-slot="commentary"' in html and "AI 분석" in html
+    assert (
+        "편집자 AI가 수집된 보도만을 근거로 쓴 분석입니다. 사실 확인은 출처를 참고하세요." in html
+    )
+    for text in ("물가 둔화가 이어졌다.", "낙관 전제 문장", "회의 전제 문장", "당분간 동결이다."):
+        assert text in html
+    assert "3개월 안" in html and "금리가 내린다" in html
+    assert html.index('class="summary"') < html.index('data-slot="commentary"')
+    assert html.index('data-slot="commentary"') < html.index('id="sources-h"')
+    data = page_data(html)
+    article_data = data["article"]
+    assert isinstance(article_data, dict)
+    commentary = article_data["commentary"]
+    assert isinstance(commentary, dict) and commentary["opinion"] == "당분간 동결이다."
+    assert commentary["predictions"] == [
+        {
+            "claim": "금리가 내린다",
+            "horizon": "3m",
+            "horizon_label": "3개월 안",
+            "basis": "물가 둔화",
+        }
+    ]
+
+
+@pytest.mark.django_db
+def test_article_page_without_or_hidden_commentary_has_no_block(client: Client) -> None:
+    plain = make_public("분석 없는 기사")
+    hidden = make_public("숨긴 기사")
+    _commentary_for(hidden)
+    Commentary.objects.update(hidden=True)
+
+    for article in (plain, hidden):
+        html = client.get(f"/a/{article.slug}").content.decode()
+        assert 'data-slot="commentary"' not in html
+        article_data = page_data(html)["article"]
+        assert isinstance(article_data, dict) and article_data["commentary"] is None
+        assert article_data["has_commentary"] is False
+
+
+@pytest.mark.django_db
+def test_home_cards_show_badge_only_with_public_commentary_and_query_budget(
+    client: Client,
+) -> None:
+    with_analysis = make_public("분석 기사")
+    hidden = make_public("숨긴 기사")
+    for n in range(4):
+        make_public(f"기사 {n}")
+    _commentary_for(with_analysis)
+    _commentary_for(hidden)
+    Commentary.objects.filter(article=hidden).update(hidden=True)
+
+    with CaptureQueriesContext(connection) as ctx:
+        html = client.get("/").content.decode()
+    assert len(ctx) <= 10, [q["sql"][:80] for q in ctx]
+    assert html.count('class="badge-analysis"') == 1
+    cards = page_data(html)["articles"]
+    assert isinstance(cards, list)
+    flags = {c["title"]: c["has_commentary"] for c in cards if isinstance(c, dict)}
+    assert flags["분석 기사"] is True and flags["숨긴 기사"] is False
+
+
+@pytest.mark.django_db
+def test_article_page_adds_at_most_one_query_for_commentary(client: Client) -> None:
+    plain = make_public("분석 없는 기사")
+    with_analysis = make_public("분석 있는 기사")
+    _commentary_for(with_analysis)
+
+    def count(article: Article) -> int:
+        with CaptureQueriesContext(connection) as ctx:
+            assert client.get(f"/a/{article.slug}").status_code == 200
+        return len(ctx)
+
+    assert count(with_analysis) <= count(plain) + 1

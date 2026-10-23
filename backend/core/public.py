@@ -27,6 +27,7 @@ from articles.models import Article
 from core.shell import INDEX, NOINDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
 from inquiries.models import Inquiry
 from services import articles as svc
+from services import commentary as commentary_svc
 from services import inquiries as inquiry_svc
 from services import outbound
 
@@ -79,6 +80,7 @@ class CardData(TypedDict):
     image_url: str
     tone: str
     url: str
+    has_commentary: bool
 
 
 class SourceItemData(TypedDict):
@@ -88,8 +90,25 @@ class SourceItemData(TypedDict):
     published_label: str
 
 
+class PredictionOut(TypedDict):
+    claim: str
+    horizon: str
+    horizon_label: str
+    basis: str
+
+
+class CommentaryOut(TypedDict):
+    background: str
+    significance: str
+    outlook_bull: str
+    outlook_bear: str
+    opinion: str
+    predictions: list[PredictionOut]
+
+
 class DetailData(CardData):
     items: list[SourceItemData]
+    commentary: CommentaryOut | None
 
 
 class SiteData(TypedDict):
@@ -189,6 +208,7 @@ def _card(article: Article) -> CardData:
         "image_url": article.image_url,
         "tone": _tone(article.category.name),
         "url": reverse("article", args=[article.slug]),
+        "has_commentary": commentary_svc.public_commentary(article) is not None,
     }
 
 
@@ -202,7 +222,34 @@ def _detail(article: Article) -> DetailData:
         }
         for link in article.article_items.all()
     ]
-    return {**_card(article), "published_label": _label(article.created_at), "items": items}
+    return {
+        **_card(article),
+        "published_label": _label(article.created_at),
+        "items": items,
+        "commentary": _commentary(article),
+    }
+
+
+def _commentary(article: Article) -> CommentaryOut | None:
+    found = commentary_svc.public_commentary(article)
+    if found is None:
+        return None
+    return {
+        "background": found.background,
+        "significance": found.significance,
+        "outlook_bull": found.outlook_bull,
+        "outlook_bear": found.outlook_bear,
+        "opinion": found.opinion,
+        "predictions": [
+            {
+                "claim": p["claim"],
+                "horizon": p["horizon"],
+                "horizon_label": f"{p['horizon'][:-1]}개월 안",
+                "basis": p["basis"],
+            }
+            for p in found.predictions
+        ],
+    }
 
 
 def _snippet(text: str, limit: int = 160) -> str:

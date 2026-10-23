@@ -54,6 +54,7 @@ const card: CardData = {
   image_url: "",
   tone: "ai",
   url: "/a/rate-freeze",
+  has_commentary: false,
 };
 
 test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 그린다", () => {
@@ -220,6 +221,7 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
     },
     article: {
       ...card,
+      commentary: null,
       items: [
         {
           source: "연합뉴스",
@@ -258,7 +260,7 @@ function articleData(): ArticlePageData {
       url: "https://news.sandcorp.co.kr/a/rate-freeze",
       x_url: "https://twitter.com/intent/tweet?x=1",
     },
-    article: { ...card, items: [] },
+    article: { ...card, items: [], commentary: null },
   };
 }
 
@@ -476,4 +478,52 @@ describe("히어로 캐러셀", () => {
     tick(20000);
     expect(label(container)).toBe("1 / 1");
   });
+});
+
+test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으면 블록이 없다", () => {
+  const data = articleData();
+  const { container, rerender } = render(<App data={data} />);
+  expect(container.querySelector('[data-slot="commentary"]')).toBeNull();
+
+  data.article.commentary = {
+    background: "배경 문장",
+    significance: "의미 문장",
+    outlook_bull: "낙관 문장",
+    outlook_bear: "회의 문장",
+    opinion: "의견 문장",
+    predictions: [
+      {
+        claim: "금리가 내린다",
+        horizon: "3m",
+        horizon_label: "3개월 안",
+        basis: "물가 둔화",
+      },
+    ],
+  };
+  rerender(<App data={{ ...data }} />);
+  const block = q(container, '[data-slot="commentary"]');
+  expect(block).toHaveTextContent("AI 분석");
+  expect(block).toHaveTextContent("수집된 보도만을 근거로 쓴 분석");
+  expect(q(block, ".outlook-bull")).toHaveTextContent("낙관 문장");
+  expect(q(block, ".outlook-bear")).toHaveTextContent("회의 문장");
+  expect(q(block, ".opinion")).toHaveTextContent("의견 문장");
+  expect(q(block, ".predictions")).toHaveTextContent("3개월 안");
+  expect(q(block, ".predictions")).toHaveTextContent("근거: 물가 둔화");
+  // 요약 아래, 출처 위
+  const html = container.innerHTML;
+  expect(html.indexOf('class="summary"')).toBeLessThan(html.indexOf("commentary"));
+  expect(html.indexOf("commentary")).toBeLessThan(html.indexOf('id="sources-h"'));
+
+  data.article.commentary = { ...data.article.commentary, predictions: [] };
+  rerender(<App data={{ ...data }} />);
+  expect(container.querySelector(".predictions")).toBeNull();
+});
+
+test("분석 배지는 메인 카드에만 있고 캐러셀 장에는 없다", () => {
+  const data = homeData();
+  data.featured = data.featured.map((f) => ({ ...f, has_commentary: true }));
+  data.articles = data.articles.map((f, i) => ({ ...f, has_commentary: i === 0 }));
+  const { container } = render(<App data={data} />);
+  expect(container.querySelector('[data-slot="hero"] .badge-analysis')).toBeNull();
+  expect(container.querySelectorAll(".card .badge-analysis")).toHaveLength(1);
 });
