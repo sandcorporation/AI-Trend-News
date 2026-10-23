@@ -33,7 +33,7 @@ from services import outbound
 from services import predictions as predictions_svc
 
 PAGE_SIZE = 12
-FEATURED_COUNT = 5
+FEATURED_COUNT = 6
 # Sandcorp links always go through the tracked inflow link (services/outbound.py); label lives here.
 SANDCORP_LABEL = "Sandcorp"
 CTA_TEXT = "뉴스 수집·요약·게시를 자동화한 이 사이트처럼, 반복 업무를 자동화하고 싶으신가요?"
