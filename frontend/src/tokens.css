@@ -18,7 +18,7 @@
   --color-paper: #f8fafc;
   --color-tint: #f1f4f8;
   --color-line: #dde3eb;
-  --color-line-strong: #b8c2cf;
+  --color-line-strong: #0b0d12;
   /* text */
   --color-ink: #0b0d12;
   --color-text: #1f2430;
@@ -58,7 +58,7 @@
     --color-paper: #12151c;
     --color-tint: #1a1f29;
     --color-line: #2a303c;
-    --color-line-strong: #3d4553;
+    --color-line-strong: #f3f5f8;
     --color-ink: #f3f5f8;
     --color-text: #d5dae2;
     --color-muted: #9aa3b0;
