@@ -86,7 +86,7 @@ def test_home_has_hero_sections_and_most_read_on_first_unfiltered_page(client: C
     assert sections[0]["more_url"].startswith("/?category=")
     most_read = data["most_read"]
     assert isinstance(most_read, list) and [c["title"] for c in most_read] == ["AI 기사 3"]
-    assert 'data-slot="hero"' in html and "많이 읽은 기사" in html and "더보기 →" in html
+    assert 'data-slot="hero"' in html and "많이 읽은 기사" in html and "더 보기 →" in html
 
 
 def test_hero_most_read_and_sections_are_omitted_when_filtered_or_paged(client: Client) -> None:
