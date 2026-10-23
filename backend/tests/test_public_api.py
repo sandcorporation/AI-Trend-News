@@ -2,12 +2,14 @@ import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from django.core.cache import cache
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 
-from articles.models import Article, Commentary
+from articles.models import Article, Commentary, Prediction
 from services import articles as svc
+from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
 
 pytestmark = pytest.mark.django_db
@@ -148,3 +150,90 @@ def test_feed_empty_and_capped(client: Client) -> None:
 
 def test_feed_not_in_sitemap(client: Client) -> None:
     assert "feed.xml" not in client.get("/sitemap.xml").content.decode()
+
+
+STATS = "/api/public/stats"
+NOW = datetime(2026, 10, 20, 12, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def clear_cache() -> None:
+    cache.clear()
+
+
+def make_predictions(verdicts: list[str], *, hidden: bool = False, published: bool = True) -> None:
+    article = make_article(f"전망 {len(verdicts)}{hidden}{published}", published=published)
+    com = Commentary.objects.create(
+        article=article, background="b", significance="s", outlook_bull="u", outlook_bear="d",
+        opinion="o", hidden=hidden,
+    )  # fmt: skip
+    for i, verdict in enumerate(verdicts):
+        Prediction.objects.create(
+            commentary=com, claim=f"c{i}", horizon="1m", basis="b",
+            due_date=NOW.date(), verdict=verdict,
+        )  # fmt: skip
+
+
+def test_stats_empty(client: Client, frozen_clock: FrozenClock) -> None:
+    frozen_clock.advance(0)
+    body = client.get(STATS).json()
+    assert body["articles_total"] == 0
+    assert body["articles_last_7d"] == 0
+    assert body["articles_per_day_7d"] == 0
+    assert body["published_since"] is None
+    assert body["editor_runs_per_day"] == 3
+    assert body["predictions"] == {"judged": 0, "hit_rate": None}
+    assert body["generated_at"].startswith("2026-01-01")
+
+
+def test_stats_counts_published_and_seven_day_boundary(
+    client: Client, frozen_clock: FrozenClock
+) -> None:
+    frozen_clock._now = NOW
+    inside = make_article("안")
+    edge = make_article("경계")
+    outside = make_article("밖")
+    make_article("비게시", published=False)
+    for art, hours in ((inside, 24), (edge, 7 * 24), (outside, 7 * 24 + 1)):
+        stamp(art, hours)
+    # stamp()는 기준이 NOW와 같다. 경계 정확히 7일 전은 포함, 1시간 더 이전은 제외.
+    body = client.get(STATS).json()
+    assert body["articles_total"] == 3
+    assert body["articles_last_7d"] == 2
+    assert body["articles_per_day_7d"] == 0.3
+    assert body["published_since"] == "2026-10-13"
+
+
+def test_stats_hit_rate_null_under_five_and_excludes_undecidable_hidden(
+    client: Client, frozen_clock: FrozenClock
+) -> None:
+    frozen_clock._now = NOW
+    make_predictions(["hit", "hit", "miss", "undecidable", "pending"])
+    body = client.get(STATS).json()
+    assert body["predictions"] == {"judged": 3, "hit_rate": None}
+    cache.clear()
+    make_predictions(["hit", "miss"])
+    make_predictions(["miss"] * 5, hidden=True)
+    make_predictions(["miss"] * 5, published=False)
+    body = client.get(STATS).json()
+    assert body["predictions"] == {"judged": 5, "hit_rate": 0.6}
+
+
+def test_stats_cache_header_no_cors_query_count_and_five_minute_cache(
+    client: Client, frozen_clock: FrozenClock
+) -> None:
+    frozen_clock._now = NOW
+    make_article("하나")
+    with CaptureQueriesContext(connection) as ctx:
+        res = client.get(STATS, HTTP_ORIGIN="https://e.com")
+    assert len(ctx) <= 3
+    assert res["Cache-Control"] == "public, max-age=300"
+    assert "Access-Control-Allow-Origin" not in res
+    assert res.json()["articles_total"] == 1
+    make_article("둘")
+    with CaptureQueriesContext(connection) as ctx:
+        again = client.get(STATS)
+    assert len(ctx) == 0
+    assert again.json()["articles_total"] == 1
+    frozen_clock.advance(300)
+    assert client.get(STATS).json()["articles_total"] == 2
