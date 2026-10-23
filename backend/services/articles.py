@@ -52,7 +52,7 @@ class InvalidArticleSlug(ArticleError):
     pass
 
 
-class CategoryInUse(ArticleError):
+class CategoryHasArticles(ArticleError):
     pass
 
 
@@ -217,16 +217,25 @@ def record_slug_change(category: Category, new_slug: str) -> None:
     category.slug = new_slug
 
 
-def delete_category(slug: str) -> None:
-    """기사가 하나라도 있으면 지우지 않는다."""
+@transaction.atomic
+def delete_category(slug: str, *, confirm: bool = False) -> int:
+    """분야를 지운다. 기사가 있으면 confirm=True일 때만 기사도 함께 지우고 지운 기사 수를 돌려준다.
+
+    기사에서 풀린 수집물은 남기되 버림으로 바꾼다(편집자가 같은 수집물로 다시 묶지 않게).
+    """
     category = get_category(slug)
     count = category.articles.count()
-    if count:
-        raise CategoryInUse(
-            f"분야 「{category.name}」에는 기사 {count}건이 있어 지울 수 없습니다. "
-            "기사를 다른 분야로 옮긴 뒤 지우세요."
+    if count and not confirm:
+        raise CategoryHasArticles(
+            f"분야 「{category.name}」에는 기사 {count}건이 있습니다. "
+            f"confirm=true로 다시 부르면 기사 {count}건도 함께 지웁니다."
         )
+    item_ids = list(
+        ArticleItem.objects.filter(article__category=category).values_list("item_id", flat=True)
+    )
     category.delete()
+    Item.objects.filter(pk__in=item_ids).update(status=Item.Status.DISCARDED)
+    return count
 
 
 @transaction.atomic

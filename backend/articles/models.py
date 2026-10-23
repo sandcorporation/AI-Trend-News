@@ -93,7 +93,7 @@ class Article(models.Model):
         help_text="/a/ 주소(라틴 소문자·숫자·하이픈). 비우면 자동. 바꾸면 옛 주소 301.",
     )
     category = models.ForeignKey(
-        Category, on_delete=models.PROTECT, related_name="articles", verbose_name="분야"
+        Category, on_delete=models.CASCADE, related_name="articles", verbose_name="분야"
     )
     tags = models.ManyToManyField(Tag, blank=True, related_name="articles", verbose_name="태그")
     published = models.BooleanField("게시", default=False)
