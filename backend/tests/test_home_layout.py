@@ -132,3 +132,21 @@ def test_home_runs_at_most_ten_queries(client: Client) -> None:
         assert client.get("/").status_code == 200
 
     assert len(ctx) <= 10, [q["sql"][:80] for q in ctx]
+
+
+def test_hero_carries_up_to_five_featured_slides_with_only_the_first_visible(
+    client: Client,
+) -> None:
+    for n in range(7):
+        age(make_article(f"추천 {n}", category="AI", featured=True), timedelta(hours=n + 1))
+
+    html = client.get("/").content.decode()
+    data = page_data(html)
+
+    featured = data["featured"]
+    assert isinstance(featured, list) and len(featured) == 5
+    hero = html.split('id="hero-h"')[1].split("</section>")[0]
+    assert hero.count('role="group"') == 5
+    assert 'aria-label="1 / 5"' in hero and 'aria-label="5 / 5"' in hero
+    assert hero.count('aria-hidden="true" inert') == 4
+    assert hero.count("추천 0") >= 1 and "추천 5" not in hero

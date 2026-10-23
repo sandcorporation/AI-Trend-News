@@ -1,13 +1,15 @@
-<section class="home-hero" data-slot="hero" aria-labelledby="hero-h">
+<section class="home-hero" data-slot="hero" aria-labelledby="hero-h" aria-roledescription="carousel">
   <h2 id="hero-h" class="sr-only">추천</h2>
+  <div class="hero-track">
   {% for card in data.featured %}
-  <article class="hero-card {% if forloop.first %}hero-main{% else %}hero-side{% endif %}">
+  <article class="hero-card hero-main hero-slide{% if forloop.first %} is-active{% endif %}" role="group" aria-roledescription="slide" aria-label="{{ forloop.counter }} / {{ data.featured|length }}"{% if not forloop.first %} aria-hidden="true" inert{% endif %}>
     <a class="hero-thumb" href="{{ card.url }}" tabindex="-1" aria-hidden="true">{% if forloop.first %}{% include "core/public/_thumb.html" with eager=True %}{% else %}{% include "core/public/_thumb.html" %}{% endif %}</a>
     <div class="hero-text">
       <p class="meta"><span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> <time datetime="{{ card.published_at }}">{{ card.published_label }}</time></p>
       <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
-      {% if forloop.first %}<p class="summary">{{ card.summary }}</p>{% endif %}
+      <p class="summary">{{ card.summary }}</p>
     </div>
   </article>
   {% endfor %}
+  </div>
 </section>

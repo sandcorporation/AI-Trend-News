@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import type { ArticlePageData, CardData, HomeData } from "./types";
 import { readPageData } from "./pageData";
@@ -118,7 +118,11 @@ function homeData(): HomeData {
       { name: "IT", slug: "it" },
     ],
     category: "",
-    featured: [c(1, { image_url: "https://img.example.com/1.png" }), c(2), c(3)],
+    featured: [
+      c(1, { image_url: "https://img.example.com/1.png" }),
+      c(2),
+      c(3),
+    ],
     articles: [c(4), c(5)],
     sections: [
       {
@@ -149,7 +153,9 @@ test("메인 첫 쪽은 히어로·최신 그리드·분야 섹션·사이드바
   expect(heroImg).toHaveAttribute("loading", "eager");
 
   expect(container.querySelectorAll(".grid .card")).toHaveLength(2);
-  expect(container.querySelectorAll(".grid time")[0]).toHaveTextContent("4시간 전");
+  expect(container.querySelectorAll(".grid time")[0]).toHaveTextContent(
+    "4시간 전",
+  );
 
   const more = screen.getAllByRole("link", { name: "더보기 →" });
   expect(more.map((l) => l.getAttribute("href"))).toEqual([
@@ -164,10 +170,9 @@ test("메인 첫 쪽은 히어로·최신 그리드·분야 섹션·사이드바
     screen.getByRole("heading", { name: "많이 읽은 기사" }),
   ).toBeInTheDocument();
   expect(container.querySelectorAll(".ranked li")).toHaveLength(2);
-  expect(screen.getByRole("link", { name: "Sandcorp 알아보기" })).toHaveAttribute(
-    "href",
-    "/go/sandcorp?from=sidebar",
-  );
+  expect(
+    screen.getByRole("link", { name: "Sandcorp 알아보기" }),
+  ).toHaveAttribute("href", "/go/sandcorp?from=sidebar");
   expect(screen.getByRole("link", { name: "문의하기" })).toHaveAttribute(
     "href",
     "/contact",
@@ -181,7 +186,9 @@ test("히어로·섹션·많이 읽은 기사가 비면 그 블록을 그리지 
   expect(container.querySelector('[data-slot="hero"]')).toBeNull();
   expect(container.querySelector(".cat-section")).toBeNull();
   expect(screen.queryByText("많이 읽은 기사")).toBeNull();
-  expect(screen.getByRole("link", { name: "Sandcorp 알아보기" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "Sandcorp 알아보기" }),
+  ).toBeInTheDocument();
 });
 
 test("이미지가 깨지면 이미지를 빼고 분야 색 모노그램 자리를 남긴다", () => {
@@ -191,7 +198,9 @@ test("이미지가 깨지면 이미지를 빼고 분야 색 모노그램 자리�
   fireEvent.error(img);
 
   expect(container.querySelector('[data-slot="hero"] img')).toBeNull();
-  expect(container.querySelector('[data-slot="hero"] .thumb.tone-ai')).toHaveTextContent("AT");
+  expect(
+    container.querySelector('[data-slot="hero"] .thumb.tone-ai'),
+  ).toHaveTextContent("AT");
 });
 
 test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크를 그린다", () => {
@@ -343,4 +352,128 @@ test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확�
     />,
   );
   expect(screen.getByText(/접수했습니다/)).toBeInTheDocument();
+});
+
+describe("히어로 캐러셀", () => {
+  const active = (c: HTMLElement) =>
+    q(c, '[data-slot="hero"] .hero-slide.is-active');
+  const label = (c: HTMLElement) => active(c).getAttribute("aria-label");
+  const tick = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  test("접근성 속성: 캐러셀 영역·장 라벨·숨긴 장 aria-hidden+inert", () => {
+    const { container } = render(<App data={homeData()} />);
+    const hero = q(container, '[data-slot="hero"]');
+    expect(hero).toHaveAttribute("aria-roledescription", "carousel");
+    const slides = hero.querySelectorAll(".hero-slide");
+    expect([...slides].map((e) => e.getAttribute("aria-label"))).toEqual([
+      "1 / 3",
+      "2 / 3",
+      "3 / 3",
+    ]);
+    expect(slides[0]).not.toHaveAttribute("aria-hidden");
+    expect(slides[1]).toHaveAttribute("aria-hidden", "true");
+    expect(slides[1]).toHaveAttribute("inert");
+  });
+
+  test("5초마다 다음 장으로 넘어가고 끝에서 처음으로 돈다", () => {
+    const { container } = render(<App data={homeData()} />);
+    expect(label(container)).toBe("1 / 3");
+    tick(4999);
+    expect(label(container)).toBe("1 / 3");
+    tick(1);
+    expect(label(container)).toBe("2 / 3");
+    tick(10000);
+    expect(label(container)).toBe("1 / 3");
+  });
+
+  test("마우스 호버 중에는 멈추고 벗어나면 다시 간다", () => {
+    const { container } = render(<App data={homeData()} />);
+    const hero = q(container, '[data-slot="hero"]');
+    fireEvent.mouseEnter(hero);
+    tick(20000);
+    expect(label(container)).toBe("1 / 3");
+    fireEvent.mouseLeave(hero);
+    tick(5000);
+    expect(label(container)).toBe("2 / 3");
+  });
+
+  test("일시정지 버튼은 자동 넘김을 끄고 다시 켠다", () => {
+    const { container } = render(<App data={homeData()} />);
+    fireEvent.click(screen.getByRole("button", { name: "자동 넘김 일시정지" }));
+    tick(20000);
+    expect(label(container)).toBe("1 / 3");
+    fireEvent.click(screen.getByRole("button", { name: "자동 넘김 재생" }));
+    tick(5000);
+    expect(label(container)).toBe("2 / 3");
+  });
+
+  test("탭이 숨겨지면 멈춘다", () => {
+    const { container } = render(<App data={homeData()} />);
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: true,
+    });
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    tick(20000);
+    expect(label(container)).toBe("1 / 3");
+    Object.defineProperty(document, "hidden", {
+      configurable: true,
+      value: false,
+    });
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    tick(5000);
+    expect(label(container)).toBe("2 / 3");
+  });
+
+  test("reduced-motion이면 자동 넘김이 없고 수동 이동은 된다", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("reduce"),
+      media: query,
+    }));
+    const { container } = render(<App data={homeData()} />);
+    tick(30000);
+    expect(label(container)).toBe("1 / 3");
+    expect(screen.queryByRole("button", { name: /자동 넘김/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "다음 장" }));
+    expect(label(container)).toBe("2 / 3");
+  });
+
+  test("점·화살표·키보드·스와이프로 이동하고, 이동하면 5초를 다시 센다", () => {
+    const { container } = render(<App data={homeData()} />);
+    const hero = q(container, '[data-slot="hero"]');
+    tick(4000);
+    fireEvent.click(screen.getByRole("button", { name: "3번째 장으로" }));
+    expect(label(container)).toBe("3 / 3");
+    expect(
+      screen.getByRole("button", { name: "3번째 장으로" }),
+    ).toHaveAttribute("aria-current", "true");
+    tick(4000);
+    expect(label(container)).toBe("3 / 3");
+    fireEvent.click(screen.getByRole("button", { name: "다음 장" }));
+    expect(label(container)).toBe("1 / 3");
+    fireEvent.click(screen.getByRole("button", { name: "이전 장" }));
+    expect(label(container)).toBe("3 / 3");
+    fireEvent.keyDown(hero, { key: "ArrowRight" });
+    expect(label(container)).toBe("1 / 3");
+    fireEvent.keyDown(hero, { key: "ArrowLeft" });
+    expect(label(container)).toBe("3 / 3");
+    fireEvent.touchStart(hero, { touches: [{ clientX: 200 }] });
+    fireEvent.touchEnd(hero, { changedTouches: [{ clientX: 100 }] });
+    expect(label(container)).toBe("1 / 3");
+  });
+
+  test("추천이 1건이면 점·화살표 없이 정적이다", () => {
+    const data = { ...homeData(), featured: homeData().featured.slice(0, 1) };
+    const { container } = render(<App data={data} />);
+    expect(container.querySelector(".hero-dot")).toBeNull();
+    expect(screen.queryByRole("button", { name: "다음 장" })).toBeNull();
+    tick(20000);
+    expect(label(container)).toBe("1 / 1");
+  });
 });

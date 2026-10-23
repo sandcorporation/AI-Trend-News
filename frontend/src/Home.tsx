@@ -1,9 +1,17 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Layout } from "./Layout";
 import type { CardData, HomeData, SectionData, SiteData } from "./types";
 
 /** Image with a tone-coloured monogram behind it; a broken image just disappears. */
-function Thumb({ card, site, eager }: { card: CardData; site: SiteData; eager?: boolean }) {
+function Thumb({
+  card,
+  site,
+  eager,
+}: {
+  card: CardData;
+  site: SiteData;
+  eager?: boolean;
+}) {
   const [broken, setBroken] = useState(false);
   return (
     <div className={`thumb tone-${card.tone}`} data-monogram={site.monogram}>
@@ -26,7 +34,9 @@ function Thumb({ card, site, eager }: { card: CardData; site: SiteData; eager?: 
 function Meta({ card, chip = true }: { card: CardData; chip?: boolean }) {
   return (
     <p className="meta">
-      {chip && <span className={`chip tone-${card.tone}`}>{card.category.name}</span>}{" "}
+      {chip && (
+        <span className={`chip tone-${card.tone}`}>{card.category.name}</span>
+      )}{" "}
       <time dateTime={card.published_at}>{card.published_label}</time>
     </p>
   );
@@ -35,7 +45,12 @@ function Meta({ card, chip = true }: { card: CardData; chip?: boolean }) {
 export function Card({ card, site }: { card: CardData; site: SiteData }) {
   return (
     <article className="card">
-      <a className="card-thumb" href={card.url} tabIndex={-1} aria-hidden="true">
+      <a
+        className="card-thumb"
+        href={card.url}
+        tabIndex={-1}
+        aria-hidden="true"
+      >
         <Thumb card={card} site={site} />
       </a>
       <div className="card-body">
@@ -48,26 +63,171 @@ export function Card({ card, site }: { card: CardData; site: SiteData }) {
   );
 }
 
+const HERO_INTERVAL_MS = 5000;
+const SWIPE_PX = 40;
+
+/** matchMedia is missing in jsdom and some old webviews; treat that as "no preference". */
+function prefersReducedMotion(): boolean {
+  try {
+    return (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  } catch {
+    return false;
+  }
+}
+
 function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
+  const total = cards.length;
+  const multi = total > 1;
+  const [index, setIndex] = useState(0);
+  const [reduced] = useState(prefersReducedMotion);
+  const [userPaused, setUserPaused] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [touching, setTouching] = useState(false);
+  const [tabHidden, setTabHidden] = useState(
+    () => typeof document !== "undefined" && document.hidden,
+  );
+  const touchX = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onVisibility = () => setTabHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  const auto =
+    multi &&
+    !reduced &&
+    !userPaused &&
+    !hovering &&
+    !focused &&
+    !touching &&
+    !tabHidden;
+  // Re-arming on every index change restarts the 5s count after a manual move.
+  useEffect(() => {
+    if (!auto) return;
+    const id = window.setInterval(
+      () => setIndex((i) => (i + 1) % total),
+      HERO_INTERVAL_MS,
+    );
+    return () => window.clearInterval(id);
+  }, [auto, index, total]);
+
+  const go = (to: number) => setIndex(((to % total) + total) % total);
+
   return (
-    <section className="home-hero" data-slot="hero" aria-labelledby="hero-h">
+    <section
+      className="home-hero"
+      data-slot="hero"
+      aria-labelledby="hero-h"
+      aria-roledescription="carousel"
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          setFocused(false);
+      }}
+      onKeyDown={(e) => {
+        if (!multi) return;
+        if (e.key === "ArrowLeft") go(index - 1);
+        else if (e.key === "ArrowRight") go(index + 1);
+      }}
+      onTouchStart={(e) => {
+        setTouching(true);
+        touchX.current = e.touches[0]?.clientX ?? null;
+      }}
+      onTouchEnd={(e) => {
+        setTouching(false);
+        const start = touchX.current;
+        touchX.current = null;
+        const end = e.changedTouches[0]?.clientX;
+        if (!multi || start === null || end === undefined) return;
+        if (end - start <= -SWIPE_PX) go(index + 1);
+        else if (end - start >= SWIPE_PX) go(index - 1);
+      }}
+    >
       <h2 id="hero-h" className="sr-only">
         추천
       </h2>
-      {cards.map((card, i) => (
-        <article key={card.slug} className={`hero-card ${i === 0 ? "hero-main" : "hero-side"}`}>
-          <a className="hero-thumb" href={card.url} tabIndex={-1} aria-hidden="true">
-            <Thumb card={card} site={site} eager={i === 0} />
-          </a>
-          <div className="hero-text">
-            <Meta card={card} />
-            <h3>
-              <a href={card.url}>{card.title}</a>
-            </h3>
-            {i === 0 && <p className="summary">{card.summary}</p>}
+      <div className="hero-track" aria-live={auto ? "off" : "polite"}>
+        {cards.map((card, i) => (
+          <article
+            key={card.slug}
+            className={`hero-card hero-main hero-slide${i === index ? " is-active" : ""}`}
+            role="group"
+            aria-roledescription="slide"
+            aria-label={`${i + 1} / ${total}`}
+            aria-hidden={i === index ? undefined : true}
+            inert={i !== index}
+          >
+            <a
+              className="hero-thumb"
+              href={card.url}
+              tabIndex={-1}
+              aria-hidden="true"
+            >
+              <Thumb card={card} site={site} eager={i === 0} />
+            </a>
+            <div className="hero-text">
+              <Meta card={card} />
+              <h3>
+                <a href={card.url}>{card.title}</a>
+              </h3>
+              <p className="summary">{card.summary}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      {multi && (
+        <div className="hero-controls">
+          <button
+            type="button"
+            className="hero-arrow hero-prev"
+            aria-label="이전 장"
+            onClick={() => go(index - 1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className="hero-arrow hero-next"
+            aria-label="다음 장"
+            onClick={() => go(index + 1)}
+          >
+            ›
+          </button>
+          <div className="hero-bar">
+            {!reduced && (
+              <button
+                type="button"
+                className="hero-pause"
+                aria-label={
+                  userPaused ? "자동 넘김 재생" : "자동 넘김 일시정지"
+                }
+                onClick={() => setUserPaused((p) => !p)}
+              >
+                {userPaused ? "▶" : "❚❚"}
+              </button>
+            )}
+            <div className="hero-dots">
+              {cards.map((card, i) => (
+                <button
+                  key={card.slug}
+                  type="button"
+                  className={`hero-dot${i === index ? " is-active" : ""}`}
+                  aria-label={`${i + 1}번째 장으로`}
+                  aria-current={i === index ? "true" : undefined}
+                  onClick={() => go(i)}
+                />
+              ))}
+            </div>
           </div>
-        </article>
-      ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -89,7 +249,12 @@ function Section({ section, site }: { section: SectionData; site: SiteData }) {
       <div className="section-body">
         {first && (
           <article className="card card-feature">
-            <a className="card-thumb" href={first.url} tabIndex={-1} aria-hidden="true">
+            <a
+              className="card-thumb"
+              href={first.url}
+              tabIndex={-1}
+              aria-hidden="true"
+            >
               <Thumb card={first} site={site} />
             </a>
             <div className="card-body">
@@ -171,11 +336,15 @@ export function Home({ data }: { data: HomeData }) {
       </nav>
       <div className="layout">
         <div className="primary">
-          {data.featured.length > 0 && <Hero cards={data.featured} site={site} />}
+          {data.featured.length > 0 && (
+            <Hero cards={data.featured} site={site} />
+          )}
           <section aria-labelledby="latest-h">
             <h2 id="latest-h">최신 기사</h2>
             <div className="grid">
-              {data.articles.length === 0 && <p className="empty">아직 게시된 기사가 없습니다.</p>}
+              {data.articles.length === 0 && (
+                <p className="empty">아직 게시된 기사가 없습니다.</p>
+              )}
               {data.articles.map((card) => (
                 <Card key={card.slug} card={card} site={site} />
               ))}
@@ -199,7 +368,11 @@ export function Home({ data }: { data: HomeData }) {
             </nav>
           )}
           {data.sections.map((section) => (
-            <Section key={section.category.slug} section={section} site={site} />
+            <Section
+              key={section.category.slug}
+              section={section}
+              site={site}
+            />
           ))}
         </div>
         <Sidebar data={data} />
