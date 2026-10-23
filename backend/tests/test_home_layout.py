@@ -134,7 +134,7 @@ def test_home_runs_at_most_eleven_queries(client: Client) -> None:
     assert len(ctx) <= 11, [q["sql"][:80] for q in ctx]
 
 
-def test_hero_carries_up_to_five_featured_slides_with_only_the_first_visible(
+def test_hero_carries_up_to_six_featured_slides_with_only_the_first_visible(
     client: Client,
 ) -> None:
     for n in range(7):
@@ -144,9 +144,9 @@ def test_hero_carries_up_to_five_featured_slides_with_only_the_first_visible(
     data = page_data(html)
 
     featured = data["featured"]
-    assert isinstance(featured, list) and len(featured) == 5
+    assert isinstance(featured, list) and len(featured) == 6
     hero = html.split('id="hero-h"')[1].split("</section>")[0]
-    assert hero.count('role="group"') == 5
-    assert 'aria-label="1 / 5"' in hero and 'aria-label="5 / 5"' in hero
-    assert hero.count('aria-hidden="true" inert') == 4
-    assert hero.count("추천 0") >= 1 and "추천 5" not in hero
+    assert hero.count('role="group"') == 6
+    assert 'aria-label="1 / 6"' in hero and 'aria-label="6 / 6"' in hero
+    assert hero.count('aria-hidden="true" inert') == 5
+    assert hero.count("추천 0") >= 1 and "추천 6" not in hero
