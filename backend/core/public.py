@@ -7,6 +7,7 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 from collections.abc import Iterable
 from dataclasses import replace
 from datetime import date, datetime
+from email.utils import format_datetime
 from typing import TypedDict
 from urllib.parse import urlencode
 
@@ -636,6 +637,36 @@ def sitemap(request: HttpRequest) -> HttpResponse:
     urls += [(loc(reverse("article", args=[a.slug])), a.updated_at) for a in svc.public_sitemap()]
     xml = render_to_string("core/public/sitemap.xml", {"urls": urls})
     return HttpResponse(xml, content_type="application/xml; charset=utf-8")
+
+
+def feed(request: HttpRequest) -> HttpResponse:
+    """RSS 2.0 최근 30건(#73). 이미지는 enclosure 대신 media:content."""
+    found = svc.public_recent(30)
+    rows = [
+        {
+            "title": a.title,
+            "link": request.build_absolute_uri(reverse("article", args=[a.slug])),
+            "summary": _snippet(a.summary),
+            "pub_date": format_datetime(timezone.localtime(a.published_at)),
+            "category": a.category.name,
+            "image_url": a.image_url,
+        }
+        for a in found
+    ]
+    xml = render_to_string(
+        "core/public/feed.xml",
+        {
+            "site_name": SITE_NAME,
+            "description": SITE_DESCRIPTION,
+            "site_url": request.build_absolute_uri("/"),
+            "feed_url": request.build_absolute_uri("/feed.xml"),
+            "last_build": rows[0]["pub_date"] if rows else "",
+            "rows": rows,
+        },
+    )
+    response = HttpResponse(xml, content_type="application/rss+xml; charset=utf-8")
+    response["Cache-Control"] = "public, max-age=300"
+    return response
 
 
 def robots(request: HttpRequest) -> HttpResponse:

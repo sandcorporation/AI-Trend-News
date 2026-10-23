@@ -24,5 +24,6 @@ urlpatterns = [
     path("predictions", public.predictions_page, name="predictions"),
     path("go/sandcorp", public.go_sandcorp, name="go_sandcorp"),
     path("sitemap.xml", public.sitemap),
+    path("feed.xml", public.feed),
     path("robots.txt", public.robots),
 ]

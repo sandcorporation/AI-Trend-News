@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>{{ site_name }}</title>
+  <link>{{ site_url }}</link>
+  <description>{{ description }}</description>
+  <language>ko</language>
+  <atom:link href="{{ feed_url }}" rel="self" type="application/rss+xml"/>
+{% if last_build %}  <lastBuildDate>{{ last_build }}</lastBuildDate>
+{% endif %}{% for r in rows %}  <item>
+    <title>{{ r.title }}</title>
+    <link>{{ r.link }}</link>
+    <description>{{ r.summary }}</description>
+    <pubDate>{{ r.pub_date }}</pubDate>
+    <guid isPermaLink="true">{{ r.link }}</guid>
+    <category>{{ r.category }}</category>
+{% if r.image_url %}    <media:content url="{{ r.image_url }}" medium="image"/>
+{% endif %}  </item>
+{% endfor %}</channel>
+</rss>
