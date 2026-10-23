@@ -7,6 +7,7 @@ from django.urls import reverse
 from articles.models import Article
 from mcpserver.jsontypes import JSON
 from posts.models import Post
+from services import articles as article_service
 from services import posts as svc
 from services.articles import Actor
 from tests.conftest import Signer
@@ -19,7 +20,7 @@ def mcp(client: Client, token_signer: Signer) -> McpClient:
 
 
 def featured_article(mcp: McpClient, **flags: bool) -> dict[str, JSON]:
-    category = mcp.ok("add_category", {"name": "IT"})["slug"]
+    category = article_service.add_category("IT").slug
     item = make_items(1)[0]
     return mcp.ok(
         "create_article",

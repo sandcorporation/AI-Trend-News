@@ -21,7 +21,7 @@ export function Layout({
       </header>
       <main className="main">{children}</main>
       <footer className="site-footer">
-        <p>{site.name} - 여러 분야의 뉴스를 한국어로 골라 요약합니다.</p>
+        <p>{site.name} - AI와 IT 뉴스를 한국어로 골라 요약합니다.</p>
         <p>
           <a href={site.contact_url}>{site.contact_label}</a> ·{" "}
           <a href={site.footer_url}>{site.sandcorp_label}</a>
