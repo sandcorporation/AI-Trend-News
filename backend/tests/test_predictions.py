@@ -1,10 +1,11 @@
 """전망 기록표(#52): 동기화, 평가(API·MCP), 적중률, 경보."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.core.management import call_command
 from django.test import Client
+from django.utils import timezone
 
 from adapters.discord import FakeNotifier
 from articles.models import Commentary, Prediction
@@ -53,9 +54,25 @@ def test_upsert_creates_rows_with_due_date() -> None:
     write(featured_article_id(), ("금리가 내린다", "6m"), ("환율이 오른다", "1m"))
     rows = {r.claim: r for r in Prediction.objects.all()}
     assert set(rows) == {"금리가 내린다", "환율이 오른다"}
-    created = Commentary.objects.get().created_at.date()
+    created = timezone.localtime(Commentary.objects.get().created_at).date()  # KST 날짜
     assert rows["환율이 오른다"].due_date == svc.due_date_for(created, "1m")
     assert all(r.verdict == "pending" for r in rows.values())
+
+
+@pytest.mark.parametrize(
+    ("created_utc", "expected"),
+    [
+        (datetime(2026, 10, 23, 15, 30, tzinfo=UTC), date(2026, 11, 24)),  # KST 10-24 00:30
+        (datetime(2026, 10, 23, 14, 30, tzinfo=UTC), date(2026, 11, 23)),  # KST 10-23 23:30
+    ],
+)
+def test_due_date_uses_kst_calendar_day(created_utc: datetime, expected: date) -> None:
+    commentary = write(featured_article_id(), ("환율이 오른다", "1m"))
+    Commentary.objects.filter(pk=commentary.pk).update(created_at=created_utc)
+    commentary.refresh_from_db()
+    Prediction.objects.all().delete()
+    svc.sync_predictions(commentary)
+    assert Prediction.objects.get().due_date == expected
 
 
 def test_rewrite_replaces_pending_but_keeps_judged_rows(frozen_clock: FrozenClock) -> None:
