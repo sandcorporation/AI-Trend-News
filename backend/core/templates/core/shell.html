@@ -42,6 +42,7 @@
   </script>{% endif %}
   {% for src in assets.scripts %}<script type="module" src="{{ src }}"></script>
   {% endfor %}
+  {% if metrics_snippet_url %}<script defer src="{{ metrics_snippet_url }}" data-site="{{ metrics_site_key }}"></script>{% endif %}
 </head>
 <body>
   <div id="root">{{ body|safe }}</div>

@@ -99,6 +99,9 @@ USE_TZ = True
 SITE_URL = env("SITE_URL", "https://news.sandcorp.co.kr").rstrip("/")
 # twitter:site 값(예: @foresight). 비면 태그를 내지 않는다.
 SITE_TWITTER = env("SITE_TWITTER", "").strip()
+# 방문 메트릭 스니펫(#76). URL이 비면 <script>를 내지 않는다. 공개 셸 head에만 붙는다.
+METRICS_SNIPPET_URL = env("METRICS_SNIPPET_URL", "").strip()
+METRICS_SITE_KEY = env("METRICS_SITE_KEY", "foresight").strip()
 # Django admin lives on a hard-to-guess path; the default /admin/ is never served (404).
 _admin_path = env("DJANGO_ADMIN_PATH").strip("/")
 if not _admin_path or _admin_path == "admin":
