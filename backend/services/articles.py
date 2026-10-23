@@ -4,13 +4,14 @@
 메시지가 구체적이라 MCP가 그대로 돌려줄 수 있다.
 """
 
+import logging
 import secrets
 from collections.abc import Iterable
 from datetime import datetime, timedelta
 from enum import Enum
 
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import F, Q, QuerySet, Sum
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -20,11 +21,13 @@ from articles.models import (
     Article,
     ArticleItem,
     ArticleSlugAlias,
+    ArticleView,
     Category,
     CategorySlugAlias,
     Tag,
 )
 from collection.models import Item
+from services.outbound import is_bot
 
 
 class Actor(Enum):
@@ -460,3 +463,31 @@ def public_sitemap() -> QuerySet[Article]:
 def public_categories() -> list[Category]:
     """탭으로 보일 분야(order 순). 게시된 기사가 없는 분야도 포함한다."""
     return list_categories()
+
+
+logger = logging.getLogger(__name__)
+
+
+def record_view(article: Article, user_agent: str) -> None:
+    """게시된 기사의 오늘(Asia/Seoul) 조회 수를 1 올린다. 봇은 제외, 실패는 삼킨다."""
+    if not article.published or is_bot(user_agent):
+        return
+    try:
+        view, _ = ArticleView.objects.get_or_create(article=article, date=timezone.localdate())
+        ArticleView.objects.filter(pk=view.pk).update(count=F("count") + 1)
+    except Exception:  # 기록이 페이지를 막으면 안 된다
+        logger.exception("article view not recorded")
+
+
+def public_most_read(days: int = 7, limit: int = 5, category: str = "") -> list[Article]:
+    """최근 days일(오늘 포함) 조회 합계 내림차순, 동률은 최신순. 조회 없는 기사는 뺀다."""
+    since = timezone.localdate() - timedelta(days=days - 1)
+    qs = (
+        _public()
+        .annotate(read_count=Sum("views__count", filter=Q(views__date__gte=since)))
+        .filter(read_count__gt=0)
+        .order_by("-read_count", "-created_at", "-id")
+    )
+    if category:
+        qs = qs.filter(category__slug=category)
+    return list(qs[:limit])
