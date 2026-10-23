@@ -4,10 +4,12 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 #root (templates/core/public/*.html) so crawlers and link previews see the text without running JS.
 """
 
+from dataclasses import replace
 from datetime import date, datetime
 from typing import TypedDict
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.core.paginator import Paginator
 from django.http import (
     Http404,
@@ -17,6 +19,7 @@ from django.http import (
     HttpResponseRedirect,
 )
 from django.template.loader import render_to_string
+from django.templatetags.static import static
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateformat import format as date_format
@@ -321,6 +324,54 @@ def _snippet(text: str, limit: int = 160) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1] + "…"
 
 
+def _iso(value: datetime) -> str:
+    return timezone.localtime(value).isoformat(timespec="seconds")
+
+
+def _logo_url() -> str:
+    return settings.SITE_URL + static("core/favicon.svg")
+
+
+def _page_ld(kind: str, name: str, url: str, description: str) -> dict[str, object]:
+    return {
+        "@context": "https://schema.org",
+        "@type": kind,
+        "name": name,
+        "url": url,
+        "description": description,
+        "inLanguage": "ko",
+    }
+
+
+def _article_ld(article: Article, canonical: str, image: str) -> dict[str, object]:
+    publisher: dict[str, object] = {
+        "@type": "Organization",
+        "name": SITE_NAME,
+        "url": settings.SITE_URL,
+        "logo": {"@type": "ImageObject", "url": _logo_url()},
+    }
+    ld: dict[str, object] = {
+        "@context": "https://schema.org",
+        "@type": "NewsArticle",
+        "headline": article.title,
+        "description": _snippet(article.summary) or SITE_DESCRIPTION,
+        "url": canonical,
+        "mainEntityOfPage": canonical,
+        "inLanguage": "ko",
+        "datePublished": _iso(article.published_at),
+        "dateModified": _iso(article.updated_at),
+        "articleSection": article.category.name,
+        "author": {"@type": "Organization", "name": SITE_NAME, "url": settings.SITE_URL},
+        "publisher": publisher,
+    }
+    if image:
+        ld["image"] = [image]
+    tags = [t.name for t in article.tags.all()]
+    if tags:
+        ld["keywords"] = ", ".join(tags)
+    return ld
+
+
 def _shell(
     request: HttpRequest,
     meta: PageMeta,
@@ -388,7 +439,20 @@ def home(request: HttpRequest) -> HttpResponse:
         query += f"?category={category}"
     if page_number > 1:
         query += f"{'&' if query else '?'}page={page_number}"
-    meta = PageMeta(title=title, description=SITE_DESCRIPTION, robots=INDEX)
+    json_ld: tuple[dict[str, object], ...] = ()
+    if not category and page_number == 1:
+        site_url = request.build_absolute_uri(request.path)
+        json_ld = (
+            _page_ld("WebSite", SITE_NAME, site_url, SITE_DESCRIPTION),
+            {
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                "name": SITE_NAME,
+                "url": site_url,
+                "logo": _logo_url(),
+            },
+        )
+    meta = PageMeta(title=title, description=SITE_DESCRIPTION, robots=INDEX, json_ld=json_ld)
     return _shell(
         request,
         meta,
@@ -420,13 +484,21 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
         description=_snippet(article.summary) or SITE_DESCRIPTION,
         robots=INDEX,
         image=article.image_url,
+        image_alt=article.title,
+        published_time=_iso(article.published_at),
+        modified_time=_iso(article.updated_at),
+        section=article.category.name,
+        tags=tuple(t.name for t in article.tags.all()),
     )
+    canonical = request.build_absolute_uri(request.path)
+    image = request.build_absolute_uri(article.image_url) if article.image_url else ""
+    meta = replace(meta, json_ld=(_article_ld(article, canonical, image),))
     return _shell(
         request,
         meta,
         data,
         "core/public/article.html",
-        request.build_absolute_uri(request.path),
+        canonical,
         og_type="article",
     )
 
@@ -498,6 +570,17 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
         title=f"전망 기록표 - {SITE_NAME}",
         description="AI 분석의 예측 문장을 모아 기한이 지난 뒤 적중 여부를 기록합니다.",
         robots=INDEX,
+    )
+    meta = replace(
+        meta,
+        json_ld=(
+            _page_ld(
+                "WebPage",
+                meta.title,
+                request.build_absolute_uri(PREDICTIONS_PATH),
+                meta.description,
+            ),
+        ),
     )
     query = "" if period == "all" else f"?period={period}"
     return _shell(

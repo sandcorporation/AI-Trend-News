@@ -190,3 +190,79 @@ def test_old_article_slug_redirects_301_to_new(client: Client) -> None:
     article.published = False
     article.save()
     assert client.get(f"/a/{old}").status_code == 404
+
+
+def _ld(html: str) -> list[dict[str, object]]:
+    import json
+
+    blocks = re.findall(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    return [json.loads(b) for b in blocks]
+
+
+def _tags(html: str, key: str) -> list[str]:
+    return re.findall(rf'<meta (?:name|property)="{key}" content="([^"]*)"', html)
+
+
+def test_article_head_has_twitter_article_meta_and_news_article_ld(client: Client) -> None:
+    article = make_article(
+        "메타 기사",
+        category="경제",
+        tags=("AI", "반도체"),
+        image_url="https://img.example.com/a.png",
+    )
+    html = client.get(f"/a/{article.slug}").content.decode()
+    assert _tags(html, "twitter:card") == ["summary_large_image"]
+    assert _tags(html, "twitter:title") == ["메타 기사 - Foresight"]
+    assert _tags(html, "twitter:image") == ["https://img.example.com/a.png"]
+    assert _tags(html, "twitter:site") == []
+    assert _tags(html, "og:image:alt") == ["메타 기사"]
+    assert _tags(html, "article:section") == ["경제"]
+    assert _tags(html, "article:tag") == ["AI", "반도체"]
+    published = _tags(html, "article:published_time")[0]
+    assert published.endswith("+09:00") and published.startswith(str(article.published_at.year))
+    assert _tags(html, "article:modified_time")
+    (ld,) = _ld(html)
+    assert ld["@type"] == "NewsArticle"
+    assert ld["headline"] == "메타 기사"
+    assert ld["image"] == ["https://img.example.com/a.png"]
+    assert ld["datePublished"] == published
+    assert ld["articleSection"] == "경제"
+    assert ld["keywords"] == "AI, 반도체"
+    assert ld["inLanguage"] == "ko"
+    assert ld["mainEntityOfPage"] == ld["url"] == f"http://testserver/a/{article.slug}"
+    assert ld["author"]["name"] == "Foresight"  # type: ignore[index]
+    assert ld["publisher"]["logo"]["url"].endswith("favicon.svg")  # type: ignore[index]
+
+
+def test_article_without_image_uses_summary_card_and_no_og_image(client: Client) -> None:
+    article = make_article("이미지 없음")
+    html = client.get(f"/a/{article.slug}").content.decode()
+    assert _tags(html, "twitter:card") == ["summary"]
+    assert _tags(html, "og:image") == []
+    assert _tags(html, "og:image:alt") == []
+    assert _tags(html, "twitter:image") == []
+    assert "image" not in _ld(html)[0]
+
+
+def test_twitter_site_only_when_configured(client: Client, settings) -> None:  # type: ignore[no-untyped-def]
+    settings.SITE_TWITTER = "@foresight"
+    assert _tags(client.get("/").content.decode(), "twitter:site") == ["@foresight"]
+
+
+def test_article_ld_survives_script_closing_in_text(client: Client) -> None:
+    article = make_article("제목 </script><b>&", summary="요약 </script> & 끝")
+    html = client.get(f"/a/{article.slug}").content.decode()
+    (ld,) = _ld(html)
+    assert ld["headline"] == "제목 </script><b>&"
+    assert "</script><b>" not in html
+
+
+def test_website_ld_only_on_unfiltered_first_home_page(client: Client) -> None:
+    make_article("홈 기사")
+    types = [b["@type"] for b in _ld(client.get("/").content.decode())]
+    assert types == ["WebSite", "Organization"]
+    assert _ld(client.get("/?category=" + _slug("경제")).content.decode()) == []
+    assert _ld(client.get("/?page=2").content.decode()) == []
+    (page,) = _ld(client.get("/predictions").content.decode())
+    assert page["@type"] == "WebPage"
+    assert _ld(client.get("/contact").content.decode()) == []

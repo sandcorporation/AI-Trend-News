@@ -97,6 +97,8 @@ USE_TZ = True
 
 # Absolute-URL base for sitemap.xml and robots.txt (they have no request host to trust).
 SITE_URL = env("SITE_URL", "https://news.sandcorp.co.kr").rstrip("/")
+# twitter:site 값(예: @foresight). 비면 태그를 내지 않는다.
+SITE_TWITTER = env("SITE_TWITTER", "").strip()
 # Django admin lives on a hard-to-guess path; the default /admin/ is never served (404).
 _admin_path = env("DJANGO_ADMIN_PATH").strip("/")
 if not _admin_path or _admin_path == "admin":
