@@ -122,6 +122,8 @@ AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
 # Collection (#28): items published more than this many days before collection are not stored as
 # Item (only SeenUrl), so a first run on a feed with years of archive does not flood the queue.
 COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
+# 편집자 클라우드 예약의 하루 실행 횟수(공개 집계 /api/public/stats가 그대로 낸다).
+EDITOR_RUNS_PER_DAY = 3
 
 # Fetch fallback (#70): URL template with {url}; used once when the direct GET looks bot-blocked.
 FETCH_FALLBACK_URL = env("FETCH_FALLBACK_URL", "")
