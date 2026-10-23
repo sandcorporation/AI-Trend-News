@@ -22,6 +22,7 @@ class RawItem:
     title: str
     excerpt: str
     published_at: datetime | None
+    image_url: str = ""
 
 
 class SourceAdapter(Protocol):
@@ -40,6 +41,49 @@ def plain_text(markup: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def clean_image_url(base: str, value: object) -> str:
+    """이미지 주소를 base 기준 절대 http(s) 주소로. 쓸 수 없으면 빈 문자열."""
+    raw = str(value or "").strip()
+    if not raw or raw.startswith("data:"):
+        return ""
+    absolute = urljoin(base, raw)
+    if not absolute.startswith(("http://", "https://")) or len(absolute) > 2000:
+        return ""
+    return absolute
+
+
+def _is_image(entry: Mapping[str, object]) -> bool:
+    mime = str(entry.get("type") or "")
+    return mime.startswith("image/") or (not mime and entry.get("medium") in (None, "image"))
+
+
+def _first_img_src(markup: str) -> str:
+    img = BeautifulSoup(markup, "html.parser").find("img")
+    return str(img.get("src", "")) if isinstance(img, Tag) else ""
+
+
+def _rss_image(entry: Mapping[str, object], link: str) -> str:
+    """enclosure(image/*) → media:content → media:thumbnail → 본문 첫 img 순."""
+    candidates: list[object] = []
+    for enclosure in entry.get("enclosures") or []:  # type: ignore[attr-defined]  # feedparser 사전
+        if str(enclosure.get("type") or "").startswith("image/"):
+            candidates.append(enclosure.get("href"))
+    for media in entry.get("media_content") or []:  # type: ignore[attr-defined]
+        if _is_image(media):
+            candidates.append(media.get("url"))
+    for thumb in entry.get("media_thumbnail") or []:  # type: ignore[attr-defined]
+        candidates.append(thumb.get("url"))
+    html_parts = [str(entry.get("summary") or "")]
+    for content in entry.get("content") or []:  # type: ignore[attr-defined]
+        html_parts.append(str(content.get("value") or ""))
+    candidates.extend(_first_img_src(part) for part in html_parts if part)
+    for candidate in candidates:
+        found = clean_image_url(link, candidate)
+        if found:
+            return found
+    return ""
+
+
 class RssAdapter:
     def collect(self, url: str, fetcher: Fetcher, rules: Mapping[str, str]) -> list[RawItem]:
         parsed = feedparser.parse(fetcher.fetch(url))
@@ -56,6 +100,7 @@ class RssAdapter:
                     title=str(entry.get("title", "")).strip() or link,
                     excerpt=plain_text(str(entry.get("summary", ""))),
                     published_at=_to_datetime(entry.get("published_parsed")),
+                    image_url=_rss_image(entry, link),
                 )
             )
         return items
@@ -102,12 +147,18 @@ class HtmlAdapter:
             raw_time = ""
             if time_node:
                 raw_time = str(time_node.get("datetime") or time_node.get_text(strip=True))
+            image = ""
+            if "image" in r:
+                image_node = node.select_one(r["image"])
+                if image_node:
+                    image = clean_image_url(url, image_node.get("content") or image_node.get("src"))
             items.append(
                 RawItem(
                     url=link,
                     title=_text(node, r["title"]) or link,
                     excerpt=_text(node, r["excerpt"]) if "excerpt" in r else "",
                     published_at=_parse_time(raw_time),
+                    image_url=image,
                 )
             )
         if not items:
@@ -117,3 +168,19 @@ class HtmlAdapter:
 
 # 이름→구현 사전.
 ADAPTERS: dict[str, SourceAdapter] = {"rss": RssAdapter(), "html": HtmlAdapter()}
+
+
+def find_og_image(page: bytes, page_url: str) -> str:
+    """원문 HTML의 og:image(없으면 twitter:image). 없으면 빈 문자열."""
+    soup = BeautifulSoup(page, "html.parser")
+    for attr, name in (
+        ("property", "og:image"),
+        ("name", "twitter:image"),
+        ("property", "twitter:image"),
+    ):
+        meta = soup.find("meta", attrs={attr: name})
+        if isinstance(meta, Tag):
+            found = clean_image_url(page_url, meta.get("content"))
+            if found:
+                return found
+    return ""

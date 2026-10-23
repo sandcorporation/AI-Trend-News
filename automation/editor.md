@@ -20,9 +20,9 @@
 - `finish_editor_run()` — `run_id`, `created`, `updated`, `discarded`, `note`로 실행을 끝낸다.
 - `list_categories()` — 분야 목록(`name`, `slug`).
 - `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, 묶인 수집물(`items`의 `id`, `url`)을 준다.
-- `list_pending_items()` — 미처리 수집물을 최신순으로(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`을 준다.
-- `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`.
-- `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. 게시·추천은 바꾸지 못한다.
+- `list_pending_items()` — 미처리 수집물을 최신순으로(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`, `image_url`(대표 이미지, 없으면 빈 값)을 준다.
+- `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`. `image_url`은 묶은 수집물 중 이미지가 있는 첫 것의 `image_url`을 그대로 넘긴다. 없으면 비운다. 이미지 주소를 지어내지 않는다.
+- `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. `add_item_ids`로 묶는 수집물에 `image_url`이 있고 그 기사의 이미지가 비어 있으면 `image_url`을 채운다(지어내지 않는다). 게시·추천은 바꾸지 못한다.
 - `set_article_flags()` — 기사의 `published`·`featured` 변경(`id`와 바꿀 것만).
 - `upsert_post_draft()` — 추천이면서 게시된 기사의 포스트 초안 작성·갱신(`article_id`, `channel`, `text`). 아래 「포스트 초안」 절의 규칙을 따른다.
 - `discard_item()` — 수집물 하나를 버린다(`item_id`).

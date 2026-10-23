@@ -317,11 +317,11 @@ def test_old_items_are_seen_but_not_stored(
         url_hash=url_hash(normalize_url("https://t.example.com/old"))
     ).exists()
     source.refresh_from_db()
-    assert source.last_result == "성공: 새 수집물 2건 / 항목 3건 / 오래돼 건너뜀 1건"
+    assert source.last_result == "성공: 새 수집물 2건 / 항목 3건 / 오래돼 건너뜀 1건 / 이미지 0건"
     # 다시 수집해도 오래된 글은 건너뜀으로 세지 않는다(이미 본 URL)
     collect_all()
     source.refresh_from_db()
-    assert source.last_result == "성공: 새 수집물 0건 / 항목 3건"
+    assert source.last_result == "성공: 새 수집물 0건 / 항목 3건 / 이미지 0건"
 
 
 def test_item_older_than_limit_is_skipped_but_exact_boundary_is_kept(
