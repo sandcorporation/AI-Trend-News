@@ -469,7 +469,9 @@ def public_featured(limit: int, category: str = "") -> list[Article]:
     return list(qs[:limit])
 
 
-def public_recent(limit: int, category: str = "", featured: bool = False) -> list[Article]:
+def public_recent(
+    limit: int, category: str = "", featured: bool = False, commentary: bool = False
+) -> list[Article]:
     """공개 JSON용 최신 기사(`-published_at, -id`). category는 현재·옛 slug 모두, 모르면 빈 목록.
 
     태그 prefetch 없이 select_related 한 번이라 쿼리 1개(분야 해석은 서브쿼리).
@@ -477,6 +479,8 @@ def public_recent(limit: int, category: str = "", featured: bool = False) -> lis
     qs = Article.objects.filter(published=True).select_related("category", "commentary")
     if featured:
         qs = qs.filter(featured=True)
+    if commentary:  # public_commentary와 같은 조건: 분석 존재·숨기지 않음(게시는 위에서 이미)
+        qs = qs.filter(commentary__isnull=False, commentary__hidden=False)
     if category:
         matched = Category.objects.filter(Q(slug=category) | Q(old_slugs__slug=category)).values(
             "pk"
