@@ -39,11 +39,33 @@ CTA_PORTFOLIO_LABEL = "Sandcorp 포트폴리오 보기"
 CTA_CONTACT_LABEL = "문의하기"
 CONTACT_PATH = "/contact"
 FOOTER_CONTACT_LABEL = "문의"
+SIDEBAR_SANDCORP_TEXT = "반복 업무를 자동화하는 팀. 이 사이트도 Sandcorp가 만들었습니다."
+SIDEBAR_SANDCORP_LINK = "Sandcorp 알아보기"
+SIDEBAR_CONTACT_LABEL = "문의하기"
+SITE_MONOGRAM = "AT"
+SECTION_COUNT = 4
+MOST_READ_COUNT = 5
 
 
 class CategoryData(TypedDict):
     name: str
     slug: str
+
+
+class SectionData(TypedDict):
+    category: CategoryData
+    more_url: str
+    articles: list["CardData"]
+
+
+class SidebarData(TypedDict):
+    most_read_title: str
+    sandcorp_title: str
+    sandcorp_text: str
+    sandcorp_label: str
+    sandcorp_url: str
+    contact_label: str
+    contact_url: str
 
 
 class CardData(TypedDict):
@@ -55,6 +77,7 @@ class CardData(TypedDict):
     published_at: str
     published_label: str
     image_url: str
+    tone: str
     url: str
 
 
@@ -71,6 +94,7 @@ class DetailData(CardData):
 
 class SiteData(TypedDict):
     name: str
+    monogram: str
     sandcorp_label: str
     header_url: str
     footer_url: str
@@ -95,9 +119,41 @@ def _label(value: datetime | None) -> str:
     return date_format(timezone.localtime(value), "Y년 n월 j일 H:i") if value else ""
 
 
+def _relative_label(value: datetime) -> str:
+    """24시간 안은 N분/N시간 전, 그 뒤는 「10월 22일」(해가 다르면 연도까지). 기준은 시계 어댑터."""
+    now = get_clock().now()
+    seconds = (now - value).total_seconds()
+    if seconds < 60:
+        return "방금 전"
+    if seconds < 3600:
+        return f"{int(seconds // 60)}분 전"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)}시간 전"
+    local = timezone.localtime(value)
+    same_year = local.year == timezone.localtime(now).year
+    return date_format(local, "n월 j일" if same_year else "Y년 n월 j일")
+
+
+def _tone(category_name: str) -> str:
+    return "it" if category_name.strip().lower() == "it" else "ai"
+
+
+def _sidebar() -> SidebarData:
+    return {
+        "most_read_title": "많이 읽은 기사",
+        "sandcorp_title": SANDCORP_LABEL,
+        "sandcorp_text": SIDEBAR_SANDCORP_TEXT,
+        "sandcorp_label": SIDEBAR_SANDCORP_LINK,
+        "sandcorp_url": outbound.go_path("sidebar"),
+        "contact_label": SIDEBAR_CONTACT_LABEL,
+        "contact_url": CONTACT_PATH,
+    }
+
+
 def _site() -> SiteData:
     return {
         "name": SITE_NAME,
+        "monogram": SITE_MONOGRAM,
         "sandcorp_label": SANDCORP_LABEL,
         "header_url": outbound.go_path("header"),
         "footer_url": outbound.go_path("footer"),
@@ -129,8 +185,9 @@ def _card(article: Article) -> CardData:
         "category": {"name": article.category.name, "slug": article.category.slug},
         "tags": [t.name for t in article.tags.all()],
         "published_at": article.created_at.isoformat(),
-        "published_label": _label(article.created_at),
+        "published_label": _relative_label(article.created_at),
         "image_url": article.image_url,
+        "tone": _tone(article.category.name),
         "url": reverse("article", args=[article.slug]),
     }
 
@@ -145,7 +202,7 @@ def _detail(article: Article) -> DetailData:
         }
         for link in article.article_items.all()
     ]
-    return {**_card(article), "items": items}
+    return {**_card(article), "published_label": _label(article.created_at), "items": items}
 
 
 def _snippet(text: str, limit: int = 160) -> str:
@@ -184,7 +241,22 @@ def home(request: HttpRequest) -> HttpResponse:
     if page_number < 1 or (page_number > paginator.num_pages):
         raise Http404("없는 페이지입니다.")
     page = paginator.page(page_number)
-    featured = svc.public_featured(FEATURED_COUNT, category) if page_number == 1 else []
+    first_unfiltered = page_number == 1 and not category
+    featured = svc.public_featured(FEATURED_COUNT) if first_unfiltered else []
+
+    sections: list[SectionData] = []
+    if first_unfiltered:
+        by_category = svc.public_sections(SECTION_COUNT)
+        sections = [
+            {
+                "category": {"name": c.name, "slug": c.slug},
+                "more_url": f"/?category={c.slug}",
+                "articles": [_card(a) for a in by_category.get(c.pk, [])],
+            }
+            for c in categories
+            if by_category.get(c.pk)
+        ]
+    most_read = svc.public_most_read(7, MOST_READ_COUNT) if first_unfiltered else []
 
     data: dict[str, object] = {
         "kind": "home",
@@ -193,6 +265,9 @@ def home(request: HttpRequest) -> HttpResponse:
         "category": category,
         "featured": [_card(a) for a in featured],
         "articles": [_card(a) for a in page.object_list],
+        "sections": sections,
+        "most_read": [_card(a) for a in most_read],
+        "sidebar": _sidebar(),
         "page": page_number,
         "num_pages": paginator.num_pages,
     }

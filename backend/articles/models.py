@@ -161,6 +161,7 @@ class OutboundClick(models.Model):
         FOOTER = "footer", "푸터"
         ARTICLE_CTA = "article_cta", "기사 하단 CTA"
         CONTACT = "contact", "문의"
+        SIDEBAR = "sidebar", "사이드바"
 
     clicked_at = models.DateTimeField("시각", auto_now_add=True, db_index=True)
     location = models.CharField("위치", max_length=20, choices=Location.choices)

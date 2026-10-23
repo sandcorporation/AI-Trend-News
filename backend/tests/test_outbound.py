@@ -67,7 +67,7 @@ def test_unknown_or_unpublished_article_slug_is_ignored(client: Client) -> None:
     assert OutboundClick.objects.filter(article__isnull=False).count() == 0
 
 
-@pytest.mark.parametrize("query", ["from=sidebar", "", "article=x"])
+@pytest.mark.parametrize("query", ["from=nav", "", "article=x"])
 def test_bad_location_is_400_and_not_recorded(client: Client, query: str) -> None:
     assert go(client, query).status_code == 400
     assert OutboundClick.objects.count() == 0

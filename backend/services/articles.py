@@ -11,7 +11,8 @@ from datetime import datetime, timedelta
 from enum import Enum
 
 from django.db import transaction
-from django.db.models import F, Q, QuerySet, Sum
+from django.db.models import F, Q, QuerySet, Sum, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -439,6 +440,21 @@ def public_featured(limit: int, category: str = "") -> list[Article]:
     if category:
         qs = qs.filter(category__slug=category)
     return list(qs[:limit])
+
+
+def public_sections(per_category: int = 4) -> dict[int, list[Article]]:
+    """분야 id별 게시된 최신 기사 per_category건(쿼리 하나 + 태그 prefetch)."""
+    ranked = _public().annotate(
+        rn=Window(
+            RowNumber(),
+            partition_by=F("category_id"),
+            order_by=[F("created_at").desc(), F("id").desc()],
+        )
+    )
+    result: dict[int, list[Article]] = {}
+    for article in ranked.filter(rn__lte=per_category).order_by("-created_at", "-id"):
+        result.setdefault(article.category_id, []).append(article)
+    return result
 
 
 def public_list(category: str = "") -> QuerySet[Article]:

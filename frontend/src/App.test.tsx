@@ -27,10 +27,20 @@ test("셸에 심긴 #page-data JSON을 읽고, 없거나 깨지면 null을 돌�
 
 const site = {
   name: "AI Trend News",
+  monogram: "AT",
   sandcorp_label: "Sandcorp",
   header_url: "/go/sandcorp?from=header",
   footer_url: "/go/sandcorp?from=footer",
   contact_label: "문의",
+  contact_url: "/contact",
+};
+const sidebar = {
+  most_read_title: "많이 읽은 기사",
+  sandcorp_title: "Sandcorp",
+  sandcorp_text: "소개",
+  sandcorp_label: "Sandcorp 알아보기",
+  sandcorp_url: "/go/sandcorp?from=sidebar",
+  contact_label: "문의하기",
   contact_url: "/contact",
 };
 const card: CardData = {
@@ -42,6 +52,7 @@ const card: CardData = {
   published_at: "2026-10-22T05:00:00+00:00",
   published_label: "2026년 10월 22일 14:00",
   image_url: "",
+  tone: "ai",
   url: "/a/rate-freeze",
 };
 
@@ -53,12 +64,14 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
     category: "economy",
     featured: [{ ...card, title: "추천 기사" }],
     articles: [card],
+    sections: [],
+    most_read: [],
+    sidebar,
     page: 2,
     num_pages: 3,
   };
   render(<App data={data} />);
 
-  expect(screen.getByRole("heading", { name: "추천" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "추천 기사" })).toHaveAttribute(
     "href",
     "/a/rate-freeze",
@@ -80,6 +93,105 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
     "/go/sandcorp?from=header",
     "/go/sandcorp?from=footer",
   ]);
+});
+
+function q(root: ParentNode, selector: string): Element {
+  const found = root.querySelector(selector);
+  if (!found) throw new Error(`없음: ${selector}`);
+  return found;
+}
+
+function homeData(): HomeData {
+  const c = (n: number, extra: Partial<CardData> = {}): CardData => ({
+    ...card,
+    slug: `a-${n}`,
+    title: `기사 ${n}`,
+    url: `/a/a-${n}`,
+    published_label: `${n}시간 전`,
+    ...extra,
+  });
+  return {
+    kind: "home",
+    site,
+    categories: [
+      { name: "AI", slug: "ai" },
+      { name: "IT", slug: "it" },
+    ],
+    category: "",
+    featured: [c(1, { image_url: "https://img.example.com/1.png" }), c(2), c(3)],
+    articles: [c(4), c(5)],
+    sections: [
+      {
+        category: { name: "AI", slug: "ai" },
+        more_url: "/?category=ai",
+        articles: [c(6), c(7), c(8), c(9)],
+      },
+      {
+        category: { name: "IT", slug: "it" },
+        more_url: "/?category=it",
+        articles: [c(10, { tone: "it" })],
+      },
+    ],
+    most_read: [c(11), c(12)],
+    sidebar,
+    page: 1,
+    num_pages: 1,
+  };
+}
+
+test("메인 첫 쪽은 히어로·최신 그리드·분야 섹션·사이드바를 그린다", () => {
+  const { container } = render(<App data={homeData()} />);
+
+  const hero = q(container, '[data-slot="hero"]');
+  expect(hero.querySelectorAll("article")).toHaveLength(3);
+  const heroImg = q(hero, "img");
+  expect(heroImg).toHaveAttribute("referrerpolicy", "no-referrer");
+  expect(heroImg).toHaveAttribute("loading", "eager");
+
+  expect(container.querySelectorAll(".grid .card")).toHaveLength(2);
+  expect(container.querySelectorAll(".grid time")[0]).toHaveTextContent("4시간 전");
+
+  const more = screen.getAllByRole("link", { name: "더보기 →" });
+  expect(more.map((l) => l.getAttribute("href"))).toEqual([
+    "/?category=ai",
+    "/?category=it",
+  ]);
+  const aiSection = q(container, ".cat-section");
+  expect(aiSection.querySelectorAll(".card-feature")).toHaveLength(1);
+  expect(aiSection.querySelectorAll(".title-list li")).toHaveLength(3);
+
+  expect(
+    screen.getByRole("heading", { name: "많이 읽은 기사" }),
+  ).toBeInTheDocument();
+  expect(container.querySelectorAll(".ranked li")).toHaveLength(2);
+  expect(screen.getByRole("link", { name: "Sandcorp 알아보기" })).toHaveAttribute(
+    "href",
+    "/go/sandcorp?from=sidebar",
+  );
+  expect(screen.getByRole("link", { name: "문의하기" })).toHaveAttribute(
+    "href",
+    "/contact",
+  );
+});
+
+test("히어로·섹션·많이 읽은 기사가 비면 그 블록을 그리지 않는다", () => {
+  const data = { ...homeData(), featured: [], sections: [], most_read: [] };
+  const { container } = render(<App data={data} />);
+
+  expect(container.querySelector('[data-slot="hero"]')).toBeNull();
+  expect(container.querySelector(".cat-section")).toBeNull();
+  expect(screen.queryByText("많이 읽은 기사")).toBeNull();
+  expect(screen.getByRole("link", { name: "Sandcorp 알아보기" })).toBeInTheDocument();
+});
+
+test("이미지가 깨지면 이미지를 빼고 분야 색 모노그램 자리를 남긴다", () => {
+  const { container } = render(<App data={homeData()} />);
+  const img = q(container, '[data-slot="hero"] img');
+
+  fireEvent.error(img);
+
+  expect(container.querySelector('[data-slot="hero"] img')).toBeNull();
+  expect(container.querySelector('[data-slot="hero"] .thumb.tone-ai')).toHaveTextContent("AT");
 });
 
 test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크를 그린다", () => {

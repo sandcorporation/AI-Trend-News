@@ -13,6 +13,7 @@ export interface CardData {
   published_at: string;
   published_label: string;
   image_url: string;
+  tone: "ai" | "it";
   url: string;
 }
 
@@ -29,6 +30,7 @@ export interface DetailData extends CardData {
 
 export interface SiteData {
   name: string;
+  monogram: string;
   sandcorp_label: string;
   header_url: string;
   footer_url: string;
@@ -49,6 +51,22 @@ export interface ShareData {
   x_url: string;
 }
 
+export interface SectionData {
+  category: CategoryData;
+  more_url: string;
+  articles: CardData[];
+}
+
+export interface SidebarData {
+  most_read_title: string;
+  sandcorp_title: string;
+  sandcorp_text: string;
+  sandcorp_label: string;
+  sandcorp_url: string;
+  contact_label: string;
+  contact_url: string;
+}
+
 export interface HomeData {
   kind: "home";
   site: SiteData;
@@ -56,6 +74,9 @@ export interface HomeData {
   category: string;
   featured: CardData[];
   articles: CardData[];
+  sections: SectionData[];
+  most_read: CardData[];
+  sidebar: SidebarData;
   page: number;
   num_pages: number;
 }
