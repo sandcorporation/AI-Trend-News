@@ -1,0 +1,26 @@
+{% include "core/public/_chrome_top.html" %}
+<main class="main">
+  <section class="predictions-page" data-slot="predictions">
+    <h1>전망 기록표</h1>
+    <p class="lead">AI 분석의 예측 문장을 모아 두고, 기한이 지나면 대표가 적중 여부를 기록합니다. AI가 스스로 채점하지 않습니다.</p>
+    <nav class="tabs" aria-label="기간">
+      {% for p in data.periods %}<a href="{{ p.url }}"{% if p.key == data.period %} aria-current="page"{% endif %}>{{ p.label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="hit-rate" data-slot="hit-rate">
+      {% if data.rate.percent is None %}아직 평가된 예측이 없습니다.{% else %}적중률 <strong>{{ data.rate.percent }}%</strong> <span>평가 {{ data.rate.judged }}건 중 {{ data.rate.hits }}건 적중{% if data.rate.undecidable %} · 판단 불가 {{ data.rate.undecidable }}건 제외{% endif %}</span>{% endif %}
+    </p>
+    {% if data.rows %}
+    <ul class="prediction-list">
+      {% for r in data.rows %}<li>
+        <span class="verdict verdict-{{ r.verdict|default:"pending" }}" data-slot="verdict">{{ r.verdict_label }}</span>
+        <span class="claim">{{ r.claim }}</span>
+        <span class="meta"><a href="{{ r.article_url }}">{{ r.article_title }}</a> · {{ r.horizon_label }} · 기한 {{ r.due_label }}</span>
+        {% if r.verdict_note %}<span class="note">{{ r.verdict_note }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">표시할 예측이 없습니다.</p>{% endif %}
+  </section>
+</main>
+{% include "core/public/_chrome_bottom.html" %}

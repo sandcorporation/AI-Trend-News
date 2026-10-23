@@ -4,7 +4,7 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 #root (templates/core/public/*.html) so crawlers and link previews see the text without running JS.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TypedDict
 from urllib.parse import urlencode
 
@@ -23,13 +23,14 @@ from django.utils.dateformat import format as date_format
 from django.views.decorators.csrf import csrf_exempt
 
 from adapters.clock import get_clock
-from articles.models import Article
+from articles.models import Article, Prediction
 from core.shell import INDEX, NOINDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
 from inquiries.models import Inquiry
 from services import articles as svc
 from services import commentary as commentary_svc
 from services import inquiries as inquiry_svc
 from services import outbound
+from services import predictions as predictions_svc
 
 PAGE_SIZE = 12
 FEATURED_COUNT = 5
@@ -39,6 +40,7 @@ CTA_TEXT = "뉴스 수집·요약·게시를 자동화한 이 사이트처럼, �
 CTA_PORTFOLIO_LABEL = "Sandcorp 포트폴리오 보기"
 CTA_CONTACT_LABEL = "문의하기"
 CONTACT_PATH = "/contact"
+PREDICTIONS_PATH = "/predictions"
 FOOTER_CONTACT_LABEL = "문의"
 SIDEBAR_SANDCORP_TEXT = "반복 업무를 자동화하는 팀. 이 사이트도 Sandcorp가 만들었습니다."
 SIDEBAR_SANDCORP_LINK = "Sandcorp 알아보기"
@@ -67,6 +69,7 @@ class SidebarData(TypedDict):
     sandcorp_url: str
     contact_label: str
     contact_url: str
+    prediction_rate: "SidebarRateData | None"
 
 
 class CardData(TypedDict):
@@ -95,6 +98,36 @@ class PredictionOut(TypedDict):
     horizon: str
     horizon_label: str
     basis: str
+    due_label: str
+    verdict: str  # 미평가면 빈 문자열, 아니면 hit·miss·undecidable
+    verdict_label: str
+    verdict_note: str
+
+
+class PredictionRowData(TypedDict):
+    claim: str
+    horizon_label: str
+    due_label: str
+    verdict: str
+    verdict_label: str
+    verdict_note: str
+    article_title: str
+    article_url: str
+
+
+class RateData(TypedDict):
+    percent: int | None  # 평가된 것이 없으면 None
+    judged: int
+    hits: int
+    undecidable: int
+
+
+class SidebarRateData(TypedDict):
+    title: str
+    percent: int
+    judged: int
+    link_label: str
+    url: str
 
 
 class CommentaryOut(TypedDict):
@@ -157,8 +190,33 @@ def _tone(category_name: str) -> str:
     return "it" if category_name.strip().lower() == "it" else "ai"
 
 
-def _sidebar() -> SidebarData:
+def _prediction_label(row: Prediction) -> str:
+    return "" if row.verdict == Prediction.Verdict.PENDING else row.get_verdict_display()
+
+
+def _horizon_label(horizon: str) -> str:
+    return f"{horizon[:-1]}개월 안"
+
+
+def _due_label(due: date) -> str:
+    return f"{due.year}.{due.month}.{due.day}"
+
+
+def _sidebar(today: date) -> SidebarData:
+    rate = predictions_svc.sidebar_rate(today)
+    percent = rate.percent if rate else None
     return {
+        "prediction_rate": (
+            {
+                "title": "전망 적중률",
+                "percent": percent,
+                "judged": rate.judged,
+                "link_label": "전망 기록표 보기",
+                "url": PREDICTIONS_PATH,
+            }
+            if rate and percent is not None
+            else None
+        ),
         "most_read_title": "많이 읽은 기사",
         "sandcorp_title": SANDCORP_LABEL,
         "sandcorp_text": SIDEBAR_SANDCORP_TEXT,
@@ -242,12 +300,16 @@ def _commentary(article: Article) -> CommentaryOut | None:
         "opinion": found.opinion,
         "predictions": [
             {
-                "claim": p["claim"],
-                "horizon": p["horizon"],
-                "horizon_label": f"{p['horizon'][:-1]}개월 안",
-                "basis": p["basis"],
+                "claim": p.claim,
+                "horizon": p.horizon,
+                "horizon_label": _horizon_label(p.horizon),
+                "basis": p.basis,
+                "due_label": _due_label(p.due_date),
+                "verdict": "" if p.verdict == Prediction.Verdict.PENDING else p.verdict,
+                "verdict_label": _prediction_label(p),
+                "verdict_note": p.verdict_note,
             }
-            for p in found.predictions
+            for p in found.prediction_rows.all()
         ],
     }
 
@@ -314,7 +376,7 @@ def home(request: HttpRequest) -> HttpResponse:
         "articles": [_card(a) for a in page.object_list],
         "sections": sections,
         "most_read": [_card(a) for a in most_read],
-        "sidebar": _sidebar(),
+        "sidebar": _sidebar(predictions_svc.today_of(get_clock().now())),
         "page": page_number,
         "num_pages": paginator.num_pages,
     }
@@ -385,12 +447,73 @@ def go_sandcorp(request: HttpRequest) -> HttpResponse:
     return response
 
 
+PERIODS = {"all": "전체", "3m": "3개월"}
+
+
+def predictions_page(request: HttpRequest) -> HttpResponse:
+    """전망 기록표: 평가된 예측의 적중률과 목록. `?period=3m`이면 기한이 최근 3개월인 것만."""
+    period = request.GET.get("period", "all")
+    if period not in PERIODS:
+        raise Http404("없는 기간입니다.")
+    today = predictions_svc.today_of(get_clock().now())
+    recent = period == "3m"
+    rate = predictions_svc.hit_rate(recent=recent, today=today)
+    rows: list[PredictionRowData] = [
+        {
+            "claim": p.claim,
+            "horizon_label": _horizon_label(p.horizon),
+            "due_label": _due_label(p.due_date),
+            "verdict": "" if p.verdict == Prediction.Verdict.PENDING else p.verdict,
+            "verdict_label": _prediction_label(p) or "평가 대기",
+            "verdict_note": p.verdict_note,
+            "article_title": p.commentary.article.title,
+            "article_url": reverse("article", args=[p.commentary.article.slug]),
+        }
+        for p in predictions_svc.public_predictions(recent=recent, today=today)
+    ]
+    rate_data: RateData = {
+        "percent": rate.percent,
+        "judged": rate.judged,
+        "hits": rate.hits,
+        "undecidable": rate.undecidable,
+    }
+    data: dict[str, object] = {
+        "kind": "predictions",
+        "site": _site(),
+        "period": period,
+        "periods": [
+            {
+                "key": key,
+                "label": label,
+                "url": PREDICTIONS_PATH + ("" if key == "all" else f"?period={key}"),
+            }
+            for key, label in PERIODS.items()
+        ],
+        "rate": rate_data,
+        "rows": rows,
+    }
+    meta = PageMeta(
+        title=f"전망 기록표 - {SITE_NAME}",
+        description="AI 분석의 예측 문장을 모아 기한이 지난 뒤 적중 여부를 기록합니다.",
+        robots=INDEX,
+    )
+    query = "" if period == "all" else f"?period={period}"
+    return _shell(
+        request,
+        meta,
+        data,
+        "core/public/predictions.html",
+        request.build_absolute_uri(PREDICTIONS_PATH) + query,
+    )
+
+
 def sitemap(request: HttpRequest) -> HttpResponse:
     def loc(path: str) -> str:
         return request.build_absolute_uri(path)
 
     urls: list[tuple[str, datetime | None]] = [(loc("/"), None)]
     urls += [(loc(f"/?category={c.slug}"), None) for c in svc.public_categories()]
+    urls.append((loc(PREDICTIONS_PATH), None))
     urls += [(loc(reverse("article", args=[a.slug])), a.updated_at) for a in svc.public_sitemap()]
     xml = render_to_string("core/public/sitemap.xml", {"urls": urls})
     return HttpResponse(xml, content_type="application/xml; charset=utf-8")

@@ -309,6 +309,22 @@ function Sidebar({ data }: { data: HomeData }) {
           </ol>
         </section>
       )}
+      {s.prediction_rate && (
+        <section
+          className="side-block"
+          data-slot="prediction-rate"
+          aria-labelledby="side-rate-h"
+        >
+          <h2 id="side-rate-h">{s.prediction_rate.title}</h2>
+          <p className="rate">
+            <strong>{s.prediction_rate.percent}%</strong>{" "}
+            <span>평가 {s.prediction_rate.judged}건 기준</span>
+          </p>
+          <a className="side-link" href={s.prediction_rate.url}>
+            {s.prediction_rate.link_label}
+          </a>
+        </section>
+      )}
       <section className="side-block" aria-labelledby="side-sandcorp-h">
         <h2 id="side-sandcorp-h">{s.sandcorp_title}</h2>
         <p>{s.sandcorp_text}</p>

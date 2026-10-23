@@ -133,7 +133,19 @@ function Commentary({ c }: { c: CommentaryData }) {
             {c.predictions.map((p) => (
               <li key={p.claim}>
                 <span className="horizon">{p.horizon_label}</span> {p.claim}{" "}
-                <span className="basis">근거: {p.basis}</span>
+                <span className="basis">근거: {p.basis}</span>{" "}
+                <span className="due">기한 {p.due_label}</span>
+                {p.verdict && (
+                  <>
+                    {" "}
+                    <span
+                      className={`verdict verdict-${p.verdict}`}
+                      data-slot="verdict"
+                    >
+                      {p.verdict_label}
+                    </span>
+                  </>
+                )}
               </li>
             ))}
           </ul>

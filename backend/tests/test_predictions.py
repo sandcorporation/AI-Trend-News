@@ -219,3 +219,79 @@ def test_no_alert_before_due_or_when_judged(
     Prediction.objects.update(due_date=frozen_clock.now().date())  # 기한 당일은 아직
     call_command("check_alerts")
     assert not [m for m in fake_discord.sent if "전망 평가 대기" in m]
+
+
+# --- 공개 화면 ---
+
+
+def page(html: str) -> dict[str, object]:
+    from tests.test_home_layout import page_data
+
+    return page_data(html)
+
+
+def test_predictions_page_shows_rate_rows_and_filters(
+    client: Client, frozen_clock: FrozenClock
+) -> None:
+    today = svc.today_of(frozen_clock.now())
+    make_judged(frozen_clock, hits=2, misses=1, undecidable=1, due=today - timedelta(days=200))
+    make_judged(frozen_clock, hits=0, misses=1, due=today - timedelta(days=5))
+    write(featured_article_id(), ("아직 모르는 예측", "6m"))
+
+    response = client.get("/predictions")
+    html = response.content.decode()
+    assert response.status_code == 200
+    # 서버 HTML: 평가 4건(적중 2·빗나감 2) → 50%, 판단 불가 1건 제외
+    assert 'data-slot="hit-rate"' in html and "<strong>50%</strong>" in html
+    assert "판단 불가 1건 제외" in html and "평가 대기" in html
+    data = page(html)
+    assert data["kind"] == "predictions"
+    assert data["rate"] == {"percent": 50, "judged": 4, "hits": 2, "undecidable": 1}
+    rows = data["rows"]
+    assert isinstance(rows, list) and len(rows) == 6
+
+    recent = page(client.get("/predictions?period=3m").content.decode())
+    assert recent["rate"] == {"percent": 0, "judged": 1, "hits": 0, "undecidable": 0}
+    assert client.get("/predictions?period=1y").status_code == 404
+
+
+def test_predictions_page_hides_hidden_and_empty_state(client: Client) -> None:
+    html = client.get("/predictions").content.decode()
+    assert "아직 평가된 예측이 없습니다." in html and "표시할 예측이 없습니다." in html
+    write(featured_article_id(), ("숨길 예측", "1m"))
+    Commentary.objects.update(hidden=True)
+    assert "숨길 예측" not in client.get("/predictions").content.decode()
+
+
+def test_sitemap_lists_predictions(client: Client) -> None:
+    assert "/predictions</loc>" in client.get("/sitemap.xml").content.decode()
+
+
+def test_home_sidebar_rate_block_needs_five_judged(
+    client: Client, frozen_clock: FrozenClock
+) -> None:
+    make_judged(frozen_clock, hits=3, misses=1, undecidable=3)
+    html = client.get("/").content.decode()
+    assert 'data-slot="prediction-rate"' not in html  # 판단 불가를 빼면 4건
+    assert page(html)["sidebar"]["prediction_rate"] is None  # type: ignore[index]
+
+    make_judged(frozen_clock, hits=1, misses=0)
+    html = client.get("/").content.decode()
+    assert 'data-slot="prediction-rate"' in html and "80%" in html
+    assert 'href="/predictions"' in html
+    rate = page(html)["sidebar"]["prediction_rate"]  # type: ignore[index]
+    assert rate["percent"] == 80 and rate["judged"] == 5
+
+
+def test_article_page_badges_only_judged(client: Client, frozen_clock: FrozenClock) -> None:
+    article_id = featured_article_id()
+    write(article_id, ("맞은 예측", "1m"), ("대기 예측", "3m"))
+    judge(Prediction.objects.get(claim="맞은 예측"), "hit", frozen_clock)
+    slug = Commentary.objects.get().article.slug
+    html = client.get(f"/a/{slug}").content.decode()
+    assert html.count('data-slot="verdict"') == 1 and "적중" in html
+    predictions = page(html)["article"]["commentary"]["predictions"]  # type: ignore[index]
+    assert {p["claim"]: p["verdict"] for p in predictions} == {
+        "맞은 예측": "hit",
+        "대기 예측": "",
+    }

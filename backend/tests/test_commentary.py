@@ -202,6 +202,10 @@ def test_article_page_shows_commentary_in_html_and_page_data(client: Client) -> 
             "horizon": "3m",
             "horizon_label": "3개월 안",
             "basis": "물가 둔화",
+            "due_label": commentary["predictions"][0]["due_label"],
+            "verdict": "",
+            "verdict_label": "",
+            "verdict_note": "",
         }
     ]
 

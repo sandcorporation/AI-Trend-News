@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from django.db import transaction
-from django.db.models import QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
 from articles.models import Commentary, Prediction
@@ -110,9 +110,7 @@ class HitRate:
 
 
 def _public() -> QuerySet[Prediction]:
-    return Prediction.objects.filter(
-        commentary__hidden=False, commentary__article__published=True
-    ).select_related("commentary__article")
+    return Prediction.objects.filter(commentary__hidden=False, commentary__article__published=True)
 
 
 def _window(qs: QuerySet[Prediction], recent: bool, today: date) -> QuerySet[Prediction]:
@@ -121,15 +119,21 @@ def _window(qs: QuerySet[Prediction], recent: bool, today: date) -> QuerySet[Pre
 
 def public_predictions(*, recent: bool, today: date) -> list[Prediction]:
     """공개 목록: 기한 빠른 순 대신 최근 기한이 위로."""
-    return list(_window(_public(), recent, today).order_by("-due_date", "-id"))
+    qs = _window(_public(), recent, today).select_related("commentary__article")
+    return list(qs.order_by("-due_date", "-id"))
 
 
 def hit_rate(*, recent: bool, today: date) -> HitRate:
-    qs = _window(_public(), recent, today)
-    hits = qs.filter(verdict=Verdict.HIT).count()
-    misses = qs.filter(verdict=Verdict.MISS).count()
-    undecidable = qs.filter(verdict=Verdict.UNDECIDABLE).count()
-    return HitRate(judged=hits + misses, hits=hits, undecidable=undecidable)
+    counts = _window(_public(), recent, today).aggregate(
+        hits=Count("pk", filter=Q(verdict=Verdict.HIT)),
+        misses=Count("pk", filter=Q(verdict=Verdict.MISS)),
+        undecidable=Count("pk", filter=Q(verdict=Verdict.UNDECIDABLE)),
+    )
+    return HitRate(
+        judged=counts["hits"] + counts["misses"],
+        hits=counts["hits"],
+        undecidable=counts["undecidable"],
+    )
 
 
 def sidebar_rate(today: date) -> HitRate | None:
