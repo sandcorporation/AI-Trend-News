@@ -1,0 +1,38 @@
+# `make prod-local` only: layers a local MySQL on top of docker-compose.prod.yml, standing in for
+# OCI MySQL HeatWave. Never used by Jenkins (COMPOSE_FILE there is prod + oracle).
+# Credentials come from .env (DB_NAME/DB_USER/DB_PASSWORD), the same keys web reads.
+services:
+  web:
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  scheduler:
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:26.10.0
+    command: [--character-set-server=utf8mb4, --collation-server=utf8mb4_0900_as_cs]
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-news}
+      MYSQL_USER: ${DB_USER:-news}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - mysqldata:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysql -h 127.0.0.1 -u\"$$MYSQL_USER\" -p\"$$MYSQL_PASSWORD\" -e 'SELECT 1' \"$$MYSQL_DATABASE\""]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+volumes:
+  mysqldata:

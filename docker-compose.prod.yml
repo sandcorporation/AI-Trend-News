@@ -3,8 +3,11 @@
 #
 # Resource budget on the shared oracle host (portfolio already takes ~1.5 CPU / 1.5 GB there):
 # about 1.2 CPU / 1.2 GB for this project.
-#   web 0.6 CPU / 512m, postgres 0.4 CPU / 384m, scheduler 0.2 CPU / 256m (the rest of the budget;
-#   it only wakes hourly to run the management commands in backend/services/scheduler.py).
+#   web 0.6 CPU / 512m, scheduler 0.2 CPU / 256m (it only wakes hourly to run the management
+#   commands in backend/services/scheduler.py).
+# The database is OCI MySQL HeatWave outside this compose (ADR 0004): web and scheduler read
+# DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from .env. `make prod-local` layers
+# docker-compose.prod-local.yml on top to add a local MySQL instead.
 name: news
 
 services:
@@ -16,14 +19,9 @@ services:
     env_file: [.env]
     environment:
       DJANGO_DEBUG: "0"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
     ports:
       - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-18092}:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # Hits /api/health (which round-trips to Postgres) with the first allowed host as Host header.
+    # Hits /api/health (which round-trips to the database) with the first allowed host as Host header.
     healthcheck:
       test:
         - CMD
@@ -47,31 +45,6 @@ services:
     env_file: [.env]
     environment:
       DJANGO_DEBUG: "0"
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: "5432"
-    depends_on:
-      postgres:
-        condition: service_healthy
     cpus: 0.2
     mem_limit: 256m
     restart: unless-stopped
-
-  postgres:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-news}
-      POSTGRES_USER: ${POSTGRES_USER:-news}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    cpus: 0.4
-    mem_limit: 384m
-    restart: unless-stopped
-
-volumes:
-  pgdata:

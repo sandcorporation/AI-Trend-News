@@ -68,16 +68,23 @@ TEMPLATES = [
     },
 ]
 
+# MySQL only (ADR 0004). Production is OCI MySQL HeatWave; local dev and tests use the
+# `make db` container (127.0.0.1:15443). The database is utf8mb4 / utf8mb4_0900_as_cs so that
+# unique constraints and `=` lookups are case- and accent-sensitive like before (slug 404, tags,
+# prediction claims). Django sets the session to READ COMMITTED; leave it
+# (REPEATABLE READ deadlocked on gap locks in the spike).
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("POSTGRES_DB", "news"),
-        "USER": env("POSTGRES_USER", "news"),
-        "PASSWORD": env("POSTGRES_PASSWORD", "news"),
-        "HOST": env("POSTGRES_HOST", "127.0.0.1"),
-        "PORT": env("POSTGRES_PORT", "15443"),
+        "ENGINE": "django.db.backends.mysql",
+        "NAME": env("DB_NAME", "news"),
+        "USER": env("DB_USER", "news"),
+        "PASSWORD": env("DB_PASSWORD", "news"),
+        "HOST": env("DB_HOST", "127.0.0.1"),
+        "PORT": env("DB_PORT", "3306"),
+        "OPTIONS": {"charset": "utf8mb4"},
         "CONN_MAX_AGE": 60,
         "CONN_HEALTH_CHECKS": True,
+        "TEST": {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_0900_as_cs"},
     }
 }
 
