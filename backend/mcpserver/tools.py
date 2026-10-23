@@ -393,6 +393,7 @@ def list_categories(token: AccessToken, args: NoInput) -> ToolResult:
     "분야 추가",
     "새 분야를 맨 뒤에 더하고 slug를 돌려준다. 같은 이름이 있으면 오류.",
     AddCategoryInput,
+    scope="admin",
 )
 def add_category(token: AccessToken, args: AddCategoryInput) -> ToolResult:
     category = articles.add_category(args.name)

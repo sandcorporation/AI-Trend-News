@@ -19,6 +19,7 @@ from collection.models import Item, Source
 from editor.models import EditorRun
 from mcpserver import tools
 from mcpserver.jsontypes import JSON
+from services import articles as article_service
 from services import editor_runs
 from services.tokens import AccessToken
 from tests.conftest import Signer
@@ -39,11 +40,11 @@ EDITOR_TOOLS = {
     "set_article_flags",
     "discard_item",
     "list_categories",
-    "add_category",
     "start_editor_run",
     "finish_editor_run",
 }
 ADMIN_TOOLS = {
+    "add_category",
     "list_sources",
     "create_source",
     "update_source",
@@ -288,7 +289,7 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
         "url": "https://example.com/3",
     }
 
-    category = mcp.ok("add_category", {"name": "Economy"})["slug"]
+    category = article_service.add_category("Economy").slug
     assert mcp.ok("list_categories", {}) == {"categories": [{"name": "Economy", "slug": category}]}
     assert "없는 분야입니다: nope" in mcp.fails(
         "create_article",
@@ -378,7 +379,7 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
 
 @pytest.mark.django_db
 def test_recent_articles_respects_days(mcp: McpClient) -> None:
-    category = mcp.ok("add_category", {"name": "IT"})["slug"]
+    category = article_service.add_category("IT").slug
     items = make_items(2)
     for item in items:
         mcp.ok(
