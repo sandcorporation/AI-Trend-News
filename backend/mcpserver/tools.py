@@ -457,6 +457,10 @@ class UpdateCategoryInput(CategoryChange):
 
 class DeleteCategoryInput(_Input):
     slug: str = Field(description="지울 분야 slug")
+    confirm: bool = Field(
+        default=False,
+        description="기사가 있는 분야는 true일 때만 지운다(기사도 함께 지워진다)",
+    )
 
 
 class ArticleIdInput(_Input):
@@ -538,13 +542,14 @@ def update_category(token: AccessToken, args: UpdateCategoryInput) -> ToolResult
 @tool(
     "delete_category",
     "분야 삭제",
-    "분야를 지운다. 기사가 하나라도 있으면 오류.",
+    "분야를 지운다. 분야의 기사도 함께 지운다 — "
+    "기사가 있으면 confirm=true를 줘야 하고, 없으면 오류로 기사 수를 알려 준다.",
     DeleteCategoryInput,
     scope="admin",
 )
 def delete_category(token: AccessToken, args: DeleteCategoryInput) -> ToolResult:
-    articles.delete_category(args.slug)
-    return {"deleted": args.slug}
+    count = articles.delete_category(args.slug, confirm=args.confirm)
+    return {"deleted": args.slug, "deleted_articles": count}
 
 
 @tool(

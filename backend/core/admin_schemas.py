@@ -96,6 +96,11 @@ class SourceOut(Schema):
         )
 
 
+class CategoryDeleted(Schema):
+    deleted: str
+    deleted_articles: int
+
+
 class CategoryOut(Schema):
     name: str
     slug: str

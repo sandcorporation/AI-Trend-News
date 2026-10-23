@@ -88,6 +88,13 @@ class CategoryAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에
 
     readonly_fields = ("old_slugs",)
 
+    def delete_model(self, request: HttpRequest, obj: Category) -> None:
+        svc.delete_category(obj.slug, confirm=True)
+
+    def delete_queryset(self, request: HttpRequest, queryset: QuerySet[Category]) -> None:
+        for category in queryset:
+            svc.delete_category(category.slug, confirm=True)
+
     def save_model(
         self,
         request: HttpRequest,

@@ -7,10 +7,12 @@ import json
 
 import pytest
 from django.test import Client
+from django.urls import reverse
 
-from articles.models import Article, Category
+from articles.models import Article, ArticleSlugAlias, Category
 from collection.models import Item, Source
 from mcpserver.jsontypes import JSON
+from posts.models import Post
 from services.articles import Actor, FlagOverridden, create_article, set_flags
 from services.collection import collect_all
 from tests.conftest import FakeFetcher, Signer
@@ -209,16 +211,69 @@ def test_category_update_reorder_delete_via_mcp(mcp: McpClient) -> None:
     assert [c["slug"] for c in ordered] == ["b", "a"]
     assert "빠진 slug: b" in mcp.fails("reorder_categories", {"slugs": ["a"]})
 
-    assert mcp.ok("delete_category", {"slug": "b"}) == {"deleted": "b"}
+    assert mcp.ok("delete_category", {"slug": "b"}) == {"deleted": "b", "deleted_articles": 0}
     assert list(Category.objects.values_list("slug", flat=True)) == [a.slug]
 
 
-def test_category_with_articles_cannot_be_deleted(mcp: McpClient, api: Api) -> None:
+def test_category_with_articles_is_refused_without_confirm(mcp: McpClient, api: Api) -> None:
     make_article()
-    assert "기사 1건이 있어 지울 수 없습니다" in mcp.fails("delete_category", {"slug": "models"})
+    message = mcp.fails("delete_category", {"slug": "models"})
+    assert "기사 1건" in message and "confirm=true" in message
     status, body = api.call("delete", "/categories/models")
-    assert status == 400 and "지울 수 없습니다" in str(obj(body)["detail"])
-    assert Category.objects.filter(slug="models").exists()
+    assert status == 400 and "confirm=true" in str(obj(body)["detail"])
+    assert Category.objects.filter(slug="models").exists() and Article.objects.count() == 1
+
+
+def _delete_with_confirm_scene() -> tuple[Article, Article, Item]:
+    article = make_article()
+    ArticleSlugAlias.objects.create(slug="old-one", article=article)
+    Post.objects.create(article=article, channel=Post.Channel.KAKAO, text="문구")
+    mine = Item.objects.get(article_link__article=article)
+    other_cat = Category.objects.create(name="다른", slug="other")
+    keep_item = Item.objects.create(
+        source=mine.source, url="https://x.example.com/k", normalized_url="https://x.example.com/k"
+    )
+    keep = create_article(
+        Actor.EDITOR, item_ids=[keep_item.pk], title="남길", summary="s", category=other_cat.slug
+    )
+    return article, keep, mine
+
+
+def _assert_cascaded(keep: Article, mine: Item) -> None:
+    assert not Category.objects.filter(slug="models").exists()
+    assert list(Article.objects.values_list("pk", flat=True)) == [keep.pk]
+    assert not Post.objects.exists() and not ArticleSlugAlias.objects.exists()
+    mine.refresh_from_db()
+    assert mine.status == Item.Status.DISCARDED
+    assert Item.objects.get(article_link__article=keep).status == Item.Status.BUNDLED
+
+
+def test_mcp_confirm_deletes_articles_and_discards_items(mcp: McpClient) -> None:
+    _, keep, mine = _delete_with_confirm_scene()
+    result = mcp.ok("delete_category", {"slug": "models", "confirm": True})
+    assert result == {"deleted": "models", "deleted_articles": 1}
+    _assert_cascaded(keep, mine)
+
+
+def test_api_confirm_deletes_articles_and_discards_items(api: Api) -> None:
+    _, keep, mine = _delete_with_confirm_scene()
+    status, body = api.call("delete", "/categories/models?confirm=true")
+    assert status == 200 and body == {"deleted": "models", "deleted_articles": 1}
+    _assert_cascaded(keep, mine)
+
+
+def test_category_without_articles_is_deleted_without_confirm(api: Api) -> None:
+    Category.objects.create(name="빈", slug="empty")
+    status, body = api.call("delete", "/categories/empty")
+    assert status == 200 and body == {"deleted": "empty", "deleted_articles": 0}
+
+
+def test_admin_delete_goes_through_service(admin_client: Client) -> None:
+    _, keep, mine = _delete_with_confirm_scene()
+    category = Category.objects.get(slug="models")
+    url = reverse("admin:articles_category_delete", args=[category.pk])
+    assert admin_client.post(url, {"post": "yes"}).status_code == 302
+    _assert_cascaded(keep, mine)
 
 
 def test_category_api(api: Api) -> None:
@@ -228,7 +283,7 @@ def test_category_api(api: Api) -> None:
     assert status == 200 and [c["slug"] for c in rows(body)] == ["b", "a"]
     status, body = api.call("patch", "/categories/a", {"name": "새"})
     assert status == 200 and obj(body)["name"] == "새"
-    assert api.call("delete", "/categories/a")[0] == 204
+    assert api.call("delete", "/categories/a")[0] == 200
     assert api.call("delete", "/categories/a")[0] == 404
 
 

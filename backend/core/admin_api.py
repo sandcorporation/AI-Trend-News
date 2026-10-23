@@ -9,6 +9,7 @@ from core.admin_schemas import (
     ArticleOut,
     ArticleTextChange,
     CategoryChange,
+    CategoryDeleted,
     CategoryOrder,
     CategoryOut,
     EnabledChange,
@@ -88,10 +89,11 @@ def update_category(request: HttpRequest, slug: str, body: CategoryChange) -> Ca
     return CategoryOut.of(articles.update_category(slug, **body.model_dump()))
 
 
-@router.delete("/categories/{slug}", response={204: None})
-def delete_category(request: HttpRequest, slug: str) -> tuple[int, None]:
-    articles.delete_category(slug)
-    return 204, None
+@router.delete("/categories/{slug}", response=CategoryDeleted)
+def delete_category(request: HttpRequest, slug: str, confirm: bool = False) -> CategoryDeleted:
+    """기사가 있으면 confirm=true일 때만 기사도 함께 지운다."""
+    count = articles.delete_category(slug, confirm=confirm)
+    return CategoryDeleted(deleted=slug, deleted_articles=count)
 
 
 # --- 기사 ---
