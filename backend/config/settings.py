@@ -111,6 +111,9 @@ AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
 # Item (only SeenUrl), so a first run on a feed with years of archive does not flood the queue.
 COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
 
+# Pending items collected longer ago than this are auto-discarded by prune_items (#38).
+PENDING_MAX_AGE_HOURS = int(env("PENDING_MAX_AGE_HOURS", "24"))
+
 # Discord webhook for operational alerts (#10). Empty = log only, nothing is sent.
 DISCORD_WEBHOOK_URL = env("DISCORD_WEBHOOK_URL")
 # portfolio inquiry API (ADR 0003). Either empty = inquiries are only queued, never sent.

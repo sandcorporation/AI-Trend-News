@@ -21,7 +21,7 @@
 - `list_categories()` — 분야 목록(`name`, `slug`).
 - `add_category()` — 분야 추가(`name`). 추가된 분야의 `slug`를 돌려준다.
 - `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, 묶인 수집물(`items`의 `id`, `url`)을 준다.
-- `list_pending_items()` — 미처리 수집물을 오래된 것부터(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`을 준다.
+- `list_pending_items()` — 미처리 수집물을 최신순으로(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`을 준다.
 - `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`.
 - `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. 게시·추천은 바꾸지 못한다.
 - `set_article_flags()` — 기사의 `published`·`featured` 변경(`id`와 바꿀 것만).
@@ -33,7 +33,7 @@
 1. `start_editor_run()`을 부르고 `run_id`를 기억한다.
 2. `list_categories()`로 분야 목록을 읽는다.
 3. `list_recent_articles()`를 `days=3`으로 불러 최근 기사를 읽는다. 중복 판단의 기준이다.
-4. `list_pending_items()`를 쪽(page)별로 읽는다. 한 실행에서 처리하는 수집물은 **최대 60개**다. 60개를 넘기면 나머지는 다음 실행에 남긴다(오래된 것부터 처리된다).
+4. `list_pending_items()`를 쪽(page)별로 읽는다. 한 실행에서 처리하는 수집물은 **최대 60개**다. 60개를 넘기면 나머지는 다음 실행에 남기되, 수집 24시간이 지난 미처리는 자동으로 버려지므로 최신 것부터 처리한다.
 5. 수집물마다 아래 셋 중 하나로 판단한다.
    - 최근 기사와 같은 뉴스 → `update_article()`로 그 기사에 묶는다(`add_item_ids`). 새로 알려진 사실이 있으면 `summary`도 고친다.
    - 새 뉴스 → 같은 뉴스를 다룬 수집물끼리 모아 `create_article()` 하나로 만든다.
