@@ -8,14 +8,18 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
     <Layout site={data.site}>
       <article className="detail">
         <p className="meta">
-          <a className="chip" href={`/?category=${a.category.slug}`}>
+          <a
+            className={`chip tone-${a.tone}`}
+            href={`/?category=${a.category.slug}`}
+          >
             {a.category.name}
           </a>{" "}
-          <time dateTime={a.published_at}>{a.published_label}</time>
+          · <time dateTime={a.published_at}>{a.published_label}</time> ·{" "}
+          <span>출처 {a.items.length}건</span>
         </p>
         <h1>{a.title}</h1>
-        {a.image_url && <img className="hero" src={a.image_url} alt="" />}
         <p className="summary">{a.summary}</p>
+        {a.image_url && <img className="hero" src={a.image_url} alt="" />}
         {a.tags.length > 0 && (
           <ul className="tags">
             {a.tags.map((t) => (
@@ -23,8 +27,7 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
             ))}
           </ul>
         )}
-        {a.commentary && <Commentary c={a.commentary} />}
-        <section aria-labelledby="sources-h">
+        <section className="sources-block" aria-labelledby="sources-h">
           <h2 id="sources-h">원문</h2>
           <ul className="sources">
             {a.items.map((i) => (
@@ -40,6 +43,7 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
             ))}
           </ul>
         </section>
+        {a.commentary && <Commentary c={a.commentary} />}
         <div className="share" data-slot="share">
           <a className="btn" href={data.share.x_url} target="_blank" rel="noopener">
             X에 공유

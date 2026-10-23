@@ -1,11 +1,18 @@
 {% include "core/public/_chrome_top.html" %}
 <main class="main">
   <article class="detail">
-    <p class="meta"><a class="chip" href="/?category={{ data.article.category.slug }}">{{ data.article.category.name }}</a> <time datetime="{{ data.article.published_at }}">{{ data.article.published_label }}</time></p>
+    <p class="meta"><a class="chip tone-{{ data.article.tone }}" href="/?category={{ data.article.category.slug }}">{{ data.article.category.name }}</a> · <time datetime="{{ data.article.published_at }}">{{ data.article.published_label }}</time> · <span>출처 {{ data.article.items|length }}건</span></p>
     <h1>{{ data.article.title }}</h1>
-    {% if data.article.image_url %}<img class="hero" src="{{ data.article.image_url }}" alt="">{% endif %}
     <p class="summary">{{ data.article.summary }}</p>
+    {% if data.article.image_url %}<img class="hero" src="{{ data.article.image_url }}" alt="">{% endif %}
     {% if data.article.tags %}<ul class="tags">{% for t in data.article.tags %}<li>#{{ t }}</li>{% endfor %}</ul>{% endif %}
+    <section class="sources-block" aria-labelledby="sources-h">
+      <h2 id="sources-h">원문</h2>
+      <ul class="sources">
+        {% for i in data.article.items %}<li><a href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title }}</a> <span class="source-name">{{ i.source }}{% if i.published_label %} · {{ i.published_label }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
     {% if data.article.commentary %}{% with c=data.article.commentary %}
     <section class="commentary" data-slot="commentary" aria-labelledby="commentary-h">
       <header class="commentary-head">
@@ -38,13 +45,6 @@
       {% endif %}
     </section>
     {% endwith %}{% endif %}
-    <section aria-labelledby="sources-h">
-      <h2 id="sources-h">원문</h2>
-      <ul class="sources">
-        {% for i in data.article.items %}<li><a href="{{ i.url }}" target="_blank" rel="noopener">{{ i.title }}</a> <span class="source-name">{{ i.source }}{% if i.published_label %} · {{ i.published_label }}{% endif %}</span></li>
-        {% endfor %}
-      </ul>
-    </section>
     <div class="share" data-slot="share">
       <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
       <button class="btn" type="button" data-copy-url="{{ data.share.url }}">링크 복사</button>

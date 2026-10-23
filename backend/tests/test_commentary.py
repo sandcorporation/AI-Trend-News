@@ -214,7 +214,8 @@ def test_article_page_shows_commentary_in_html_and_page_data(client: Client) -> 
         assert text in html
     assert "3개월 안" in html and "금리가 내린다" in html
     assert html.index('class="summary"') < html.index('data-slot="commentary"')
-    assert html.index('data-slot="commentary"') < html.index('id="sources-h"')
+    # #72: 출처 목록 다음 AI 분석
+    assert html.index('id="sources-h"') < html.index('data-slot="commentary"')
     data = page_data(html)
     article_data = data["article"]
     assert isinstance(article_data, dict)

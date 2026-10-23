@@ -7,9 +7,14 @@
       {% for p in data.periods %}<a href="{{ p.url }}"{% if p.key == data.period %} aria-current="page"{% endif %}>{{ p.label }}</a>
       {% endfor %}
     </nav>
-    <p class="hit-rate" data-slot="hit-rate">
-      {% if data.rate.percent is None %}아직 평가된 예측이 없습니다.{% else %}적중률 <strong>{{ data.rate.percent }}%</strong> <span>평가 {{ data.rate.judged }}건 중 {{ data.rate.hits }}건 적중{% if data.rate.undecidable %} · 판단 불가 {{ data.rate.undecidable }}건 제외{% endif %}</span>{% endif %}
-    </p>
+    <div class="hit-rate" data-slot="hit-rate">
+      <dl class="metrics">
+        <div class="metric"><dt class="label">적중률</dt><dd>{% if data.rate.percent is None %}—{% else %}<strong>{{ data.rate.percent }}%</strong>{% endif %}</dd></div>
+        <div class="metric"><dt class="label">평가</dt><dd>{{ data.rate.judged }}</dd></div>
+        <div class="metric"><dt class="label">대기</dt><dd>{{ data.rate.pending }}</dd></div>
+      </dl>
+      <p class="metrics-note">{% if data.rate.percent is None %}아직 평가된 예측이 없습니다.{% else %}평가 {{ data.rate.judged }}건 중 {{ data.rate.hits }}건 적중{% if data.rate.undecidable %} · 판단 불가 {{ data.rate.undecidable }}건 제외{% endif %}{% endif %}</p>
+    </div>
     {% if data.rows %}
     <ul class="prediction-list">
       {% for r in data.rows %}<li>
