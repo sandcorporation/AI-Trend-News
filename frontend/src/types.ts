@@ -37,6 +37,7 @@ export interface CommentaryData {
   outlook_bear: string;
   opinion: string;
   predictions: PredictionData[];
+  watchpoints: string[];
 }
 
 export interface SourceItemData {

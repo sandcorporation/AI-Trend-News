@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { Layout } from "./Layout";
 import type { ArticlePageData, CommentaryData } from "./types";
 
@@ -92,6 +92,28 @@ function CopyLinkButton({ url }: { url: string }) {
   );
 }
 
+/** 서버 템플릿의 `linebreaks`와 같게: 빈 줄로 문단을 나누고 문단 안 줄바꿈은 <br>. */
+function Prose({ text }: { text: string }) {
+  const paragraphs = text
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .split(/\n{2,}/);
+  return (
+    <div className="prose">
+      {paragraphs.map((para, i) => (
+        <p key={i}>
+          {para.split("\n").map((line, j) => (
+            <Fragment key={j}>
+              {j > 0 && <br />}
+              {line}
+            </Fragment>
+          ))}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function Commentary({ c }: { c: CommentaryData }) {
   return (
     <section
@@ -104,25 +126,35 @@ function Commentary({ c }: { c: CommentaryData }) {
           <span className="badge-ai">AI 분석</span>
         </h2>
         <p className="commentary-note">
-          편집자 AI가 수집된 보도만을 근거로 쓴 분석입니다. 사실 확인은 출처를
-          참고하세요.
+          수집된 보도와 일반적인 배경 지식을 바탕으로 편집자 AI가 쓴
+          분석입니다. 사실 확인은 출처를 참고하세요.
         </p>
       </header>
       <h3>배경</h3>
-      <p>{c.background}</p>
+      <Prose text={c.background} />
       <h3>의미</h3>
-      <p>{c.significance}</p>
+      <Prose text={c.significance} />
       <h3>전망</h3>
       <div className="outlook">
         <div className="outlook-col outlook-bull">
           <h4>낙관</h4>
-          <p>{c.outlook_bull}</p>
+          <Prose text={c.outlook_bull} />
         </div>
         <div className="outlook-col outlook-bear">
           <h4>회의</h4>
-          <p>{c.outlook_bear}</p>
+          <Prose text={c.outlook_bear} />
         </div>
       </div>
+      {c.watchpoints.length > 0 && (
+        <>
+          <h3>지켜볼 신호</h3>
+          <ul className="watchpoints">
+            {c.watchpoints.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </>
+      )}
       <blockquote className="opinion">
         <p>{c.opinion}</p>
       </blockquote>
