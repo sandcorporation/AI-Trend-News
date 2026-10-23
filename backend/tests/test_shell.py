@@ -55,3 +55,11 @@ def test_no_old_site_name_left_in_templates_and_frontend() -> None:
         for path in base.rglob("*"):
             if path.is_file() and path.suffix in {".html", ".tsx", ".ts"}:
                 assert "AI Trend News" not in path.read_text(encoding="utf-8"), path
+
+
+def test_head_links_the_rss_feed(client: Client) -> None:
+    html = client.get("/").content.decode()
+    assert (
+        '<link rel="alternate" type="application/rss+xml" title="Foresight" href="/feed.xml">'
+        in html
+    )
