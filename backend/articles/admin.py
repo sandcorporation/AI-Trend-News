@@ -7,9 +7,19 @@ from django.http import HttpRequest
 from django.template.response import TemplateResponse
 from django.utils import timezone
 
-from articles.models import Article, ArticleItem, Category, Commentary, OutboundClick, Tag
+from adapters.clock import get_clock
+from articles.models import (
+    Article,
+    ArticleItem,
+    Category,
+    Commentary,
+    OutboundClick,
+    Prediction,
+    Tag,
+)
 from services import articles as svc
 from services import outbound
+from services import predictions as predictions_svc
 
 
 class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
@@ -172,3 +182,59 @@ class OutboundClickAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타�
 
     def has_change_permission(self, request: HttpRequest, obj: OutboundClick | None = None) -> bool:
         return False
+
+
+@admin.register(Prediction)
+class PredictionAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """대표가 예측의 결과를 매긴다(#52). 문구는 편집자가 쓰므로 결과·메모만 고친다."""
+
+    list_display = ("claim", "article_title", "due_date", "verdict", "judged_at")
+    list_filter = ("verdict", "horizon")
+    ordering = ("due_date", "id")
+    fields = ("claim", "horizon", "basis", "due_date", "verdict", "verdict_note", "judged_at")
+    readonly_fields = ("claim", "horizon", "basis", "due_date", "judged_at")
+    actions = ["mark_hit", "mark_miss", "mark_undecidable", "mark_pending"]
+
+    @admin.display(description="기사")
+    def article_title(self, obj: Prediction) -> str:
+        return obj.commentary.article.title
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Prediction]:
+        qs: QuerySet[Prediction] = super().get_queryset(request)
+        return qs.select_related("commentary__article")
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def save_model(
+        self,
+        request: HttpRequest,
+        obj: Prediction,
+        form: ModelForm,  # type: ignore[type-arg]
+        change: bool,
+    ) -> None:
+        predictions_svc.judge_prediction(
+            obj.pk, obj.verdict, obj.verdict_note, now=get_clock().now()
+        )
+
+    def _judge(self, queryset: QuerySet[Prediction], verdict: str) -> None:
+        for row in queryset:
+            predictions_svc.judge_prediction(
+                row.pk, verdict, row.verdict_note, now=get_clock().now()
+            )
+
+    @admin.action(description="적중으로 표시")
+    def mark_hit(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
+        self._judge(queryset, Prediction.Verdict.HIT)
+
+    @admin.action(description="빗나감으로 표시")
+    def mark_miss(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
+        self._judge(queryset, Prediction.Verdict.MISS)
+
+    @admin.action(description="판단 불가로 표시")
+    def mark_undecidable(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
+        self._judge(queryset, Prediction.Verdict.UNDECIDABLE)
+
+    @admin.action(description="미평가로 되돌림")
+    def mark_pending(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
+        self._judge(queryset, Prediction.Verdict.PENDING)

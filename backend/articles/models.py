@@ -234,3 +234,35 @@ class Commentary(models.Model):
 
     def __str__(self) -> str:
         return f"분석 · {self.article.title}"
+
+
+class Prediction(models.Model):
+    """분석의 예측 문장 하나(#52). 분석의 `predictions`에서 동기화하고 대표가 결과를 매긴다."""
+
+    class Verdict(models.TextChoices):
+        PENDING = "pending", "미평가"
+        HIT = "hit", "적중"
+        MISS = "miss", "빗나감"
+        UNDECIDABLE = "undecidable", "판단 불가"
+
+    commentary = models.ForeignKey(
+        Commentary, verbose_name="분석", on_delete=models.CASCADE, related_name="prediction_rows"
+    )
+    claim = models.CharField("예측 문장", max_length=120)
+    horizon = models.CharField("기간", max_length=3)
+    basis = models.CharField("근거", max_length=200, blank=True)
+    due_date = models.DateField("평가 기한", help_text="분석 작성일 + 기간")
+    verdict = models.CharField("결과", max_length=12, choices=Verdict.choices, default="pending")
+    verdict_note = models.CharField("평가 메모", max_length=300, blank=True)
+    judged_at = models.DateTimeField("평가 시각", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "전망 예측"
+        verbose_name_plural = "전망 예측"
+        ordering = ["due_date", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["commentary", "claim"], name="prediction_claim_once")
+        ]
+
+    def __str__(self) -> str:
+        return self.claim

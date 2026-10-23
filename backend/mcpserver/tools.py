@@ -24,6 +24,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from adapters.clock import get_clock
 from articles.models import Article
 from core.admin_schemas import (
     ArticleOut,
@@ -33,6 +34,8 @@ from core.admin_schemas import (
     CategoryOut,
     EnabledChange,
     FlagsChange,
+    PredictionJudge,
+    PredictionRowOut,
     SourceChange,
     SourceCreate,
     SourceOut,
@@ -41,10 +44,12 @@ from mcpserver.jsontypes import JSON
 from services import articles, collection, editor_runs, sources
 from services import commentary as commentary_svc
 from services import posts as posts_svc
+from services import predictions as predictions_svc
 from services.articles import Actor, ArticleError
 from services.commentary import CommentaryError, PredictionIn
 from services.editor_runs import EditorRunError
 from services.posts import PostError
+from services.predictions import PredictionError
 from services.sources import SourceError
 from services.tokens import AccessToken, Scope
 
@@ -56,6 +61,7 @@ SERVICE_ERRORS: tuple[type[Exception], ...] = (
     EditorRunError,
     SourceError,
     PostError,
+    PredictionError,
 )
 
 
@@ -529,6 +535,10 @@ class UpdateArticleAsOwnerInput(ArticleTextChange, ArticleIdInput):
     pass
 
 
+class JudgePredictionInput(PredictionJudge):
+    id: int = Field(description="예측 id(admin 「전망 예측」 목록에서 확인)")
+
+
 def _dump(model: BaseModel) -> ToolResult:
     dumped: ToolResult = model.model_dump(mode="json")
     return dumped
@@ -643,3 +653,16 @@ def set_article_flags_as_owner(token: AccessToken, args: SetFlagsAsOwnerInput) -
 def update_article_as_owner(token: AccessToken, args: UpdateArticleAsOwnerInput) -> ToolResult:
     article = articles.update_article(Actor.OWNER, args.id, title=args.title, summary=args.summary)
     return _dump(ArticleOut.of(article))
+
+
+@tool(
+    "judge_prediction",
+    "전망 예측 평가",
+    "대표로서 분석의 예측 하나에 결과를 매긴다: hit(적중)·miss(빗나감)·undecidable(판단 불가). "
+    "pending이면 미평가로 되돌린다. 공개 적중률은 판단 불가를 뺀 평가분으로 계산한다.",
+    JudgePredictionInput,
+    scope="admin",
+)
+def judge_prediction(token: AccessToken, args: JudgePredictionInput) -> ToolResult:
+    row = predictions_svc.judge_prediction(args.id, args.verdict, args.note, now=get_clock().now())
+    return _dump(PredictionRowOut.of(row))

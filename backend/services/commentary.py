@@ -1,7 +1,8 @@
 """AI 분석(논평) 규칙(#51). 편집자는 추천이면서 게시된 기사에만 쓰고, 숨긴 분석은 못 덮어쓴다.
 
 추천이 풀리거나 비게시가 되어도 분석은 지우지 않는다. 공개 화면은 `public_commentary`만 쓴다.
-`predictions`는 뒤 티켓(전망 기록표)이 평가할 수 있도록 `{claim, horizon, basis}`로 저장한다.
+`predictions`는 `{claim, horizon, basis}`로 저장하고, 저장할 때마다 `services/predictions.py`가
+`Prediction` 행으로 동기화한다(평가된 행은 유지).
 """
 
 from typing import TypedDict
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 from articles.models import Article, Commentary
 from services import articles
+from services import predictions as predictions_svc
 from services.articles import Actor
 
 MAX_TEXT_LENGTH = 400
@@ -108,7 +110,9 @@ def upsert_commentary(
     }
     existing = Commentary.objects.select_for_update().filter(article=article).first()
     if existing is None:
-        return Commentary.objects.create(article=article, **fields)
+        created = Commentary.objects.create(article=article, **fields)
+        predictions_svc.sync_predictions(created)
+        return created
     if existing.hidden and actor is Actor.EDITOR:
         raise CommentaryHidden(
             f"기사 {article_id}의 분석은 대표가 숨겼으므로 편집자가 덮어쓸 수 없습니다."
@@ -116,6 +120,7 @@ def upsert_commentary(
     for name, value in fields.items():
         setattr(existing, name, value)
     existing.save()
+    predictions_svc.sync_predictions(existing)
     return existing
 
 

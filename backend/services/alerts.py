@@ -1,23 +1,25 @@
 """경보 점검(#10): 편집자 미실행과 소스 연속 실패를 Discord로 알린다.
 
-같은 조건으로 되풀이해 보내지 않는다 — `Alert`에 종류·대상별 활성 상태를 두고, 조건이 처음
-참이 될 때 한 번 보내고, 풀리면 활성을 끄고 「복구」를 한 번 보낸다. 전송에 실패하면 상태를
-바꾸지 않아 다음 점검이 다시 시도한다.
+같은 조건으로 되풀이해 보내지 않는다(전망 평가 대기만 주 1회 다시) — `Alert`에 종류·대상별
+활성 상태를 두고, 조건이 처음 참이 될 때 한 번 보내고, 풀리면 활성을 끄고 「복구」를 한 번
+보낸다. 전송에 실패하면 상태를 바꾸지 않아 다음 점검이 다시 시도한다.
 """
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from adapters.discord import Notifier
 from collection.models import Source
 from editor.models import ABANDON_AFTER, Alert, EditorRun
+from services import predictions
 from services.editor_runs import last_finished_run
 
 logger = logging.getLogger("alerts")
 
 SOURCE_FAILURE_THRESHOLD = 3
 Kind = Alert.Kind
+REMIND_AFTER = timedelta(days=7)  # 평가 대기 경보는 조건이 이어지면 주 1회 다시 보낸다
 
 
 @dataclass(frozen=True)
@@ -67,12 +69,26 @@ def _source_conditions() -> list[Condition]:
     ]
 
 
+def _predictions_condition(now: datetime) -> Condition | None:
+    due = predictions.overdue_count(predictions.today_of(now))
+    if not due:
+        return None
+    return Condition(
+        Kind.PREDICTIONS_DUE,
+        "",
+        f"[경보] 전망 평가 대기 {due}건: 기한이 지난 예측을 admin 「전망 예측」에서 평가하세요.",
+    )
+
+
 def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     """점검하고 보낸 메시지들을 돌려준다."""
     conditions: dict[tuple[str, str], Condition] = {}
     editor = _editor_condition(now)
     if editor:
         conditions[(editor.kind, editor.target)] = editor
+    due = _predictions_condition(now)
+    if due:
+        conditions[(due.kind, due.target)] = due
     for condition in _source_conditions():
         conditions[(condition.kind, condition.target)] = condition
 
@@ -87,7 +103,11 @@ def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
 
     for (kind, target), condition in conditions.items():
         alert, _ = Alert.objects.get_or_create(kind=kind, target=target)
-        if not alert.active:
+        if not alert.active or (
+            kind == Kind.PREDICTIONS_DUE
+            and alert.last_sent_at is not None
+            and now - alert.last_sent_at >= REMIND_AFTER
+        ):
             deliver(alert, condition.problem, active=True)
 
     for alert in Alert.objects.filter(active=True):
@@ -102,4 +122,6 @@ def _recovery_message(alert: Alert) -> str:
         source = Source.objects.filter(pk=int(alert.target)).first()
         name = source.name if source else f"#{alert.target}(삭제됨)"
         return f"[복구] 소스 수집이 다시 성공했습니다: {name}"
+    if alert.kind == Kind.PREDICTIONS_DUE:
+        return "[복구] 평가 대기 중인 전망 예측이 없습니다."
     return "[복구] 편집자가 다시 실행을 마쳤습니다."

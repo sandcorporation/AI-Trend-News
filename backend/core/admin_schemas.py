@@ -5,7 +5,7 @@ from typing import Literal, Self
 from ninja import Schema
 from pydantic import ConfigDict, Field
 
-from articles.models import Article, Category
+from articles.models import Article, Category, Prediction
 from collection.models import Source
 
 
@@ -35,6 +35,13 @@ class SourceChange(Strict):
     url: str | None = Field(default=None, max_length=2000, description="새 주소")
     html_rules: dict[str, str] | None = Field(default=None, description="새 HTML 규칙(통째로 교체)")
     enabled: bool | None = Field(default=None, description="켜짐 여부")
+
+
+class PredictionJudge(Strict):
+    verdict: Literal["pending", "hit", "miss", "undecidable"] = Field(
+        description="결과: hit(적중)·miss(빗나감)·undecidable(판단 불가)·pending(미평가로 되돌림)"
+    )
+    note: str = Field(default="", max_length=300, description="평가 메모(근거 링크·사유)")
 
 
 class EnabledChange(Strict):
@@ -145,4 +152,28 @@ class ArticleOut(Schema):
             items=[
                 ItemRef(id=link.item.pk, url=link.item.url) for link in article.article_items.all()
             ],
+        )
+
+
+class PredictionRowOut(Schema):
+    id: int
+    article_id: int
+    claim: str
+    horizon: str
+    due_date: str
+    verdict: str
+    verdict_note: str
+    judged_at: str | None
+
+    @classmethod
+    def of(cls, row: Prediction) -> Self:
+        return cls(
+            id=row.pk,
+            article_id=row.commentary.article_id,
+            claim=row.claim,
+            horizon=row.horizon,
+            due_date=row.due_date.isoformat(),
+            verdict=row.verdict,
+            verdict_note=row.verdict_note,
+            judged_at=row.judged_at.isoformat() if row.judged_at else None,
         )
