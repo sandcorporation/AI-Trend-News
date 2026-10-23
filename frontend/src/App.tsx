@@ -14,7 +14,7 @@ export function App({ data }: { data: unknown }) {
   }
   return (
     <main className="placeholder">
-      <h1>AI Trend News</h1>
+      <h1>Foresight</h1>
       <p>사이트를 준비하고 있습니다.</p>
     </main>
   );

@@ -129,8 +129,8 @@ def test_article_detail_has_og_tags_source_links_and_text(client: Client) -> Non
     html = response.content.decode()
 
     assert response.status_code == 200
-    assert "<title>금리 동결 - AI Trend News</title>" in html
-    assert og(html, "title") == "금리 동결 - AI Trend News"
+    assert "<title>금리 동결 - Foresight</title>" in html
+    assert og(html, "title") == "금리 동결 - Foresight"
     assert og(html, "type") == "article"
     assert og(html, "image") == "https://img.example.com/a.png"
     assert meta(html, "description") == "한국은행이 기준금리를 동결했다."

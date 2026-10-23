@@ -12,7 +12,7 @@ test("페이지가 아직 없는 경로는 준비 중 안내를 보여 준다", 
   render(<App data={null} />);
 
   expect(
-    screen.getByRole("heading", { name: "AI Trend News" }),
+    screen.getByRole("heading", { name: "Foresight" }),
   ).toBeInTheDocument();
   expect(screen.getByText("사이트를 준비하고 있습니다.")).toBeInTheDocument();
 });
@@ -31,7 +31,7 @@ test("셸에 심긴 #page-data JSON을 읽고, 없거나 깨지면 null을 돌�
 });
 
 const site = {
-  name: "AI Trend News",
+  name: "Foresight",
   monogram: "AT",
   sandcorp_label: "Sandcorp",
   header_url: "/go/sandcorp?from=header",

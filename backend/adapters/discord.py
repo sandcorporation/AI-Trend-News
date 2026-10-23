@@ -27,7 +27,7 @@ def _post_json(url: str, body: bytes) -> None:
     request = urllib.request.Request(  # noqa: S310
         url,
         data=body,
-        headers={"Content-Type": "application/json", "User-Agent": "AI-Trend-News-Alerts/1.0"},
+        headers={"Content-Type": "application/json", "User-Agent": "Foresight-Alerts/1.0"},
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):  # noqa: S310

@@ -11,8 +11,8 @@ from django.shortcuts import render
 
 from core.vite import entry_assets
 
-SITE_NAME = "AI Trend News"
-SITE_DESCRIPTION = "AI와 IT 뉴스를 한국어로 골라 요약해 보여 줍니다."
+SITE_NAME = "Foresight"
+SITE_DESCRIPTION = "AI와 IT 뉴스를 한국어로 골라 요약하고, 전망을 적어 채점합니다"
 INDEX = "index, follow"
 NOINDEX = "noindex, nofollow"
 

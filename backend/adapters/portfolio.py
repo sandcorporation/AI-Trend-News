@@ -51,7 +51,7 @@ def _post(url: str, secret: str, body: bytes) -> int:
         headers={
             "Content-Type": "application/json",
             "X-Inquiry-Secret": secret,
-            "User-Agent": "AI-Trend-News/1.0",
+            "User-Agent": "Foresight/1.0",
         },
         method="POST",
     )

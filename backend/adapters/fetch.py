@@ -3,7 +3,7 @@
 import urllib.request
 from typing import Protocol
 
-USER_AGENT = "AI-Trend-News-Crawler/1.0 (+https://news.sandcorp.co.kr)"
+USER_AGENT = "Foresight-Crawler/1.0 (+https://news.sandcorp.co.kr)"
 TIMEOUT_SECONDS = 15
 
 
