@@ -5,15 +5,14 @@
     {% for c in data.categories %}<a href="/?category={{ c.slug }}"{% if c.slug == data.category %} aria-current="page"{% endif %}>{{ c.name }}</a>
     {% endfor %}
   </nav>
-  {% if data.featured %}
-  <section class="featured" aria-labelledby="featured-h">
-    <h2 id="featured-h">추천</h2>
-    {% for card in data.featured %}{% include "core/public/_card.html" %}{% endfor %}
-  </section>
-  {% endif %}
+  <div class="layout">
+  <div class="primary">
+  {% if data.featured %}{% include "core/public/_hero.html" %}{% endif %}
   <section aria-labelledby="latest-h">
     <h2 id="latest-h">최신 기사</h2>
+    <div class="grid">
     {% for card in data.articles %}{% include "core/public/_card.html" %}{% empty %}<p class="empty">아직 게시된 기사가 없습니다.</p>{% endfor %}
+    </div>
   </section>
   {% if data.num_pages > 1 %}
   <nav class="pager" aria-label="페이지">
@@ -22,5 +21,9 @@
     {% if data.page < data.num_pages %}<a rel="next" href="?{% if data.category %}category={{ data.category }}&amp;{% endif %}page={{ data.page|add:1 }}">다음</a>{% endif %}
   </nav>
   {% endif %}
+  {% for section in data.sections %}{% include "core/public/_section.html" %}{% endfor %}
+  </div>
+  {% include "core/public/_sidebar.html" %}
+  </div>
 </main>
 {% include "core/public/_chrome_bottom.html" %}

@@ -71,7 +71,7 @@ def test_featured_area_shows_only_featured_and_published_articles(client: Client
     make_article("추천이지만 비게시", featured=True, published=False)
 
     html = client.get("/").content.decode()
-    featured_block = html.split('id="featured-h"')[1].split('id="latest-h"')[0]
+    featured_block = html.split('id="hero-h"')[1].split('id="latest-h"')[0]
 
     assert "추천 기사" in featured_block
     assert "평범한 기사" not in featured_block

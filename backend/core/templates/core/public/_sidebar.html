@@ -1,0 +1,17 @@
+<aside class="sidebar" aria-label="사이드바">
+  {% if data.most_read %}
+  <section class="side-block" aria-labelledby="most-read-h">
+    <h2 id="most-read-h">{{ data.sidebar.most_read_title }}</h2>
+    <ol class="ranked">
+      {% for card in data.most_read %}<li><a href="{{ card.url }}">{{ card.title }}</a></li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+  <section class="side-block" aria-labelledby="side-sandcorp-h">
+    <h2 id="side-sandcorp-h">{{ data.sidebar.sandcorp_title }}</h2>
+    <p>{{ data.sidebar.sandcorp_text }}</p>
+    <a class="side-link" href="{{ data.sidebar.sandcorp_url }}">{{ data.sidebar.sandcorp_label }}</a>
+  </section>
+  <p class="side-contact"><a href="{{ data.sidebar.contact_url }}">{{ data.sidebar.contact_label }}</a></p>
+</aside>

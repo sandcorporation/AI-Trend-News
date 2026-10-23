@@ -1,0 +1,23 @@
+<section class="cat-section" aria-labelledby="sec-{{ section.category.slug }}">
+  <div class="section-head">
+    <h2 id="sec-{{ section.category.slug }}"><span class="dot tone-{{ section.articles.0.tone }}"></span>{{ section.category.name }}</h2>
+    <a class="more" href="{{ section.more_url }}">더보기 →</a>
+  </div>
+  <div class="section-body">
+    {% for card in section.articles|slice:":1" %}
+    <article class="card card-feature">
+      <a class="card-thumb" href="{{ card.url }}" tabindex="-1" aria-hidden="true">{% include "core/public/_thumb.html" %}</a>
+      <div class="card-body">
+        <p class="meta"><time datetime="{{ card.published_at }}">{{ card.published_label }}</time></p>
+        <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
+        <p class="summary">{{ card.summary }}</p>
+      </div>
+    </article>
+    {% endfor %}
+    <ul class="title-list">
+      {% for card in section.articles|slice:"1:" %}
+      <li><a href="{{ card.url }}">{{ card.title }}</a> <time datetime="{{ card.published_at }}">{{ card.published_label }}</time></li>
+      {% endfor %}
+    </ul>
+  </div>
+</section>
