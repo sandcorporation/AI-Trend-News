@@ -133,6 +133,8 @@ def test_admin_flag_change_marks_override_and_blocks_editor(admin_client: Client
         "featured": "",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
+        "commentary-TOTAL_FORMS": "0",
+        "commentary-INITIAL_FORMS": "0",
     }
     assert admin_client.post(url, data).status_code == 302
     article.refresh_from_db()
@@ -277,6 +279,8 @@ def test_admin_changes_article_slug_and_keeps_old(admin_client: Client) -> None:
         "image_url": "",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
+        "commentary-TOTAL_FORMS": "0",
+        "commentary-INITIAL_FORMS": "0",
     }
     assert admin_client.post(url, data).status_code == 302
     article.refresh_from_db()

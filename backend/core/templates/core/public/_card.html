@@ -1,7 +1,7 @@
 <article class="card">
   <a class="card-thumb" href="{{ card.url }}" tabindex="-1" aria-hidden="true">{% include "core/public/_thumb.html" %}</a>
   <div class="card-body">
-    <p class="meta"><span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> <time datetime="{{ card.published_at }}">{{ card.published_label }}</time></p>
+    <p class="meta"><span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> <time datetime="{{ card.published_at }}">{{ card.published_label }}</time>{% if card.has_commentary %} <span class="badge-analysis">분석</span>{% endif %}</p>
     <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
   </div>
 </article>

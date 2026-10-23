@@ -747,3 +747,118 @@ h2 {
     grid-template-columns: 1fr;
   }
 }
+
+/* AI 분석(#51) */
+.badge-analysis {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.commentary {
+  margin: 1.5rem 0;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+}
+
+.commentary-head h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.badge-ai {
+  display: inline-block;
+  padding: 0.1rem 0.55rem;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.commentary-note {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.commentary h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.commentary p {
+  margin: 0;
+  line-height: 1.7;
+}
+
+.outlook {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+}
+
+.outlook-col {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--line);
+  border-radius: 6px;
+}
+
+.outlook-bull {
+  border-top-color: var(--cat-it);
+}
+
+.outlook-bear {
+  border-top-color: var(--cat-ai);
+}
+
+.outlook-col h4 {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.opinion {
+  margin: 1rem 0 0;
+  padding: 0.25rem 0 0.25rem 0.9rem;
+  border-left: 3px solid var(--line);
+  font-style: italic;
+}
+
+.predictions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.predictions li {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.6;
+}
+
+.predictions .horizon {
+  display: inline-block;
+  padding: 0 0.45rem;
+  border-radius: 4px;
+  background: var(--chip-bg);
+  font-size: 0.8rem;
+}
+
+.predictions .basis {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@media (min-width: 640px) {
+  .outlook {
+    grid-template-columns: 1fr 1fr;
+  }
+}

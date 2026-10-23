@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Layout } from "./Layout";
-import type { ArticlePageData } from "./types";
+import type { ArticlePageData, CommentaryData } from "./types";
 
 export function ArticlePage({ data }: { data: ArticlePageData }) {
   const a = data.article;
@@ -23,6 +23,7 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
             ))}
           </ul>
         )}
+        {a.commentary && <Commentary c={a.commentary} />}
         <section aria-labelledby="sources-h">
           <h2 id="sources-h">원문</h2>
           <ul className="sources">
@@ -88,5 +89,56 @@ function CopyLinkButton({ url }: { url: string }) {
         />
       )}
     </>
+  );
+}
+
+function Commentary({ c }: { c: CommentaryData }) {
+  return (
+    <section
+      className="commentary"
+      data-slot="commentary"
+      aria-labelledby="commentary-h"
+    >
+      <header className="commentary-head">
+        <h2 id="commentary-h">
+          <span className="badge-ai">AI 분석</span>
+        </h2>
+        <p className="commentary-note">
+          편집자 AI가 수집된 보도만을 근거로 쓴 분석입니다. 사실 확인은 출처를
+          참고하세요.
+        </p>
+      </header>
+      <h3>배경</h3>
+      <p>{c.background}</p>
+      <h3>의미</h3>
+      <p>{c.significance}</p>
+      <h3>전망</h3>
+      <div className="outlook">
+        <div className="outlook-col outlook-bull">
+          <h4>낙관</h4>
+          <p>{c.outlook_bull}</p>
+        </div>
+        <div className="outlook-col outlook-bear">
+          <h4>회의</h4>
+          <p>{c.outlook_bear}</p>
+        </div>
+      </div>
+      <blockquote className="opinion">
+        <p>{c.opinion}</p>
+      </blockquote>
+      {c.predictions.length > 0 && (
+        <>
+          <h3>예측</h3>
+          <ul className="predictions">
+            {c.predictions.map((p) => (
+              <li key={p.claim}>
+                <span className="horizon">{p.horizon_label}</span> {p.claim}{" "}
+                <span className="basis">근거: {p.basis}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
   );
 }

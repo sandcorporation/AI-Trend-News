@@ -203,3 +203,34 @@ class ArticleView(models.Model):
 
     def __str__(self) -> str:
         return f"{self.article_id} {self.date} {self.count}"
+
+
+class Commentary(models.Model):
+    """추천 기사에 편집자가 쓰는 「AI 분석」(GLOSSARY: 분석). 기사당 최대 하나."""
+
+    article = models.OneToOneField(
+        Article, verbose_name="기사", on_delete=models.CASCADE, related_name="commentary"
+    )
+    background = models.TextField("배경")
+    significance = models.TextField("의미")
+    outlook_bull = models.TextField("전망: 낙관")
+    outlook_bear = models.TextField("전망: 회의")
+    opinion = models.TextField("의견")
+    predictions = models.JSONField(
+        "예측 문장",
+        default=list,
+        blank=True,
+        help_text='0~3개 {"claim": 문장, "horizon": 1m|3m|6m|12m, "basis": 근거}',
+    )
+    hidden = models.BooleanField(
+        "숨김", default=False, help_text="대표가 숨기면 편집자가 못 덮어쓴다"
+    )
+    created_at = models.DateTimeField("생성 시각", auto_now_add=True)
+    updated_at = models.DateTimeField("수정 시각", auto_now=True)
+
+    class Meta:
+        verbose_name = "AI 분석"
+        verbose_name_plural = "AI 분석"
+
+    def __str__(self) -> str:
+        return f"분석 · {self.article.title}"

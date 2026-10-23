@@ -21,6 +21,7 @@ from core.admin_schemas import (
 from core.auth import RequireScope
 from services import articles, posts, sources
 from services.articles import Actor, ArticleError
+from services.commentary import CommentaryError
 from services.posts import PostError
 from services.sources import SourceError
 
@@ -48,7 +49,14 @@ def install_error_handlers(api: NinjaAPI) -> None:
         assert isinstance(exc, PostError)
         return respond(request, exc, isinstance(exc, posts.PostNotFound))
 
+    def commentary_error(
+        request: HttpRequest, exc: CommentaryError | type[CommentaryError]
+    ) -> HttpResponse:
+        assert isinstance(exc, CommentaryError)
+        return respond(request, exc, False)
+
     api.add_exception_handler(ArticleError, article_error)
+    api.add_exception_handler(CommentaryError, commentary_error)
     api.add_exception_handler(PostError, post_error)
     api.add_exception_handler(SourceError, source_error)
 

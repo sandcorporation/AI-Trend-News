@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 META = "https://news.sandcorp.co.kr/.well-known/oauth-protected-resource"
 EDITOR_TOOLS = {
+    "upsert_commentary",
     "upsert_post_draft",
     "whoami",
     "list_pending_items",
@@ -341,6 +342,8 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
         "featured": "",
         "article_items-TOTAL_FORMS": "0",
         "article_items-INITIAL_FORMS": "0",
+        "commentary-TOTAL_FORMS": "0",
+        "commentary-INITIAL_FORMS": "0",
     }
     url = reverse("admin:articles_article_change", args=[article_id])
     assert admin_client.post(url, data).status_code == 302
