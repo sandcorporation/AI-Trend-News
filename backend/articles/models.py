@@ -3,6 +3,7 @@ import re
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+from django.utils import timezone
 
 from collection.models import Item
 
@@ -100,14 +101,23 @@ class Article(models.Model):
     featured = models.BooleanField("추천", default=False)
     published_overridden = models.BooleanField("게시: 대표 덮어씀", default=False, editable=False)
     featured_overridden = models.BooleanField("추천: 대표 덮어씀", default=False, editable=False)
+    published_at_overridden = models.BooleanField(
+        "발행 시각: 대표 덮어씀", default=False, editable=False
+    )
     image_url = models.URLField("대표 이미지 URL", max_length=2000, blank=True)
+    published_at = models.DateTimeField(
+        "발행 시각",
+        default=timezone.now,
+        db_index=True,
+        help_text="원문 발행 시각(수집물 중 가장 이른 것). 바꾸면 편집자가 덮지 않음.",
+    )
     created_at = models.DateTimeField("생성 시각", auto_now_add=True)
     updated_at = models.DateTimeField("수정 시각", auto_now=True)
 
     class Meta:
         verbose_name = "기사"
         verbose_name_plural = "기사"
-        ordering = ["-created_at", "-id"]
+        ordering = ["-published_at", "-id"]
 
     def __str__(self) -> str:
         return self.title
