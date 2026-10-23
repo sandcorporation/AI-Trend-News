@@ -180,6 +180,7 @@ def test_stats_empty(client: Client, frozen_clock: FrozenClock) -> None:
     assert body["articles_total"] == 0
     assert body["articles_last_7d"] == 0
     assert body["articles_per_day_7d"] == 0
+    assert body["days_counted"] == 0
     assert body["published_since"] is None
     assert body["editor_runs_per_day"] == 3
     assert body["predictions"] == {"judged": 0, "hit_rate": None}
@@ -202,6 +203,21 @@ def test_stats_counts_published_and_seven_day_boundary(
     assert body["articles_last_7d"] == 2
     assert body["articles_per_day_7d"] == 0.3
     assert body["published_since"] == "2026-10-13"
+    assert body["days_counted"] == 7
+
+
+@pytest.mark.parametrize(("hours", "days"), [(0, 1), (48, 3), (10 * 24, 7)])
+def test_stats_per_day_divides_by_actual_days_when_young(
+    client: Client, frozen_clock: FrozenClock, hours: int, days: int
+) -> None:
+    frozen_clock._now = NOW
+    first = make_article("처음")
+    stamp(first, hours)
+    make_article("둘")
+    make_article("셋")
+    body = client.get(STATS).json()
+    assert body["days_counted"] == days
+    assert body["articles_per_day_7d"] == round(body["articles_last_7d"] / days, 1)
 
 
 def test_stats_hit_rate_null_under_five_and_excludes_undecidable_hidden(

@@ -117,6 +117,7 @@ class PublicStats(Schema):
     articles_total: int
     articles_last_7d: int
     articles_per_day_7d: float
+    days_counted: int
     published_since: str | None
     editor_runs_per_day: int
     predictions: PublicPredictionStats
@@ -135,11 +136,15 @@ def _build_stats(now: datetime) -> PublicStats:
     rate = pred_svc.hit_rate(recent=False, today=timezone.localtime(now).date())
     enough = rate.judged >= pred_svc.MIN_PUBLIC_SAMPLE
     first = counts["first"]
+    since = timezone.localtime(first).date() if first else None
+    # 게시 시작이 7일 안이면 실제 일수(시작일·오늘 포함)로 나눈다.
+    days = min(7, (timezone.localtime(now).date() - since).days + 1) if since else 0
     return PublicStats(
         articles_total=counts["total"],
         articles_last_7d=counts["week"],
-        articles_per_day_7d=round(counts["week"] / 7, 1),
-        published_since=timezone.localtime(first).date().isoformat() if first else None,
+        articles_per_day_7d=round(counts["week"] / days, 1) if days else 0.0,
+        days_counted=days,
+        published_since=since.isoformat() if since else None,
         editor_runs_per_day=settings.EDITOR_RUNS_PER_DAY,
         predictions=PublicPredictionStats(
             judged=rate.judged,
