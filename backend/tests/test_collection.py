@@ -223,12 +223,34 @@ def test_prune_items_deletes_old_pending_and_discarded_keeps_urls() -> None:
 
     result = prune_items(now=lambda: now)
 
-    assert (result.deleted, result.kept) == (2, 2)
+    assert (result.deleted, result.discarded, result.kept) == (
+        2,
+        2,
+        2,
+    )  # 31일 미처리도 먼저 버림 처리된 뒤 지워진다
     assert set(Item.objects.values_list("title", flat=True)) == {
         "https://a.example.com/old-bundled",
         "https://a.example.com/young-pending",
     }
+    assert Item.objects.get(title="https://a.example.com/young-pending").status == "discarded"
+    assert Item.objects.get(title="https://a.example.com/old-bundled").status == "bundled"
     assert SeenUrl.objects.count() == 4  # 지운 수집물의 URL 해시는 남는다
+
+
+def test_prune_items_discards_pending_after_24h_only() -> None:
+    now = datetime(2026, 6, 1, tzinfo=UTC)
+    fresh = _item("https://a.example.com/fresh", Item.Status.PENDING, 0, now)
+    Item.objects.filter(pk=fresh.pk).update(collected_at=now - timedelta(hours=23))
+    stale = _item("https://a.example.com/stale", Item.Status.PENDING, 0, now)
+    Item.objects.filter(pk=stale.pk).update(collected_at=now - timedelta(hours=25))
+    bundled = _item("https://a.example.com/bundled", Item.Status.BUNDLED, 5, now)
+
+    result = prune_items(now=lambda: now)
+
+    assert (result.discarded, result.deleted) == (1, 0)
+    for item, status in ((fresh, "pending"), (stale, "discarded"), (bundled, "bundled")):
+        item.refresh_from_db()
+        assert item.status == status
 
 
 def test_pruned_url_is_not_collected_again(fake_fetcher: FakeFetcher, rss_bytes: bytes) -> None:

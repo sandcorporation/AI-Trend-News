@@ -276,14 +276,16 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     assert page["total"] == 4
     listed = page["items"]
     assert isinstance(listed, list) and len(listed) == 3
+    ids = [i["id"] for i in listed if isinstance(i, dict)]
+    assert ids == [items[3].pk, items[2].pk, items[1].pk]  # 최신순
     assert listed[0] == {
-        "id": items[0].pk,
+        "id": items[3].pk,
         "source": "Reuters",
-        "collected_at": items[0].collected_at.isoformat(),
+        "collected_at": items[3].collected_at.isoformat(),
         "published_at": None,
-        "title": "rate decision 0",
-        "excerpt": "excerpt 0",
-        "url": "https://example.com/0",
+        "title": "rate decision 3",
+        "excerpt": "excerpt 3",
+        "url": "https://example.com/3",
     }
 
     category = mcp.ok("add_category", {"name": "Economy"})["slug"]
