@@ -15,3 +15,4 @@ from config.settings import *  # noqa: E402, F403
 # Fixture feeds carry fixed 2026-10 dates; the age rule is tested with its own settings override.
 COLLECT_MAX_AGE_DAYS = 36500
 FETCH_FALLBACK_URL = ""
+METRICS_SNIPPET_URL = ""

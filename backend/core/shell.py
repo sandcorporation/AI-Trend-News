@@ -67,6 +67,8 @@ def render_shell(
         "twitter_card": "summary_large_image" if meta.image else "summary",
         "twitter_site": settings.SITE_TWITTER,
         "ld_blocks": [ld_json(block) for block in meta.json_ld],
+        "metrics_snippet_url": settings.METRICS_SNIPPET_URL,
+        "metrics_site_key": settings.METRICS_SITE_KEY,
         "body": body,
         "assets": entry_assets(),
     }

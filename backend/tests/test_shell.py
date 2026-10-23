@@ -63,3 +63,18 @@ def test_head_links_the_rss_feed(client: Client) -> None:
         '<link rel="alternate" type="application/rss+xml" title="Foresight" href="/feed.xml">'
         in html
     )
+
+
+def test_head_has_metrics_snippet_when_configured(client: Client) -> None:
+    with override_settings(METRICS_SNIPPET_URL="https://metrics.sandcorp.co.kr/m.js"):
+        html = client.get("/").content.decode()
+
+    assert (
+        '<script defer src="https://metrics.sandcorp.co.kr/m.js" data-site="foresight"></script>'
+        in html
+    )
+    assert html.index("m.js") < html.index("</head>")
+
+
+def test_head_has_no_metrics_snippet_by_default(client: Client) -> None:
+    assert "m.js" not in client.get("/").content.decode()
