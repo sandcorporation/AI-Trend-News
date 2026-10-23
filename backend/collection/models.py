@@ -21,7 +21,7 @@ class Source(models.Model):
         "HTML 선택자 규칙",
         default=dict,
         blank=True,
-        help_text="kind=html일 때 필수. 키: item, link, title, published, (선택) excerpt.",
+        help_text="kind=html일 때 필수. 키: item, link, title, published, (선택) excerpt, image.",
     )
     enabled = models.BooleanField("켜짐", default=True)
     last_collected_at = models.DateTimeField("마지막 수집 시각", null=True, blank=True)
@@ -61,6 +61,7 @@ class Item(models.Model):
     title = models.CharField("제목", max_length=500)
     excerpt = models.TextField("본문 발췌", blank=True)
     published_at = models.DateTimeField("발행 시각", null=True, blank=True)
+    image_url = models.URLField("대표 이미지 URL", max_length=2000, blank=True)
     collected_at = models.DateTimeField("수집 시각", auto_now_add=True)
     status = models.CharField(
         "상태", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True

@@ -31,10 +31,14 @@ class SourceAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 �
 
 @admin.register(Item)
 class ItemAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
-    list_display = ("title", "source", "published_at", "collected_at", "status")
+    list_display = ("title", "source", "published_at", "collected_at", "status", "has_image")
     list_filter = ("status", "source")
     search_fields = ("title", "url")
     date_hierarchy = "collected_at"
+
+    @admin.display(boolean=True, description="이미지")
+    def has_image(self, obj: Item) -> bool:
+        return bool(obj.image_url)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

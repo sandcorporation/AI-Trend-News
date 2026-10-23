@@ -287,6 +287,7 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
         "title": "rate decision 3",
         "excerpt": "excerpt 3",
         "url": "https://example.com/3",
+        "image_url": "",
     }
 
     category = article_service.add_category("Economy").slug

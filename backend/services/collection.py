@@ -8,9 +8,20 @@ from django.db import transaction
 from django.utils import timezone
 
 from adapters.fetch import Fetcher, FetchError, get_fetcher
-from adapters.sources import ADAPTERS
+from adapters.sources import ADAPTERS, find_og_image
 from collection.models import Item, SeenUrl, Source
 from services.urls import normalize_url, url_hash
+
+OG_FETCH_LIMIT = 30  # 소스당 한 수집 실행에서 og:image 보강으로 받는 원문 수
+OG_MAX_BYTES = 1_000_000  # 원문은 앞 1MB만 본다(head 안의 meta면 충분)
+
+
+def _og_image(fetcher: Fetcher, url: str) -> str:
+    """원문에서 og:image를 읽는다. 어떤 실패든 조용히 빈 값(본문은 저장하지 않는다)."""
+    try:
+        return find_og_image(fetcher.fetch(url)[:OG_MAX_BYTES], url)
+    except Exception:  # noqa: BLE001  # 보강은 최선 노력: 소스 실패로 치지 않는다
+        return ""
 
 
 @dataclass(frozen=True)
@@ -26,6 +37,8 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
     fetcher = fetcher or get_fetcher()
     created = 0
     too_old = 0
+    og_fetches = 0
+    with_image = 0
     cutoff = timezone.now() - timedelta(days=settings.COLLECT_MAX_AGE_DAYS)
     try:
         adapter = ADAPTERS.get(source.adapter_name)
@@ -41,6 +54,12 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                 if raw.published_at is not None and raw.published_at < cutoff:
                     too_old += 1  # 오래된 글은 다시 수집하지 않게 SeenUrl 만 남긴다
                     continue
+                image_url = raw.image_url
+                if not image_url and og_fetches < OG_FETCH_LIMIT:
+                    og_fetches += 1
+                    image_url = _og_image(fetcher, raw.url)
+                if image_url:
+                    with_image += 1
                 Item.objects.create(
                     source=source,
                     url=raw.url,
@@ -48,11 +67,13 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                     title=raw.title[:500],
                     excerpt=raw.excerpt,
                     published_at=raw.published_at,
+                    image_url=image_url,
                 )
                 created += 1
         ok, message = True, f"성공: 새 수집물 {created}건 / 항목 {len(raw_items)}건"
         if too_old:
             message += f" / 오래돼 건너뜀 {too_old}건"
+        message += f" / 이미지 {with_image}건"
     except Exception as exc:  # 소스별 독립 실패: 어떤 오류든 이 소스의 실패로 기록한다
         ok, message = False, f"실패: {type(exc).__name__}: {exc}"
     source.last_collected_at = timezone.now()

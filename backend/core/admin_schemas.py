@@ -22,7 +22,9 @@ class SourceCreate(Strict):
     url: str = Field(max_length=2000, description="피드(rss) 또는 목록 페이지(html) 주소")
     html_rules: dict[str, str] = Field(
         default_factory=dict,
-        description="kind=html일 때 필수. 키 item·link·title·published(CSS 선택자), 선택 excerpt",
+        description=(
+            "kind=html일 때 필수. 키 item·link·title·published(CSS 선택자), 선택 excerpt·image"
+        ),
     )
     enabled: bool = Field(default=True, description="켜짐(꺼진 소스는 수집하지 않는다)")
 

@@ -252,8 +252,8 @@ def _clip(text: str) -> str:
     "list_pending_items",
     "미처리 수집물",
     "아직 기사로 묶이지도 버려지지도 않은 수집물을 수집 시각이 최신인 것부터 한 쪽씩. "
-    "소스 이름·수집 시각·발행 시각·제목·발췌(300자까지, 넘으면 …)·원문 URL·수집물 id와 "
-    "전체 건수를 준다. 한 쪽은 최대 50건.",
+    "소스 이름·수집 시각·발행 시각·제목·발췌(300자까지, 넘으면 …)·원문 URL·"
+    "대표 이미지 URL(image_url, 없으면 빈 값)·수집물 id와 전체 건수를 준다. 한 쪽은 최대 50건.",
     PageInput,
     read_only=True,
 )
@@ -272,6 +272,7 @@ def list_pending_items(token: AccessToken, args: PageInput) -> ToolResult:
                 "title": item.title,
                 "excerpt": _clip(item.excerpt),
                 "url": item.url,
+                "image_url": item.image_url,
             }
             for item in found.items
         ],
@@ -497,7 +498,7 @@ def list_sources(token: AccessToken, args: NoInput) -> ToolResult:
     "create_source",
     "소스 등록",
     "새 소스를 등록한다. 켜져 있으면 다음 수집부터 가져온다. html 소스는 html_rules"
-    "(item·link·title·published, 선택 excerpt)가 필수이며 틀리면 오류.",
+    "(item·link·title·published, 선택 excerpt·image)가 필수이며 틀리면 오류.",
     SourceCreate,
     scope="admin",
 )

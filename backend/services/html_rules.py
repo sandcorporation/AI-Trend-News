@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 
 REQUIRED_KEYS = ("item", "link", "title", "published")
-OPTIONAL_KEYS = ("excerpt",)
+OPTIONAL_KEYS = ("excerpt", "image")
 
 
 class HtmlRulesError(ValueError):
