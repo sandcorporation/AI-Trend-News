@@ -10,17 +10,24 @@
     <section class="commentary" data-slot="commentary" aria-labelledby="commentary-h">
       <header class="commentary-head">
         <h2 id="commentary-h"><span class="badge-ai">AI 분석</span></h2>
-        <p class="commentary-note">편집자 AI가 수집된 보도만을 근거로 쓴 분석입니다. 사실 확인은 출처를 참고하세요.</p>
+        <p class="commentary-note">수집된 보도와 일반적인 배경 지식을 바탕으로 편집자 AI가 쓴 분석입니다. 사실 확인은 출처를 참고하세요.</p>
       </header>
       <h3>배경</h3>
-      <p>{{ c.background }}</p>
+      <div class="prose">{{ c.background|linebreaks }}</div>
       <h3>의미</h3>
-      <p>{{ c.significance }}</p>
+      <div class="prose">{{ c.significance|linebreaks }}</div>
       <h3>전망</h3>
       <div class="outlook">
-        <div class="outlook-col outlook-bull"><h4>낙관</h4><p>{{ c.outlook_bull }}</p></div>
-        <div class="outlook-col outlook-bear"><h4>회의</h4><p>{{ c.outlook_bear }}</p></div>
+        <div class="outlook-col outlook-bull"><h4>낙관</h4><div class="prose">{{ c.outlook_bull|linebreaks }}</div></div>
+        <div class="outlook-col outlook-bear"><h4>회의</h4><div class="prose">{{ c.outlook_bear|linebreaks }}</div></div>
       </div>
+      {% if c.watchpoints %}
+      <h3>지켜볼 신호</h3>
+      <ul class="watchpoints">
+        {% for w in c.watchpoints %}<li>{{ w }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
       <blockquote class="opinion"><p>{{ c.opinion }}</p></blockquote>
       {% if c.predictions %}
       <h3>예측</h3>

@@ -509,11 +509,16 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
         verdict_note: "",
       },
     ],
+    watchpoints: [],
   };
   rerender(<App data={{ ...data }} />);
   const block = q(container, '[data-slot="commentary"]');
   expect(block).toHaveTextContent("AI 분석");
-  expect(block).toHaveTextContent("수집된 보도만을 근거로 쓴 분석");
+  expect(block).toHaveTextContent(
+    "수집된 보도와 일반적인 배경 지식을 바탕으로 편집자 AI가 쓴 분석입니다.",
+  );
+  expect(block.querySelector(".watchpoints")).toBeNull(); // 신호가 없으면 목록도 제목도 없다
+  expect(block).not.toHaveTextContent("지켜볼 신호");
   expect(q(block, ".outlook-bull")).toHaveTextContent("낙관 문장");
   expect(q(block, ".outlook-bear")).toHaveTextContent("회의 문장");
   expect(q(block, ".opinion")).toHaveTextContent("의견 문장");
@@ -529,6 +534,30 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   data.article.commentary = { ...data.article.commentary, predictions: [] };
   rerender(<App data={{ ...data }} />);
   expect(container.querySelector(".predictions")).toBeNull();
+});
+
+test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록으로 그린다", () => {
+  const data = articleData();
+  data.article.commentary = {
+    background: "첫 문단.\n\n둘째 문단 <b>굵게</b>.\n같은 문단 둘째 줄",
+    significance: "의미 한 문단",
+    outlook_bull: "낙관 첫째\n\n낙관 둘째",
+    outlook_bear: "회의",
+    opinion: "의견",
+    predictions: [],
+    watchpoints: ["물가 지표가 2%대면 낙관 쪽", "환율이 오르면 회의 쪽"],
+  };
+  const { container } = render(<App data={data} />);
+  const block = q(container, '[data-slot="commentary"]');
+  const paras = q(block, ".prose").querySelectorAll("p");
+  expect(paras).toHaveLength(2);
+  expect(paras.item(1).innerHTML).toBe(
+    "둘째 문단 &lt;b&gt;굵게&lt;/b&gt;.<br>같은 문단 둘째 줄",
+  );
+  expect(q(block, ".outlook-bull").querySelectorAll("p")).toHaveLength(2);
+  expect(block).toHaveTextContent("지켜볼 신호");
+  const items = [...block.querySelectorAll(".watchpoints li")].map((li) => li.textContent);
+  expect(items).toEqual(["물가 지표가 2%대면 낙관 쪽", "환율이 오르면 회의 쪽"]);
 });
 
 test("분석 배지는 메인 카드에만 있고 캐러셀 장에는 없다", () => {
@@ -555,6 +584,7 @@ test("기사 예측 목록: 평가된 것만 결과 배지", () => {
     outlook_bull: "u",
     outlook_bear: "d",
     opinion: "o",
+    watchpoints: [],
     predictions: [
       { ...base, claim: "맞은 예측", verdict: "hit", verdict_label: "적중" },
       { ...base, claim: "대기 예측", verdict: "", verdict_label: "" },

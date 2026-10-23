@@ -2,7 +2,7 @@
 
 추천이 풀리거나 비게시가 되어도 분석은 지우지 않는다. 공개 화면은 `public_commentary`만 쓴다.
 `predictions`는 `{claim, horizon, basis}`로 저장하고, 저장할 때마다 `services/predictions.py`가
-`Prediction` 행으로 동기화한다(평가된 행은 유지).
+`Prediction` 행으로 동기화한다(평가된 행은 유지). `watchpoints`(지켜볼 신호)는 문자열 0~3개(#60).
 """
 
 from typing import TypedDict
@@ -15,11 +15,13 @@ from services import articles
 from services import predictions as predictions_svc
 from services.articles import Actor
 
-MAX_TEXT_LENGTH = 400
-MAX_OPINION_LENGTH = 120
+MAX_TEXT_LENGTH = 900  # 배경·의미·전망 각각. 문단은 빈 줄(\n\n)로 나눈다(#60)
+MAX_OPINION_LENGTH = 240
 MAX_CLAIM_LENGTH = 120
-MAX_BASIS_LENGTH = 200
+MAX_BASIS_LENGTH = 300
 MAX_PREDICTIONS = 3
+MAX_WATCHPOINTS = 3
+MAX_WATCHPOINT_LENGTH = 160
 HORIZONS = {"1m": "1개월", "3m": "3개월", "6m": "6개월", "12m": "12개월"}
 
 
@@ -54,7 +56,7 @@ class PredictionData(TypedDict):
 
 
 def _clean(label: str, value: str, limit: int) -> str:
-    value = value.strip()
+    value = value.replace("\r\n", "\n").strip()
     if not value or len(value) > limit:
         raise InvalidCommentary(f"{label}은(는) 1~{limit}자여야 합니다(지금 {len(value)}자).")
     return value
@@ -81,6 +83,14 @@ def _clean_predictions(predictions: list[PredictionIn]) -> list[PredictionData]:
     return cleaned
 
 
+def _clean_watchpoints(watchpoints: list[str]) -> list[str]:
+    if len(watchpoints) > MAX_WATCHPOINTS:
+        raise InvalidCommentary(
+            f"지켜볼 신호는 {MAX_WATCHPOINTS}개까지입니다(지금 {len(watchpoints)}개)."
+        )
+    return [_clean("지켜볼 신호", w, MAX_WATCHPOINT_LENGTH) for w in watchpoints]
+
+
 @transaction.atomic
 def upsert_commentary(
     actor: Actor,
@@ -92,6 +102,7 @@ def upsert_commentary(
     outlook_bear: str,
     opinion: str,
     predictions: list[PredictionIn],
+    watchpoints: list[str] | None = None,
 ) -> Commentary:
     """기사당 분석 하나를 만들거나 갱신한다. 편집자는 추천이면서 게시된 기사만, 숨긴 분석은 불가."""
     article = articles.get_article(article_id)
@@ -107,6 +118,7 @@ def upsert_commentary(
         "outlook_bear": _clean("회의 관점", outlook_bear, MAX_TEXT_LENGTH),
         "opinion": _clean("의견", opinion, MAX_OPINION_LENGTH),
         "predictions": _clean_predictions(predictions),
+        "watchpoints": _clean_watchpoints(watchpoints or []),
     }
     existing = Commentary.objects.select_for_update().filter(article=article).first()
     if existing is None:

@@ -121,8 +121,9 @@ def test_hidden_commentary_is_not_overwritten_by_editor(mcp: McpClient) -> None:
 @pytest.mark.django_db
 def test_length_and_prediction_validation(mcp: McpClient) -> None:
     article = make_article(mcp)
-    assert "400" in mcp.fails("upsert_commentary", args(article, background="가" * 401))
-    assert "120" in mcp.fails("upsert_commentary", args(article, opinion="가" * 121))
+    assert "900" in mcp.fails("upsert_commentary", args(article, background="가" * 901))
+    assert "900" in mcp.fails("upsert_commentary", args(article, outlook_bear="가" * 901))
+    assert "240" in mcp.fails("upsert_commentary", args(article, opinion="가" * 241))
     assert "1~" in mcp.fails("upsert_commentary", args(article, significance="  "))
     p: dict[str, JSON] = {"claim": "x가 오른다", "horizon": "3m", "basis": "근거"}
     assert "3개까지" in mcp.fails("upsert_commentary", args(article, predictions=[p] * 4))
@@ -132,11 +133,30 @@ def test_length_and_prediction_validation(mcp: McpClient) -> None:
     assert "120" in mcp.fails(
         "upsert_commentary", args(article, predictions=[p | {"claim": "가" * 121}])
     )
-    assert "200" in mcp.fails(
-        "upsert_commentary", args(article, predictions=[p | {"basis": "가" * 201}])
+    assert "300" in mcp.fails(
+        "upsert_commentary", args(article, predictions=[p | {"basis": "가" * 301}])
     )
+    assert "3개까지" in mcp.fails("upsert_commentary", args(article, watchpoints=["신호"] * 4))
+    assert "160" in mcp.fails("upsert_commentary", args(article, watchpoints=["가" * 161]))
+    assert "1~" in mcp.fails("upsert_commentary", args(article, watchpoints=[" "]))
     assert not Commentary.objects.exists()
     mcp.ok("upsert_commentary", args(article, predictions=[]))  # 0개는 허용
+    assert Commentary.objects.get().watchpoints == []  # 생략하면 빈 목록
+
+
+@pytest.mark.django_db
+def test_long_commentary_and_watchpoints_are_stored(mcp: McpClient) -> None:
+    article = make_article(mcp)
+    long = "가" * 400 + "\r\n\r\n" + "나" * 400
+    signals: list[JSON] = ["엔비디아가 2분기 실적에서 추론 매출을 따로 밝히면 낙관 쪽", "다" * 160]
+    saved = mcp.ok(
+        "upsert_commentary",
+        args(article, background=long, opinion="라" * 240, watchpoints=signals),
+    )
+    assert saved["watchpoints"] == signals
+    stored = Commentary.objects.get()
+    assert stored.background == "가" * 400 + "\n\n" + "나" * 400
+    assert stored.watchpoints == signals
 
 
 @pytest.mark.django_db
@@ -173,6 +193,7 @@ def _commentary_for(article: Article) -> Commentary:
         predictions=[
             svc.PredictionIn(claim="금리가 내린다", horizon="3m", basis="물가 둔화"),
         ],
+        watchpoints=["다음 달 물가 지표가 2%대면 낙관 쪽", "환율이 1400원을 넘으면 회의 쪽"],
     )
 
 
@@ -184,8 +205,11 @@ def test_article_page_shows_commentary_in_html_and_page_data(client: Client) -> 
 
     assert 'data-slot="commentary"' in html and "AI 분석" in html
     assert (
-        "편집자 AI가 수집된 보도만을 근거로 쓴 분석입니다. 사실 확인은 출처를 참고하세요." in html
+        "수집된 보도와 일반적인 배경 지식을 바탕으로 편집자 AI가 쓴 분석입니다. "
+        "사실 확인은 출처를 참고하세요." in html
     )
+    assert "지켜볼 신호" in html
+    assert "<li>다음 달 물가 지표가 2%대면 낙관 쪽</li>" in html
     for text in ("물가 둔화가 이어졌다.", "낙관 전제 문장", "회의 전제 문장", "당분간 동결이다."):
         assert text in html
     assert "3개월 안" in html and "금리가 내린다" in html
@@ -196,6 +220,10 @@ def test_article_page_shows_commentary_in_html_and_page_data(client: Client) -> 
     assert isinstance(article_data, dict)
     commentary = article_data["commentary"]
     assert isinstance(commentary, dict) and commentary["opinion"] == "당분간 동결이다."
+    assert commentary["watchpoints"] == [
+        "다음 달 물가 지표가 2%대면 낙관 쪽",
+        "환율이 1400원을 넘으면 회의 쪽",
+    ]
     assert commentary["predictions"] == [
         {
             "claim": "금리가 내린다",
@@ -259,3 +287,21 @@ def test_article_page_adds_at_most_one_query_for_commentary(client: Client) -> N
         return len(ctx)
 
     assert count(with_analysis) <= count(plain) + 1
+
+
+@pytest.mark.django_db
+def test_article_page_splits_commentary_paragraphs_and_escapes(client: Client) -> None:
+    article = make_public("긴 분석 기사")
+    svc.upsert_commentary(
+        Actor.OWNER,
+        article.pk,
+        background="첫 문단이다.\n\n둘째 문단 <b>굵게</b>.",
+        significance="의미 한 문단.",
+        outlook_bull="낙관",
+        outlook_bear="회의",
+        opinion="의견",
+        predictions=[],
+    )
+    html = client.get(f"/a/{article.slug}").content.decode()
+    assert "<p>첫 문단이다.</p>\n\n<p>둘째 문단 &lt;b&gt;굵게&lt;/b&gt;.</p>" in html
+    assert "지켜볼 신호" not in html  # 신호가 없으면 제목도 없다

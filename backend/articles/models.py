@@ -232,6 +232,12 @@ class Commentary(models.Model):
         blank=True,
         help_text='0~3개 {"claim": 문장, "horizon": 1m|3m|6m|12m, "basis": 근거}',
     )
+    watchpoints = models.JSONField(
+        "지켜볼 신호",
+        default=list,
+        blank=True,
+        help_text="0~3개 문자열(각 160자 이내): 어느 전망이 맞는지 가를 관찰 지표·일정",
+    )
     hidden = models.BooleanField(
         "숨김", default=False, help_text="대표가 숨기면 편집자가 못 덮어쓴다"
     )

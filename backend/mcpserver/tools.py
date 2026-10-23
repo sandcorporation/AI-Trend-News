@@ -41,7 +41,7 @@ from core.admin_schemas import (
     SourceOut,
 )
 from mcpserver.jsontypes import JSON
-from services import articles, collection, editor_runs, sources
+from services import articles, collection, editor_runs, reading, sources
 from services import commentary as commentary_svc
 from services import posts as posts_svc
 from services import predictions as predictions_svc
@@ -189,14 +189,22 @@ class UpsertPostDraftInput(_Input):
 
 class UpsertCommentaryInput(_Input):
     article_id: int = Field(description="추천이면서 게시된 기사 id")
-    background: str = Field(description="배경: 왜 일어났나(1~3문장, 400자 이내)")
-    significance: str = Field(description="의미: 왜 중요한가(1~3문장, 400자 이내)")
-    outlook_bull: str = Field(description="낙관 관점(1~2문장, 400자 이내)")
-    outlook_bear: str = Field(description="회의 관점. 낙관과 다른 전제(1~2문장, 400자 이내)")
-    opinion: str = Field(description="한 줄 의견(1문장, 120자 이내)")
+    background: str = Field(
+        description="배경: 이 소식 전에 무엇이 있었나(3~6문장, 900자 이내, 문단은 빈 줄로 나눔)"
+    )
+    significance: str = Field(
+        description="의미: 이해관계자별 영향·2차 효과(3~6문장, 900자 이내, 문단은 빈 줄로 나눔)"
+    )
+    outlook_bull: str = Field(description="낙관 관점: 전제와 그 전제가 깨지는 조건(900자 이내)")
+    outlook_bear: str = Field(description="회의 관점: 낙관과 다른 전제와 깨지는 조건(900자 이내)")
+    opinion: str = Field(description="의견: 분명한 입장과 근거 한 절(240자 이내)")
     predictions: list[PredictionIn] = Field(
         default_factory=list,
-        description="검증 가능한 예측 0~3개: claim(120자), horizon(1m|3m|6m|12m), basis(200자)",
+        description="검증 가능한 예측 0~3개: claim(120자), horizon(1m|3m|6m|12m), basis(300자)",
+    )
+    watchpoints: list[str] = Field(
+        default_factory=list,
+        description="지켜볼 신호 0~3개(각 160자): 어느 전망이 맞는지 가를 관찰 지표·일정",
     )
 
 
@@ -213,6 +221,10 @@ class SetFlagsInput(_Input):
     id: int = Field(description="기사 id")
     published: bool | None = Field(default=None, description="게시 여부(생략하면 그대로)")
     featured: bool | None = Field(default=None, description="추천 여부(생략하면 그대로)")
+
+
+class ReadItemInput(_Input):
+    item_id: int = Field(description="원문을 읽을 수집물 id")
 
 
 class DiscardItemInput(_Input):
@@ -308,6 +320,27 @@ def list_pending_items(token: AccessToken, args: PageInput) -> ToolResult:
 
 
 @tool(
+    "read_item",
+    "원문 읽기",
+    "수집물 원문 URL을 받아 본문을 평문으로(문단은 빈 줄로 나눔, 최대 8000자, 넘으면 "
+    "truncated=true) 돌려준다. 저장하지 않는다. 받지 못하거나 본문이 없으면 오류가 아니라 "
+    "text가 빈 값이고 reason에 까닭이 온다(그때는 발췌로 대신 쓴다).",
+    ReadItemInput,
+    read_only=True,
+)
+def read_item(token: AccessToken, args: ReadItemInput) -> ToolResult:
+    found = reading.read_item(args.item_id)
+    return {
+        "item_id": found["item_id"],
+        "url": found["url"],
+        "title": found["title"],
+        "text": found["text"],
+        "truncated": found["truncated"],
+        "reason": found["reason"],
+    }
+
+
+@tool(
     "list_recent_articles",
     "최근 기사",
     "최근 days일 안에 만든 기사(게시 여부 무관) 최신순: id·제목·slug·분야 slug·게시·추천·"
@@ -385,8 +418,8 @@ def upsert_post_draft(token: AccessToken, args: UpsertPostDraftInput) -> ToolRes
 @tool(
     "upsert_commentary",
     "AI 분석 작성",
-    "추천이면서 게시된 기사의 AI 분석(배경·의미·낙관/회의 전망·의견·예측 문장)을 만들거나 "
-    "고친다(기사당 하나). 대표가 숨긴 분석은 덮어쓸 수 없다(오류).",
+    "추천이면서 게시된 기사의 AI 분석(배경·의미·낙관/회의 전망·지켜볼 신호·의견·예측 문장)을 "
+    "만들거나 고친다(기사당 하나). 대표가 숨긴 분석은 덮어쓸 수 없다(오류).",
     UpsertCommentaryInput,
 )
 def upsert_commentary(token: AccessToken, args: UpsertCommentaryInput) -> ToolResult:
@@ -399,6 +432,7 @@ def upsert_commentary(token: AccessToken, args: UpsertCommentaryInput) -> ToolRe
         outlook_bear=args.outlook_bear,
         opinion=args.opinion,
         predictions=args.predictions,
+        watchpoints=args.watchpoints,
     )
     return {
         "article_id": c.article_id,
@@ -408,6 +442,7 @@ def upsert_commentary(token: AccessToken, args: UpsertCommentaryInput) -> ToolRe
         "outlook_bear": c.outlook_bear,
         "opinion": c.opinion,
         "predictions": [dict(p) for p in c.predictions],
+        "watchpoints": list(c.watchpoints),
         "hidden": c.hidden,
     }
 
