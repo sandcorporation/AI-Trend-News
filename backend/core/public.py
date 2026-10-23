@@ -137,6 +137,7 @@ class CommentaryOut(TypedDict):
     outlook_bear: str
     opinion: str
     predictions: list[PredictionOut]
+    watchpoints: list[str]
 
 
 class DetailData(CardData):
@@ -298,6 +299,7 @@ def _commentary(article: Article) -> CommentaryOut | None:
         "outlook_bull": found.outlook_bull,
         "outlook_bear": found.outlook_bear,
         "opinion": found.opinion,
+        "watchpoints": [str(w) for w in found.watchpoints],
         "predictions": [
             {
                 "claim": p.claim,

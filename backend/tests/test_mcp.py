@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 META = "https://news.sandcorp.co.kr/.well-known/oauth-protected-resource"
 EDITOR_TOOLS = {
     "upsert_commentary",
+    "read_item",
     "upsert_post_draft",
     "whoami",
     "list_pending_items",
