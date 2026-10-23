@@ -9,7 +9,7 @@ dependencies = [
     "django-ninja>=1.7.1",
     "feedparser>=6.0.14",
     "gunicorn>=26.2.0",
-    "psycopg[binary]>=3.3.6",
+    "mysqlclient>=2.3.0",
     "pyjwt[crypto]>=2.10",
     "whitenoise>=6.12.0",
 ]

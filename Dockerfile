@@ -10,18 +10,30 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 RUN pnpm build
 
-FROM python:3.13-slim AS runtime
+# mysqlclient has no Linux wheels: compile it here (MariaDB Connector/C headers via
+# default-libmysqlclient-dev) and ship only the shared library (libmariadb3) in the runtime stage.
+FROM python:3.13-slim AS deps
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential pkg-config default-libmysqlclient-dev \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /usr/local/bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    UV_PYTHON_DOWNLOADS=never \
-    PATH=/opt/venv/bin:$PATH \
-    PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+    UV_PYTHON_DOWNLOADS=never
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
+
+FROM python:3.13-slim AS runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libmariadb3 \
+ && rm -rf /var/lib/apt/lists/*
+ENV PATH=/opt/venv/bin:$PATH \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+WORKDIR /app/backend
+COPY --from=deps /opt/venv /opt/venv
 COPY backend/ ./
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
 RUN DJANGO_SECRET_KEY=collectstatic-only DJANGO_ADMIN_PATH=collectstatic-only python manage.py collectstatic --noinput \
