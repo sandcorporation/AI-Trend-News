@@ -19,7 +19,7 @@ from services.tokens import AccessToken
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")
 SERVER_INFO: dict[str, JSON] = {"name": "sandcorp-news", "version": "0.1.0"}
 INSTRUCTIONS = (
-    "AI Trend News(https://news.sandcorp.co.kr) 편집 도구. 한 번의 편집 실행은 "
+    "Foresight(포사이트, https://news.sandcorp.co.kr) 편집 도구. 한 번의 편집 실행은 "
     "start_editor_run으로 시작하고 finish_editor_run으로 건수를 보고하며 끝낸다. "
     "미처리 수집물(list_pending_items)을 읽어 기사로 묶거나(create_article·update_article) "
     "버린다(discard_item). 분야는 slug로 지정한다."

@@ -1,4 +1,4 @@
-# AI Trend News
+# Foresight (포사이트)
 
 AI와 IT 뉴스를 정해진 소스에서 주기적으로 모으고, 편집자가 한국어로 큐레이션해 보여 주며, 방문자를 Sandcorp 포트폴리오(sandcorp.co.kr)로 유도하는 사이트. 분야는 AI·IT 둘이며 대표가 admin에서 관리한다(편집자는 추가하지 못한다).
 
