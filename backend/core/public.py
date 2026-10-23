@@ -220,6 +220,7 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
         if renamed is None:
             raise Http404("없는 기사입니다.") from None
         return HttpResponsePermanentRedirect(f"/a/{renamed.slug}")
+    svc.record_view(article, request.headers.get("User-Agent", ""))
     detail = _detail(article)
     data: dict[str, object] = {
         "kind": "article",

@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 from django.contrib import admin
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet, Sum
 from django.forms import ModelForm
 from django.http import HttpRequest
 from django.template.response import TemplateResponse
+from django.utils import timezone
 
 from articles.models import Article, ArticleItem, Category, OutboundClick, Tag
 from services import articles as svc
@@ -35,7 +38,7 @@ class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런�
 
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
-    list_display = ("title", "category", "published", "featured", "created_at")
+    list_display = ("title", "category", "published", "featured", "views_7d", "created_at")
     list_filter = ("category", "published", "featured")
     search_fields = ("title", "summary")
     readonly_fields = ("old_slugs", "published_overridden", "featured_overridden")
@@ -43,6 +46,15 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     @admin.display(description="옛 슬러그")
     def old_slugs(self, obj: Article) -> str:
         return ", ".join(a.slug for a in obj.old_slugs.all()) or "-"
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Article]:
+        since = timezone.localdate() - timedelta(days=6)
+        qs: QuerySet[Article] = super().get_queryset(request)
+        return qs.annotate(views_7d_sum=Sum("views__count", filter=Q(views__date__gte=since)))
+
+    @admin.display(description="7일 조회", ordering="views_7d_sum")
+    def views_7d(self, obj: Article) -> int:
+        return getattr(obj, "views_7d_sum", None) or 0
 
     inlines = [ArticleItemInline]
 

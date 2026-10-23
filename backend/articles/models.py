@@ -182,3 +182,23 @@ class OutboundClick(models.Model):
 
     def __str__(self) -> str:
         return f"{self.location} @ {self.clicked_at:%Y-%m-%d %H:%M}"
+
+
+class ArticleView(models.Model):
+    """기사 하루치 조회 수(GLOSSARY: 조회). 개인 식별 정보는 저장하지 않는다."""
+
+    article = models.ForeignKey(
+        Article, verbose_name="기사", on_delete=models.CASCADE, related_name="views"
+    )
+    date = models.DateField("날짜", db_index=True)
+    count = models.PositiveIntegerField("조회 수", default=0)
+
+    class Meta:
+        verbose_name = "기사 조회"
+        verbose_name_plural = "기사 조회"
+        constraints = [
+            models.UniqueConstraint(fields=["article", "date"], name="articleview_article_date")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.article_id} {self.date} {self.count}"
