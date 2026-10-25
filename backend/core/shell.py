@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import render
+from django.templatetags.static import static
 from django.utils.safestring import SafeString, mark_safe
 
 from core.vite import entry_assets
@@ -18,6 +19,10 @@ SITE_NAME = "Foresight"
 SITE_DESCRIPTION = "AI와 IT 뉴스를 한국어로 골라 요약하고, 전망을 적어 채점합니다"
 INDEX = "index, follow"
 NOINDEX = "noindex, nofollow"
+
+
+# 이미지 없는 페이지의 공유 카드 폴백(1200x630, scripts/og-image/build.sh로 만든다).
+DEFAULT_OG_IMAGE = "core/og-default.png"
 
 
 @dataclass(frozen=True)
@@ -61,10 +66,13 @@ def render_shell(
         "site_name": SITE_NAME,
         "data": data,
         "meta": meta,
-        "og_image": request.build_absolute_uri(meta.image) if meta.image else "",
+        "og_image": request.build_absolute_uri(meta.image or static(DEFAULT_OG_IMAGE)),
+        # 기본 이미지만 크기를 안다(원문 이미지는 모른다).
+        "og_image_is_default": not meta.image,
+        "og_image_alt": meta.image_alt or meta.title,
         "canonical": canonical or request.build_absolute_uri(request.path),
         "og_type": og_type,
-        "twitter_card": "summary_large_image" if meta.image else "summary",
+        "twitter_card": "summary_large_image",
         "twitter_site": settings.SITE_TWITTER,
         "ld_blocks": [ld_json(block) for block in meta.json_ld],
         "metrics_snippet_url": settings.METRICS_SNIPPET_URL,

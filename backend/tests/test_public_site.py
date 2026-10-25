@@ -234,14 +234,52 @@ def test_article_head_has_twitter_article_meta_and_news_article_ld(client: Clien
     assert ld["publisher"]["logo"]["url"].endswith("favicon.svg")  # type: ignore[index]
 
 
-def test_article_without_image_uses_summary_card_and_no_og_image(client: Client) -> None:
+DEFAULT_OG = "http://testserver/static/core/og-default.png"
+
+
+def test_article_without_image_falls_back_to_default_og_card(client: Client) -> None:
     article = make_article("이미지 없음")
     html = client.get(f"/a/{article.slug}").content.decode()
-    assert _tags(html, "twitter:card") == ["summary"]
-    assert _tags(html, "og:image") == []
-    assert _tags(html, "og:image:alt") == []
-    assert _tags(html, "twitter:image") == []
+    assert _tags(html, "twitter:card") == ["summary_large_image"]
+    assert _tags(html, "og:image") == [DEFAULT_OG]
+    assert _tags(html, "twitter:image") == [DEFAULT_OG]
+    assert _tags(html, "og:image:width") == ["1200"]
+    assert _tags(html, "og:image:height") == ["630"]
+    assert _tags(html, "og:image:alt") == ["이미지 없음"]
     assert "image" not in _ld(html)[0]
+
+
+def test_article_with_image_keeps_source_image_without_size(client: Client) -> None:
+    article = make_article("사진 있음", image_url="https://img.example.com/a.png")
+    html = client.get(f"/a/{article.slug}").content.decode()
+    assert _tags(html, "og:image") == ["https://img.example.com/a.png"]
+    assert _tags(html, "og:image:width") == []
+    assert _tags(html, "og:image:height") == []
+
+
+@pytest.mark.parametrize("path", ["/", "/predictions", "/contact"])
+def test_other_public_pages_have_default_large_card(client: Client, path: str) -> None:
+    html = client.get(path).content.decode()
+    assert _tags(html, "twitter:card") == ["summary_large_image"]
+    assert _tags(html, "og:image") == [DEFAULT_OG]
+    assert _tags(html, "twitter:image") == [DEFAULT_OG]
+    assert _tags(html, "og:image:width") == ["1200"]
+    assert _tags(html, "og:image:height") == ["630"]
+    assert len(_tags(html, "og:image:alt")) == 1
+
+
+def test_default_og_image_is_served_png_1200x630(client: Client) -> None:
+    from pathlib import Path
+
+    from django.contrib.staticfiles import finders
+
+    found = finders.find("core/og-default.png")
+    assert found
+    data = Path(found).read_bytes()
+    assert data[:8] == b"\x89PNG\r\n\x1a\n"
+    assert int.from_bytes(data[16:20], "big") == 1200
+    assert int.from_bytes(data[20:24], "big") == 630
+    assert len(data) <= 300 * 1024
 
 
 def test_twitter_site_only_when_configured(client: Client, settings) -> None:  # type: ignore[no-untyped-def]
