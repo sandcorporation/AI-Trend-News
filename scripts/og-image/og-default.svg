@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="Foresight">
+  <!-- 기본 og:image 원본(1200x630). 색은 frontend/src/tokens.css의 라이트 값: 캔버스 #ffffff, 잉크 #0b0d12, 본문 #1f2430, 강조 #1e3a8a. -->
+  <!-- 다시 만들기: scripts/og-image/build.sh (Pretendard가 필요하다: frontend에서 pnpm install). -->
+  <rect width="1200" height="630" fill="#ffffff"/>
+  <text x="96" y="150" font-family="Pretendard" font-size="26" font-weight="600" letter-spacing="3" fill="#1e3a8a">AI · IT NEWS</text>
+  <text x="90" y="340" font-family="Pretendard" font-size="170" font-weight="700" letter-spacing="-6" fill="#0b0d12">Foresight</text>
+  <text x="96" y="430" font-family="Pretendard" font-size="38" font-weight="600" fill="#1f2430">AI·IT 뉴스를 한국어로 골라 요약하고,</text>
+  <text x="96" y="484" font-family="Pretendard" font-size="38" font-weight="600" fill="#1f2430">전망을 적어 채점합니다</text>
+  <text x="96" y="566" font-family="Pretendard" font-size="30" font-weight="600" letter-spacing="1" fill="#1e3a8a">news.sandcorp.co.kr</text>
+  <rect y="606" width="1200" height="24" fill="#1e3a8a"/>
+</svg>
