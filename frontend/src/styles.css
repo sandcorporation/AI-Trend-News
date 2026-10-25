@@ -746,9 +746,11 @@ img {
 /* ---------- article ---------- */
 
 .detail {
-  max-width: 56rem;
+  /* 읽기 폭 컬럼(#92): 모든 블록이 한 가운데 축. 히어로만 56rem까지 넘친다. */
+  max-width: 46rem;
   margin-inline: auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.5rem;
 }
 
@@ -767,11 +769,12 @@ img {
   font-size: 1.25rem;
   line-height: 1.6;
   color: var(--color-ink);
-  max-width: var(--measure);
 }
 
 .detail > .hero {
-  width: 100%;
+  width: min(56rem, 100vw - 2 * var(--gutter));
+  max-width: none;
+  justify-self: center;
   border: 1px solid var(--color-line);
   border-radius: var(--radius);
   background: var(--color-tint);
@@ -828,7 +831,6 @@ img {
 .commentary {
   display: grid;
   gap: 1rem;
-  max-width: var(--measure);
 }
 
 .commentary-head {
@@ -983,7 +985,6 @@ img {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--color-ink);
-  max-width: var(--measure);
 }
 
 .cta-actions {
