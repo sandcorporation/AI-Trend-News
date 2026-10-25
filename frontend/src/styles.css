@@ -747,6 +747,7 @@ img {
 
 .detail {
   max-width: 56rem;
+  margin-inline: auto;
   display: grid;
   gap: 1.5rem;
 }
