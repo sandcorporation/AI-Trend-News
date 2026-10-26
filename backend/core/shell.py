@@ -32,6 +32,8 @@ class PageMeta:
     robots: str
     image: str = ""
     image_alt: str = ""
+    # 이미지가 1200x630임을 아는 경우(직접 만든 카드). 원문 이미지는 크기를 모른다.
+    image_sized: bool = False
     # 기사 페이지만: ISO 8601 문자열, 분야 이름, 태그.
     published_time: str = ""
     modified_time: str = ""
@@ -68,7 +70,7 @@ def render_shell(
         "meta": meta,
         "og_image": request.build_absolute_uri(meta.image or static(DEFAULT_OG_IMAGE)),
         # 기본 이미지만 크기를 안다(원문 이미지는 모른다).
-        "og_image_is_default": not meta.image,
+        "og_image_is_default": not meta.image or meta.image_sized,
         "og_image_alt": meta.image_alt or meta.title,
         "canonical": canonical or request.build_absolute_uri(request.path),
         "og_type": og_type,

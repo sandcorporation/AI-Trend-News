@@ -92,6 +92,8 @@ export interface SectionData {
 }
 
 export interface SidebarData {
+  share_label: string;
+  share_url: string;
   most_read_title: string;
   sandcorp_title: string;
   sandcorp_text: string;
@@ -130,6 +132,31 @@ export interface ArticlePageData {
   article: DetailData;
   cta: CtaData;
   share: ShareData;
+}
+
+export interface DayShareData extends ShareData {
+  title: string;
+  text: string;
+}
+
+export interface DayLinkData {
+  label: string;
+  url: string;
+}
+
+export interface DayPageData {
+  kind: "day";
+  site: SiteData;
+  /** KST 날짜 YYYY-MM-DD */
+  date: string;
+  heading: string;
+  count: number;
+  articles: CardData[];
+  empty_text: string;
+  prev: DayLinkData | null;
+  next: DayLinkData | null;
+  home_url: string;
+  share: DayShareData;
 }
 
 export interface ContactFormData {
@@ -178,6 +205,7 @@ export interface PredictionsPageData {
 export type PageData =
   | HomeData
   | ArticlePageData
+  | DayPageData
   | ContactPageData
   | PredictionsPageData;
 
@@ -186,6 +214,7 @@ export function isPageData(value: unknown): value is PageData {
   const kind = (value as { kind?: unknown }).kind;
   return kind === "home" ||
     kind === "article" ||
+    kind === "day" ||
     kind === "contact" ||
     kind === "predictions";
 }

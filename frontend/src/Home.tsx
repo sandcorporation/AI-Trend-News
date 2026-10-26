@@ -313,6 +313,11 @@ function Sidebar({ data }: { data: HomeData }) {
   const s = data.sidebar;
   return (
     <aside className="sidebar" aria-label="사이드바">
+      <p className="side-share" data-slot="day-share-link">
+        <a className="side-link" href={s.share_url}>
+          {s.share_label}
+        </a>
+      </p>
       {data.most_read.length > 0 && (
         <section className="side-block" aria-labelledby="most-read-h">
           <h2 id="most-read-h">{s.most_read_title}</h2>

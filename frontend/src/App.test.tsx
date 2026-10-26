@@ -3,6 +3,7 @@ import { App } from "./App";
 import type {
   ArticlePageData,
   CardData,
+  DayPageData,
   HomeData,
   PredictionsPageData,
 } from "./types";
@@ -47,6 +48,8 @@ const site = {
   contact_url: "/contact",
 };
 const sidebar = {
+  share_label: "오늘 뉴스 공유 →",
+  share_url: "/news/2026-10-23",
   most_read_title: "많이 읽은 기사",
   sandcorp_title: "Sandcorp",
   sandcorp_text: "소개",
@@ -659,4 +662,98 @@ test("전망 기록표: 적중률·기간 탭·목록", () => {
   expect(q(container, '.tabs a[aria-current="page"]')).toHaveTextContent("전체");
   expect(q(container, ".prediction-list")).toHaveTextContent("금리가 내린다");
   expect(q(container, ".prediction-list a")).toHaveAttribute("href", "/a/rates");
+});
+
+const dayData: DayPageData = {
+  kind: "day",
+  site,
+  date: "2026-10-26",
+  heading: "2026년 10월 26일 (월) AI·IT 뉴스",
+  count: 2,
+  articles: [card, { ...card, slug: "b", title: "둘째 기사", url: "/a/b" }],
+  empty_text: "",
+  prev: { label: "2026년 10월 25일 (일)", url: "/news/2026-10-25" },
+  next: null,
+  home_url: "/",
+  share: {
+    url: "https://news.sandcorp.co.kr/news/2026-10-26",
+    x_url: "https://twitter.com/intent/tweet?x=1",
+    title: "10월 26일 AI·IT 뉴스 2건 — Foresight",
+    text: "금리 동결 · 둘째 기사",
+  },
+};
+
+test("날짜 페이지: 제목·건수·카드·공유 버튼·이전 날 링크", () => {
+  Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+  render(<App data={dayData} />);
+
+  expect(
+    screen.getByRole("heading", { name: "2026년 10월 26일 (월) AI·IT 뉴스" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("게시된 기사 2건")).toBeInTheDocument();
+  expect(screen.getAllByRole("article")).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "링크 복사" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "X에 공유" })).toHaveAttribute(
+    "href",
+    dayData.share.x_url,
+  );
+  // navigator.share가 없으면 「공유…」는 숨는다
+  expect(screen.queryByRole("button", { name: "공유…" })).toBeNull();
+  expect(screen.getByRole("link", { name: /2026년 10월 25일/ })).toHaveAttribute(
+    "href",
+    "/news/2026-10-25",
+  );
+  expect(screen.queryByRole("link", { name: /다음|→$/ })).toBeNull();
+});
+
+test("날짜 페이지: navigator.share가 있으면 「공유…」가 제목·문구·주소를 넘긴다", async () => {
+  const share = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "share", { value: share, configurable: true });
+  render(<App data={dayData} />);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "공유…" }));
+  });
+  expect(share).toHaveBeenCalledWith({
+    title: dayData.share.title,
+    text: dayData.share.text,
+    url: dayData.share.url,
+  });
+  Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+});
+
+test("날짜 페이지: 0건이면 안내 문구만 보이고 카드가 없다", () => {
+  render(
+    <App
+      data={{
+        ...dayData,
+        count: 0,
+        articles: [],
+        empty_text: "이 날은 게시된 기사가 없습니다.",
+      }}
+    />,
+  );
+  expect(screen.getByText("이 날은 게시된 기사가 없습니다.")).toBeInTheDocument();
+  expect(screen.queryAllByRole("article")).toHaveLength(0);
+});
+
+test("메인 사이드바에 오늘 뉴스 공유 링크", () => {
+  const data: HomeData = {
+    kind: "home",
+    site,
+    categories: [],
+    category: "",
+    featured: [],
+    articles: [],
+    sections: [],
+    most_read: [],
+    sidebar,
+    page: 1,
+    num_pages: 1,
+  };
+  render(<App data={data} />);
+  expect(screen.getByRole("link", { name: "오늘 뉴스 공유 →" })).toHaveAttribute(
+    "href",
+    "/news/2026-10-23",
+  );
 });
