@@ -7,11 +7,11 @@
 import logging
 import secrets
 from collections.abc import Iterable
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 
 from django.db import transaction
-from django.db.models import F, Q, QuerySet, Sum, Window
+from django.db.models import Count, F, Max, Min, Q, QuerySet, Sum, Window
 from django.db.models.functions import RowNumber
 from django.utils import timezone
 from django.utils.text import slugify
@@ -525,6 +525,64 @@ def public_article(slug: str) -> Article:
 def public_sitemap() -> QuerySet[Article]:
     """사이트맵용: 게시된 기사만(slug, 수정 시각)."""
     return Article.objects.filter(published=True).only("slug", "updated_at")
+
+
+def day_bounds(day: date) -> tuple[datetime, datetime]:
+    """서비스 시간대(KST)의 하루 [시작, 다음 날 시작)."""
+    start = timezone.make_aware(datetime.combine(day, time.min))
+    return start, timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min))
+
+
+def public_day(day: date) -> list[Article]:
+    """KST 날짜 `day`에 게시된 기사(`published_at` 기준), 최신순."""
+    start, end = day_bounds(day)
+    return list(
+        _public()
+        .filter(published_at__gte=start, published_at__lt=end)
+        .order_by("-published_at", "-id")
+    )
+
+
+def public_day_stamp(day: date) -> tuple[int, datetime | None]:
+    """그날 게시 기사 건수와 updated_at 최대값(카드 이미지 캐시 키)."""
+    start, end = day_bounds(day)
+    agg = Article.objects.filter(
+        published=True, published_at__gte=start, published_at__lt=end
+    ).aggregate(n=Count("pk"), latest=Max("updated_at"))
+    return agg["n"], agg["latest"]
+
+
+def public_first_day() -> date | None:
+    """게시된 기사의 가장 이른 KST 날짜. 게시가 없으면 None."""
+    first = Article.objects.filter(published=True).aggregate(m=Min("published_at"))["m"]
+    return timezone.localtime(first).date() if first else None
+
+
+def public_neighbor_days(day: date) -> tuple[date | None, date | None]:
+    """기사가 있는 가장 가까운 이전·다음 KST 날짜."""
+    start, end = day_bounds(day)
+    published = Article.objects.filter(published=True)
+    before = published.filter(published_at__lt=start).aggregate(m=Max("published_at"))["m"]
+    after = published.filter(published_at__gte=end).aggregate(m=Min("published_at"))["m"]
+    return (
+        timezone.localtime(before).date() if before else None,
+        timezone.localtime(after).date() if after else None,
+    )
+
+
+def public_recent_days(days: int, now: datetime) -> list[tuple[date, datetime]]:
+    """최근 days일 중 기사가 있는 KST 날짜와 그날 updated_at 최대값(사이트맵용), 최신 날짜부터."""
+    since = timezone.make_aware(
+        datetime.combine(timezone.localtime(now).date() - timedelta(days=days - 1), time.min)
+    )
+    latest: dict[date, datetime] = {}
+    for published_at, updated_at in Article.objects.filter(
+        published=True, published_at__gte=since
+    ).values_list("published_at", "updated_at"):
+        key = timezone.localtime(published_at).date()
+        if key not in latest or updated_at > latest[key]:
+            latest[key] = updated_at
+    return sorted(latest.items(), reverse=True)
 
 
 def public_categories() -> list[Category]:

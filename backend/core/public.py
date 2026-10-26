@@ -4,6 +4,9 @@ Each page renders the same data twice: as JSON in #page-data for React, and as p
 #root (templates/core/public/*.html) so crawlers and link previews see the text without running JS.
 """
 
+import hashlib
+import logging
+import re
 from collections.abc import Iterable
 from dataclasses import replace
 from datetime import date, datetime
@@ -12,6 +15,7 @@ from typing import TypedDict
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.http import (
     Http404,
@@ -29,12 +33,20 @@ from django.views.decorators.csrf import csrf_exempt
 
 from adapters.clock import get_clock
 from articles.models import Article, Category, Prediction
-from core.shell import INDEX, NOINDEX, SITE_DESCRIPTION, SITE_NAME, PageMeta, render_shell
+from core.shell import (
+    DEFAULT_OG_IMAGE,
+    INDEX,
+    NOINDEX,
+    SITE_DESCRIPTION,
+    SITE_NAME,
+    PageMeta,
+    render_shell,
+)
 from inquiries.models import Inquiry
 from services import articles as svc
 from services import commentary as commentary_svc
 from services import inquiries as inquiry_svc
-from services import outbound
+from services import og_card, outbound
 from services import predictions as predictions_svc
 
 PAGE_SIZE = 12
@@ -53,6 +65,14 @@ SIDEBAR_CONTACT_LABEL = "문의하기"
 SITE_MONOGRAM = "AT"
 SECTION_COUNT = 4
 MOST_READ_COUNT = 5
+DAY_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
+SITEMAP_DAYS = 60
+DAY_DESCRIPTION_TITLES = 3
+DAY_EMPTY_DESCRIPTION = "이 날은 게시된 기사가 없습니다. 다른 날의 AI·IT 뉴스를 확인해 보세요."
+SIDEBAR_SHARE_LABEL = "오늘 뉴스 공유 →"
+OG_CACHE_SECONDS = 3600
+OG_CARD_TTL = 24 * 3600
+logger = logging.getLogger(__name__)
 
 
 class CategoryData(TypedDict):
@@ -67,6 +87,8 @@ class SectionData(TypedDict):
 
 
 class SidebarData(TypedDict):
+    share_label: str
+    share_url: str
     most_read_title: str
     sandcorp_title: str
     sandcorp_text: str
@@ -182,6 +204,18 @@ class ShareData(TypedDict):
     x_url: str
 
 
+class DayShareData(ShareData):
+    """날짜 페이지의 공유 조각: `navigator.share`에 넘길 제목·문구를 더한다."""
+
+    title: str
+    text: str
+
+
+class DayLinkData(TypedDict):
+    label: str
+    url: str
+
+
 def _label(value: datetime | None) -> str:
     return date_format(timezone.localtime(value), "Y년 n월 j일 H:i") if value else ""
 
@@ -221,6 +255,8 @@ def _sidebar(today: date) -> SidebarData:
     rate = predictions_svc.sidebar_rate(today)
     percent = rate.percent if rate else None
     return {
+        "share_label": SIDEBAR_SHARE_LABEL,
+        "share_url": day_path(today),
         "prediction_rate": (
             {
                 "title": "전망 적중률",
@@ -627,6 +663,131 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
     )
 
 
+def day_path(day: date) -> str:
+    return f"/news/{day.isoformat()}"
+
+
+def _day_long(day: date) -> str:
+    return f"{day.year}년 {day.month}월 {day.day}일 ({WEEKDAYS[day.weekday()]})"
+
+
+def _day_short(day: date) -> str:
+    return f"{day.month}월 {day.day}일"
+
+
+def _parse_day(raw: str) -> date:
+    """`YYYY-MM-DD`(KST)만. 형식 오류·없는 날짜·미래·첫 게시일 이전·게시 없음은 404."""
+    if not DAY_RE.fullmatch(raw):
+        raise Http404("잘못된 날짜입니다.")
+    try:
+        day = date.fromisoformat(raw)
+    except ValueError:
+        raise Http404("잘못된 날짜입니다.") from None
+    first = svc.public_first_day()
+    if first is None or day < first or day > predictions_svc.today_of(get_clock().now()):
+        raise Http404("기사가 없는 날짜입니다.")
+    return day
+
+
+def _day_titles(articles: list[Article]) -> list[str]:
+    """카드·설명에 쓸 제목: 추천 기사를 앞세우고 나머지는 최신순."""
+    return [a.title for a in sorted(articles, key=lambda a: not a.featured)]
+
+
+def _day_stamp_key(day: date, count: int, latest: datetime | None) -> str:
+    raw = f"{day.isoformat()}|{count}|{latest.isoformat() if latest else ''}"
+    return hashlib.sha1(raw.encode(), usedforsecurity=False).hexdigest()[:16]
+
+
+def news_day(request: HttpRequest, day: str) -> HttpResponse:
+    """하루치 기사 모음(#96): 공유 링크로 열면 그날 뉴스가 모여 있고 카드 이미지가 뜬다."""
+    when = _parse_day(day)
+    articles = svc.public_day(when)
+    prev_day, next_day = svc.public_neighbor_days(when)
+    canonical = request.build_absolute_uri(day_path(when))
+    count = len(articles)
+    titles = _day_titles(articles)
+    short = _day_short(when)
+    if count:
+        meta_title = f"{short} AI·IT 뉴스 {count}건 — {SITE_NAME}"
+        description = _snippet(" · ".join(titles[:DAY_DESCRIPTION_TITLES]), 160)
+    else:
+        meta_title = f"{short} AI·IT 뉴스 — {SITE_NAME}"
+        description = DAY_EMPTY_DESCRIPTION
+    share_title = f"{_day_long(when)} AI·IT 뉴스"
+    x_url = _share(meta_title, canonical)["x_url"]
+    data: dict[str, object] = {
+        "kind": "day",
+        "site": _site(),
+        "date": when.isoformat(),
+        "heading": share_title,
+        "count": count,
+        "articles": [_card(a) for a in articles],
+        "empty_text": "이 날은 게시된 기사가 없습니다." if not count else "",
+        "prev": _day_link(prev_day),
+        "next": _day_link(next_day),
+        "home_url": "/",
+        "share": {
+            "url": canonical,
+            "x_url": x_url,
+            "title": meta_title,
+            "text": description,
+        },
+    }
+    image = ""
+    if count:
+        _, latest = svc.public_day_stamp(when)
+        image = f"{day_path(when)}/og.png?v={_day_stamp_key(when, count, latest)}"
+    meta = PageMeta(
+        title=meta_title,
+        description=description,
+        robots=INDEX if count else NOINDEX,
+        image=image,
+        image_alt=meta_title,
+        image_sized=bool(image),
+    )
+    return _shell(request, meta, data, "core/public/day.html", canonical)
+
+
+def _day_link(day: date | None) -> DayLinkData | None:
+    if day is None:
+        return None
+    return {"label": _day_long(day), "url": day_path(day)}
+
+
+def news_day_og(request: HttpRequest, day: str) -> HttpResponse:
+    """날짜 카드 이미지(1200×630 PNG). 첫 요청 때 합성해 캐시한다. 0건·실패는 기본 이미지."""
+    when = _parse_day(day)
+    count, latest = svc.public_day_stamp(when)
+    if not count:
+        return _default_og_response()
+    key = _day_stamp_key(when, count, latest)
+    etag = f'"{key}"'
+    headers = {"ETag": etag, "Cache-Control": f"public, max-age={OG_CACHE_SECONDS}"}
+    if request.headers.get("If-None-Match") == etag:
+        return HttpResponse(status=304, headers=headers)
+    cache_key = f"og-day:{key}"
+    png = cache.get(cache_key)
+    if png is None:
+        try:
+            articles = svc.public_day(when)
+            png = og_card.render_day_card(when, _day_titles(articles), len(articles))
+        except Exception:  # 카드 합성이 깨져도 공유 미리보기는 기본 이미지로 이어 간다.
+            logger.exception("날짜 카드 이미지 생성 실패: %s", when)
+            return _default_og_response()
+        cache.set(cache_key, png, OG_CARD_TTL)
+    return HttpResponse(png, content_type="image/png", headers=headers)
+
+
+def _default_og_response() -> HttpResponse:
+    path = settings.BASE_DIR / "core" / "static" / DEFAULT_OG_IMAGE
+    return HttpResponse(
+        path.read_bytes(),
+        content_type="image/png",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
 def sitemap(request: HttpRequest) -> HttpResponse:
     def loc(path: str) -> str:
         return request.build_absolute_uri(path)
@@ -634,6 +795,10 @@ def sitemap(request: HttpRequest) -> HttpResponse:
     urls: list[tuple[str, datetime | None]] = [(loc("/"), None)]
     urls += [(loc(f"/?category={c.slug}"), None) for c in svc.public_categories()]
     urls.append((loc(PREDICTIONS_PATH), None))
+    urls += [
+        (loc(day_path(d)), updated)
+        for d, updated in svc.public_recent_days(SITEMAP_DAYS, get_clock().now())
+    ]
     urls += [(loc(reverse("article", args=[a.slug])), a.updated_at) for a in svc.public_sitemap()]
     xml = render_to_string("core/public/sitemap.xml", {"urls": urls})
     return HttpResponse(xml, content_type="application/xml; charset=utf-8")

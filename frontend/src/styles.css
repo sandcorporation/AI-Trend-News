@@ -1218,3 +1218,40 @@ img {
     animation: none;
   }
 }
+
+/* ---------- day page (#96) ---------- */
+
+.day-page {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.day-page h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.day-page .share {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.day-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-line);
+}
+
+.day-nav a {
+  color: var(--color-ink);
+}
+
+.side-share {
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--color-line);
+}

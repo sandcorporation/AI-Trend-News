@@ -67,7 +67,7 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
 }
 
 /** Copies the article URL; if the clipboard API is unavailable or refuses, shows the URL to copy by hand. */
-function CopyLinkButton({ url }: { url: string }) {
+export function CopyLinkButton({ url }: { url: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const copy = async () => {
     try {

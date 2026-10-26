@@ -1,0 +1,23 @@
+{% include "core/public/_chrome_top.html" %}
+<main class="main">
+  <section class="day-page" data-slot="day">
+    <p class="label"><a href="{{ data.home_url }}">← 홈</a></p>
+    <h1>{{ data.heading }}</h1>
+    <p class="lead">{% if data.count %}게시된 기사 {{ data.count }}건{% else %}{{ data.empty_text }}{% endif %}</p>
+    <div class="share" data-slot="share">
+      <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
+    </div>
+    {% if data.articles %}
+    <div class="grid">
+    {% for card in data.articles %}{% include "core/public/_card.html" %}{% endfor %}
+    </div>
+    {% endif %}
+    {% if data.prev or data.next %}
+    <nav class="day-nav" aria-label="다른 날" data-slot="day-nav">
+      {% if data.prev %}<a rel="prev" href="{{ data.prev.url }}">← {{ data.prev.label }}</a>{% else %}<span></span>{% endif %}
+      {% if data.next %}<a rel="next" href="{{ data.next.url }}">{{ data.next.label }} →</a>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+</main>
+{% include "core/public/_chrome_bottom.html" %}
