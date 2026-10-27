@@ -4,6 +4,13 @@
     "name": "main",
     "src": "src/main.tsx",
     "isEntry": true,
-    "css": ["assets/main-def456.css"]
+    "css": ["assets/main-def456.css"],
+    "assets": [
+      "assets/PretendardVariable.subset.0-aaa111.woff2",
+      "assets/PretendardVariable.subset.91-bbb222.woff2",
+      "assets/PretendardVariable.subset.90-ccc333.woff2",
+      "assets/jetbrains-mono-latin-wght-normal-ddd444.woff2",
+      "assets/jetbrains-mono-greek-wght-normal-eee555.woff2"
+    ]
   }
 }

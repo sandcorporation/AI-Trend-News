@@ -28,6 +28,24 @@ def test_home_shell_is_indexable_and_mounts_the_vite_bundle(client: Client) -> N
     assert '<link rel="stylesheet" href="/static/assets/main-def456.css">' in html
 
 
+def test_home_shell_preloads_first_screen_fonts_only(client: Client) -> None:
+    html = client.get("/").content.decode()
+
+    for name in (
+        "PretendardVariable.subset.91-bbb222",
+        "PretendardVariable.subset.90-ccc333",
+        "jetbrains-mono-latin-wght-normal-ddd444",
+    ):
+        assert (
+            f'<link rel="preload" as="font" type="font/woff2" '
+            f'href="/static/assets/{name}.woff2" crossorigin>'
+        ) in html
+    assert "subset.0-aaa111" not in html
+    assert "greek" not in html
+    # fonts are requested before the stylesheet that names them
+    assert html.index('rel="preload"') < html.index('rel="stylesheet"')
+
+
 def test_home_shell_carries_description_and_og(client: Client) -> None:
     html = client.get("/").content.decode()
 

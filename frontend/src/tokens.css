@@ -10,6 +10,28 @@
 @import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 @import "@fontsource-variable/jetbrains-mono/wght.css";
 
+/*
+ * Metric-matched fallback for Pretendard (#98). Until the web font arrives the browser draws
+ * with this face, so swapping in Pretendard does not move the layout. Values come from the
+ * font files (fontTools, wght 400 instance of PretendardVariable.ttf vs Arial-metric
+ * Liberation Sans, both unitsPerEm 2048):
+ *   avg Latin advance (pangram + digits, per em): Pretendard 0.4956, Arial 0.4983
+ *   size-adjust      = 0.4956 / 0.4983              = 99.46%
+ *   ascent-override  = (1950/2048) / size-adjust    = 0.9521 / 0.9946 = 95.73%
+ *   descent-override = (494/2048)  / size-adjust    = 0.2412 / 0.9946 = 24.25%
+ *   line-gap-override = 0 (Pretendard hhea lineGap is 0)
+ * Only Latin/digits come from this face; Hangul falls through to the next stack entry
+ * (full-width, about 1em like Pretendard's).
+ */
+@font-face {
+  font-family: "Pretendard Fallback";
+  src: local("Arial"), local("ArialMT"), local("Liberation Sans"), local("Helvetica");
+  size-adjust: 99.46%;
+  ascent-override: 95.73%;
+  descent-override: 24.25%;
+  line-gap-override: 0%;
+}
+
 :root {
   color-scheme: light dark;
 
@@ -34,7 +56,7 @@
   --color-cat-it: #1d6650;
 
   /* type */
-  --font-sans: "Pretendard Variable", Pretendard, system-ui, -apple-system, "Apple SD Gothic Neo",
+  --font-sans: "Pretendard Variable", Pretendard, "Pretendard Fallback", system-ui, -apple-system, "Apple SD Gothic Neo",
     "Malgun Gothic", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
