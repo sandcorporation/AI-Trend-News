@@ -7,11 +7,24 @@ from pathlib import Path
 
 from django.conf import settings
 
+# Web fonts the first screen needs (#98): Pretendard subset 91 holds Latin + the commonest Hangul,
+# 90/89/88 the next most frequent syllables, plus the mono Latin face used by labels. The rest
+# of the 92 subsets load on demand through unicode-range. Matched by file-name prefix because
+# Vite adds a content hash.
+PRELOAD_FONT_PREFIXES = (
+    "PretendardVariable.subset.91-",
+    "PretendardVariable.subset.90-",
+    "PretendardVariable.subset.89-",
+    "PretendardVariable.subset.88-",
+    "jetbrains-mono-latin-wght-normal-",
+)
+
 
 @dataclass(frozen=True)
 class Assets:
     scripts: list[str] = field(default_factory=list)
     styles: list[str] = field(default_factory=list)
+    fonts: list[str] = field(default_factory=list)
     dev_server: str = ""
 
 
@@ -33,7 +46,15 @@ def entry_assets() -> Assets:
     chunk = manifest[settings.VITE_ENTRY]
     static = settings.STATIC_URL
     css = chunk.get("css", [])
+    emitted = chunk.get("assets", [])
+    fonts = [
+        f"{static}{name}"
+        for prefix in PRELOAD_FONT_PREFIXES
+        for name in (emitted if isinstance(emitted, list) else [])
+        if isinstance(name, str) and name.rsplit("/", 1)[-1].startswith(prefix)
+    ]
     return Assets(
         scripts=[f"{static}{chunk['file']}"],
+        fonts=fonts,
         styles=[f"{static}{name}" for name in css] if isinstance(css, list) else [],
     )
