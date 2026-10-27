@@ -20,8 +20,8 @@
  *   ascent-override  = (1950/2048) / size-adjust    = 0.9521 / 0.9946 = 95.73%
  *   descent-override = (494/2048)  / size-adjust    = 0.2412 / 0.9946 = 24.25%
  *   line-gap-override = 0 (Pretendard hhea lineGap is 0)
- * Only Latin/digits come from this face; Hangul falls through to the next stack entry
- * (full-width, about 1em like Pretendard's).
+ * Only Latin/digits come from this face; Hangul falls through to the per-platform Hangul
+ * faces below.
  */
 @font-face {
   font-family: "Pretendard Fallback";
@@ -29,6 +29,64 @@
   size-adjust: 99.46%;
   ascent-override: 95.73%;
   descent-override: 24.25%;
+  line-gap-override: 0%;
+}
+
+/*
+ * Hangul fallbacks per platform (#100). Measured from the real system font files with fontTools
+ * (Apple SD Gothic Neo.ttc Regular/Bold, malgun.ttf/malgunbd.ttf, PretendardVariable wght 400/700;
+ * advance = mean over 29 common syllables, per em; identical at both weights):
+ *                    Pretendard   Apple SD Gothic Neo   Malgun Gothic
+ *   Hangul advance     0.8643        0.8650                1.0000
+ *   hhea ascent/em     0.9521        0.9000                1.0884
+ *   hhea descent/em    0.2412        0.3000                0.2417   (lineGap 0 in all)
+ * size-adjust = Pretendard advance / system advance
+ *   Apple: 0.8643 / 0.8650 = 99.92%      Malgun: 0.8643 / 1.0000 = 86.43%
+ * ascent-override  = 0.9521 / size-adjust   (Apple 95.28%, Malgun 110.16%)
+ * descent-override = 0.2412 / size-adjust   (Apple 24.14%, Malgun 27.91%)
+ * Each platform has its own face because one local() list shares one set of numbers. They are
+ * limited to Hangul with unicode-range, so Latin (about 0.45-0.49 em in all three) keeps using
+ * the Arial face above instead of being scaled by the Hangul ratio. Regular and Bold are
+ * separate faces so bold text is not synthesized.
+ */
+@font-face {
+  font-family: "Pretendard Fallback Apple";
+  src: local("Apple SD Gothic Neo"), local("AppleSDGothicNeo-Regular");
+  font-weight: 100 599;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+  size-adjust: 99.92%;
+  ascent-override: 95.28%;
+  descent-override: 24.14%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Pretendard Fallback Apple";
+  src: local("Apple SD Gothic Neo Bold"), local("AppleSDGothicNeo-Bold");
+  font-weight: 600 900;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+  size-adjust: 99.92%;
+  ascent-override: 95.28%;
+  descent-override: 24.14%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Pretendard Fallback Win";
+  src: local("Malgun Gothic"), local("MalgunGothic");
+  font-weight: 100 599;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+  size-adjust: 86.43%;
+  ascent-override: 110.16%;
+  descent-override: 27.91%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Pretendard Fallback Win";
+  src: local("Malgun Gothic Bold"), local("MalgunGothic-Bold");
+  font-weight: 600 900;
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+  size-adjust: 86.43%;
+  ascent-override: 110.16%;
+  descent-override: 27.91%;
   line-gap-override: 0%;
 }
 
@@ -56,7 +114,8 @@
   --color-cat-it: #1d6650;
 
   /* type */
-  --font-sans: "Pretendard Variable", Pretendard, "Pretendard Fallback", system-ui, -apple-system, "Apple SD Gothic Neo",
+  --font-sans: "Pretendard Variable", Pretendard, "Pretendard Fallback", "Pretendard Fallback Apple",
+    "Pretendard Fallback Win", system-ui, -apple-system, "Apple SD Gothic Neo",
     "Malgun Gothic", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
