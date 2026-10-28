@@ -32,3 +32,13 @@ def run_cycle(
             logger.info("명령 끝: %s", name)
             results[name] = True
     return results
+
+
+def seconds_until_next(now: float, interval: int, offset: int) -> float:
+    """다음 실행까지 남은 초. 실행 시각은 벽시계 `interval` 경계에서 `offset`초 뒤다.
+
+    epoch 초 기준이라 KST(+9시간)에서도 매시 분이 같다 — interval 3600, offset 1500이면 매시 25분.
+    지금이 바로 실행 시각이면 다음 주기까지 기다린다.
+    """
+    wait = (offset - now) % interval
+    return wait if wait > 0 else float(interval)

@@ -37,11 +37,20 @@ services:
     mem_limit: 512m
     restart: unless-stopped
 
-  # Same image as web. `run_scheduler` runs services.scheduler.COMMANDS right at start, then every
-  # SCHEDULER_INTERVAL seconds (default 3600). A failing command is logged and never stops the loop.
+  # Same image as web. `run_scheduler` runs services.scheduler.COMMANDS right at start, then on the
+  # wall clock every SCHEDULER_INTERVAL seconds (default 3600) plus SCHEDULER_OFFSET (default 1500,
+  # i.e. :25 past each hour, 15 minutes before the editor routine at 06:40/12:40/18:40 KST).
+  # A failing command is logged and never stops the loop.
   scheduler:
     image: news-web:latest
-    command: ["python", "manage.py", "run_scheduler", "--interval", "${SCHEDULER_INTERVAL:-3600}"]
+    command:
+      - python
+      - manage.py
+      - run_scheduler
+      - --interval
+      - "${SCHEDULER_INTERVAL:-3600}"
+      - --offset
+      - "${SCHEDULER_OFFSET:-1500}"
     env_file: [.env]
     environment:
       DJANGO_DEBUG: "0"
