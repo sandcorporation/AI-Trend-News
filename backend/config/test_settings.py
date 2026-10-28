@@ -16,3 +16,6 @@ from config.settings import *  # noqa: E402, F403
 COLLECT_MAX_AGE_DAYS = 36500
 FETCH_FALLBACK_URL = ""
 METRICS_SNIPPET_URL = ""
+
+# 시험에서만 싼 비밀번호 해시(PBKDF2는 계정 하나 만들 때마다 CPU 0.5초+). 운영 설정은 기본값 그대로.
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]

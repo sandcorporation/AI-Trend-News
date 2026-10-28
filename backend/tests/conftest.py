@@ -5,7 +5,10 @@ Fake adapters get registered here as they appear.
 """
 
 import base64
-from collections.abc import Iterator
+import os
+import resource
+import time
+from collections.abc import Generator, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -210,3 +213,50 @@ def fake_portfolio() -> Iterator[FakeGateway]:
     ):
         yield gateway
     set_gateway(previous)
+
+
+# --- 시험 하나당 본문 CPU 한도 (이슈 #102, 스킬 test-speed-budget) ---
+# 본문(call 단계)의 CPU = 이 프로세스 + 자식. 넘고 통과한 시험은 실패로 바꾼다(준비·정리 제외).
+# 시험마다 CPU 초를 junit 속성 `cpu_seconds`로 남긴다(`pytest --junitxml=…`).
+_CPU_LIMIT_SECONDS = float(os.environ.get("NEWS_TEST_CPU_LIMIT", "1.0"))  # 0이면 끔
+
+
+def _cpu_seconds() -> float:
+    children = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return time.process_time() + children.ru_utime + children.ru_stime
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item) -> Generator[None]:
+    started = _cpu_seconds()
+    try:
+        return (yield)
+    finally:
+        item._cpu_seconds_spent = _cpu_seconds() - started  # type: ignore[attr-defined]
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(
+    item: pytest.Item, call: pytest.CallInfo[None]
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    report = yield
+    spent: float | None = getattr(item, "_cpu_seconds_spent", None)
+    if report.when == "call" and spent is not None:
+        # junitxml은 teardown 보고서의 user_properties를 쓴다 — item과 report 양쪽에 넣어야 남는다.
+        item.user_properties.append(("cpu_seconds", round(spent, 3)))
+        report.user_properties.append(("cpu_seconds", round(spent, 3)))
+        if _CPU_LIMIT_SECONDS > 0 and spent > _CPU_LIMIT_SECONDS and report.passed:
+            report.outcome = "failed"
+            report.longrepr = (
+                f"시험 본문이 CPU {spent:.2f}초를 썼다 — 한도 {_CPU_LIMIT_SECONDS:.2f}초"
+                " (NEWS_TEST_CPU_LIMIT). 원인을 찾아 줄인다; 한도를 늘리지 않는다."
+            )
+    return report
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _load_urlconf_before_any_test() -> None:
+    """URLconf는 첫 요청에서야 읽힌다 — 처음 보낸 시험 하나가 혼자 CPU를 내지 않게 미리 읽는다."""
+    from django.urls import get_resolver
+
+    assert get_resolver().url_patterns
