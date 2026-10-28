@@ -670,6 +670,13 @@ const dayData: DayPageData = {
   date: "2026-10-26",
   heading: "2026년 10월 26일 (월) AI·IT 뉴스",
   count: 2,
+  category: "",
+  tabs: [
+    { label: "전체", url: "/news/2026-10-26", current: true },
+    { label: "AI", url: "/news/2026-10-26/ai", current: false },
+    { label: "IT", url: "/news/2026-10-26/it", current: false },
+  ],
+  all_url: "/news/2026-10-26",
   articles: [card, { ...card, slug: "b", title: "둘째 기사", url: "/a/b" }],
   empty_text: "",
   prev: { label: "2026년 10월 25일 (일)", url: "/news/2026-10-25" },
@@ -682,6 +689,32 @@ const dayData: DayPageData = {
     text: "금리 동결 · 둘째 기사",
   },
 };
+
+test("날짜 페이지: 분야 탭은 현재 탭을 표시하고, 분야 0건이면 전체 링크를 보인다", () => {
+  const { rerender } = render(<App data={dayData} />);
+  const tabs = screen.getByRole("navigation", { name: "분야" });
+  expect(tabs.querySelector("[aria-current=page]")).toHaveTextContent("전체");
+  expect(screen.getByRole("link", { name: "AI" })).toHaveAttribute(
+    "href",
+    "/news/2026-10-26/ai",
+  );
+  rerender(
+    <App
+      data={{
+        ...dayData,
+        count: 0,
+        articles: [],
+        category: "ai",
+        empty_text: "이 날 AI 기사가 없습니다.",
+      }}
+    />,
+  );
+  expect(screen.getByText("이 날 AI 기사가 없습니다.")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /전체 뉴스 보기/ })).toHaveAttribute(
+    "href",
+    "/news/2026-10-26",
+  );
+});
 
 test("날짜 페이지: 제목·건수·카드·공유 버튼·이전 날 링크", () => {
   Object.defineProperty(navigator, "share", { value: undefined, configurable: true });

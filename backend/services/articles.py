@@ -533,22 +533,22 @@ def day_bounds(day: date) -> tuple[datetime, datetime]:
     return start, timezone.make_aware(datetime.combine(day + timedelta(days=1), time.min))
 
 
-def public_day(day: date) -> list[Article]:
-    """KST 날짜 `day`에 게시된 기사(`published_at` 기준), 최신순."""
+def public_day(day: date, category: str = "") -> list[Article]:
+    """KST 날짜 `day`에 게시된 기사(`published_at` 기준), 최신순. `category`(slug)면 그 분야만."""
     start, end = day_bounds(day)
-    return list(
-        _public()
-        .filter(published_at__gte=start, published_at__lt=end)
-        .order_by("-published_at", "-id")
-    )
+    qs = _public().filter(published_at__gte=start, published_at__lt=end)
+    if category:
+        qs = qs.filter(category__slug=category)
+    return list(qs.order_by("-published_at", "-id"))
 
 
-def public_day_stamp(day: date) -> tuple[int, datetime | None]:
-    """그날 게시 기사 건수와 updated_at 최대값(카드 이미지 캐시 키)."""
+def public_day_stamp(day: date, category: str = "") -> tuple[int, datetime | None]:
+    """그날(그 분야) 게시 기사 건수와 updated_at 최대값(카드 이미지 캐시 키)."""
     start, end = day_bounds(day)
-    agg = Article.objects.filter(
-        published=True, published_at__gte=start, published_at__lt=end
-    ).aggregate(n=Count("pk"), latest=Max("updated_at"))
+    qs = Article.objects.filter(published=True, published_at__gte=start, published_at__lt=end)
+    if category:
+        qs = qs.filter(category__slug=category)
+    agg = qs.aggregate(n=Count("pk"), latest=Max("updated_at"))
     return agg["n"], agg["latest"]
 
 
@@ -558,10 +558,12 @@ def public_first_day() -> date | None:
     return timezone.localtime(first).date() if first else None
 
 
-def public_neighbor_days(day: date) -> tuple[date | None, date | None]:
-    """기사가 있는 가장 가까운 이전·다음 KST 날짜."""
+def public_neighbor_days(day: date, category: str = "") -> tuple[date | None, date | None]:
+    """기사가 있는(`category` slug가 있으면 그 분야 기사가 있는) 가장 가까운 이전·다음 KST 날짜."""
     start, end = day_bounds(day)
     published = Article.objects.filter(published=True)
+    if category:
+        published = published.filter(category__slug=category)
     before = published.filter(published_at__lt=start).aggregate(m=Max("published_at"))["m"]
     after = published.filter(published_at__gte=end).aggregate(m=Min("published_at"))["m"]
     return (
@@ -583,6 +585,21 @@ def public_recent_days(days: int, now: datetime) -> list[tuple[date, datetime]]:
         if key not in latest or updated_at > latest[key]:
             latest[key] = updated_at
     return sorted(latest.items(), reverse=True)
+
+
+def public_recent_category_days(days: int, now: datetime) -> list[tuple[date, str, datetime]]:
+    """최근 days일 중 분야별로 기사가 있는 (KST 날짜, 분야 slug, updated_at 최대값)(사이트맵용)."""
+    since = timezone.make_aware(
+        datetime.combine(timezone.localtime(now).date() - timedelta(days=days - 1), time.min)
+    )
+    latest: dict[tuple[date, str], datetime] = {}
+    for published_at, updated_at, slug in Article.objects.filter(
+        published=True, published_at__gte=since
+    ).values_list("published_at", "updated_at", "category__slug"):
+        key = (timezone.localtime(published_at).date(), slug)
+        if key not in latest or updated_at > latest[key]:
+            latest[key] = updated_at
+    return [(d, slug, u) for (d, slug), u in sorted(latest.items(), reverse=True)]
 
 
 def public_categories() -> list[Category]:

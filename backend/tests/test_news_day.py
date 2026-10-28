@@ -9,7 +9,8 @@ from django.core.cache import cache
 from django.test import Client
 from PIL import Image
 
-from articles.models import Article
+from articles.models import Article, Category
+from services import articles as svc
 from services import og_card
 from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
@@ -38,8 +39,10 @@ def meta(html: str, key: str) -> str:
     return match.group(1)
 
 
-def at(title: str, published_at: datetime, *, featured: bool = False) -> Article:
-    article = make_article(title, category="AI", featured=featured)
+def at(
+    title: str, published_at: datetime, *, featured: bool = False, category: str = "AI"
+) -> Article:
+    article = make_article(title, category=category, featured=featured)
     Article.objects.filter(pk=article.pk).update(published_at=published_at)
     article.refresh_from_db()
     return article
@@ -146,9 +149,9 @@ def test_og_png_is_1200x630_and_cached_by_etag(
     calls: list[int] = []
     real = og_card.render_day_card
 
-    def counted(day: date, titles: list[str], total: int) -> bytes:
+    def counted(day: date, titles: list[str], total: int, category_name: str = "") -> bytes:
         calls.append(1)
-        return real(day, titles, total)
+        return real(day, titles, total, category_name)
 
     monkeypatch.setattr(og_card, "render_day_card", counted)
     first = client.get("/news/2026-10-26/og.png")
@@ -196,3 +199,141 @@ def test_home_sidebar_links_to_today(client: Client) -> None:
     html = client.get("/").content.decode()
     assert 'href="/news/2026-10-26"' in html
     assert page_data(html)["sidebar"]["share_url"] == "/news/2026-10-26"  # type: ignore[index]
+
+
+# --- 분야별 날짜 모음 (#104) ---
+
+
+def two_categories() -> None:
+    """AI(ai)·IT(it) 두 분야 기사: 10-23 AI·IT, 10-25 IT, 10-26 AI 2건 + IT 1건."""
+    at("AI 23일", datetime(2026, 10, 23, 2, 0, tzinfo=UTC))
+    at("IT 23일", datetime(2026, 10, 23, 3, 0, tzinfo=UTC), category="IT")
+    at("IT 25일", datetime(2026, 10, 25, 2, 0, tzinfo=UTC), category="IT")
+    at("AI 26일 가", datetime(2026, 10, 26, 1, 0, tzinfo=UTC))
+    at("AI 26일 나", datetime(2026, 10, 26, 2, 0, tzinfo=UTC))
+    at("IT 26일", datetime(2026, 10, 26, 3, 0, tzinfo=UTC), category="IT")
+    Category.objects.filter(name="AI").update(slug="ai")
+    Category.objects.filter(name="IT").update(slug="it")
+
+
+def test_category_day_lists_only_that_category_with_meta(client: Client) -> None:
+    two_categories()
+    response = client.get("/news/2026-10-26/ai")
+    html = response.content.decode()
+    assert response.status_code == 200
+    data = page_data(html)
+    assert [c["title"] for c in data["articles"]] == ["AI 26일 나", "AI 26일 가"]  # type: ignore[attr-defined]
+    assert data["category"] == "ai"
+    assert data["heading"] == "2026년 10월 26일 (월) AI 뉴스"
+    assert meta(html, "og:title") == "10월 26일 AI 뉴스 2건 — Foresight"
+    assert meta(html, "og:url") == "http://testserver/news/2026-10-26/ai"
+    assert 'rel="canonical" href="http://testserver/news/2026-10-26/ai"' in html
+    assert urlsplit(meta(html, "og:image")).path == "/news/2026-10-26/ai/og.png"
+    assert "noindex" not in html
+    assert data["share"]["url"] == "http://testserver/news/2026-10-26/ai"  # type: ignore[index]
+    # 서버 HTML에도 같은 목록과 탭
+    assert "AI 26일 가" in html and "IT 26일" not in html
+    assert 'data-slot="day-tabs"' in html
+
+
+def test_category_tabs_follow_category_order_and_mark_current(client: Client) -> None:
+    two_categories()
+    data = page_data(client.get("/news/2026-10-26/it").content.decode())
+    assert data["tabs"] == [
+        {"label": "전체", "url": "/news/2026-10-26", "current": False},
+        {"label": "AI", "url": "/news/2026-10-26/ai", "current": False},
+        {"label": "IT", "url": "/news/2026-10-26/it", "current": True},
+    ]
+    whole = page_data(client.get("/news/2026-10-26").content.decode())
+    assert whole["tabs"][0]["current"] is True  # type: ignore[index]
+    assert whole["category"] == ""
+
+
+def test_category_neighbors_keep_category(client: Client) -> None:
+    two_categories()
+    # IT는 23·25·26일, AI는 23·26일: AI 26일의 이전은 25일이 아니라 23일
+    ai = page_data(client.get("/news/2026-10-26/ai").content.decode())
+    assert ai["prev"]["url"] == "/news/2026-10-23/ai"  # type: ignore[index]
+    assert ai["next"] is None
+    it = page_data(client.get("/news/2026-10-23/it").content.decode())
+    assert it["next"]["url"] == "/news/2026-10-25/it"  # type: ignore[index]
+    # 전체 모음의 이웃은 분야 없는 주소
+    whole = page_data(client.get("/news/2026-10-26").content.decode())
+    assert whole["prev"]["url"] == "/news/2026-10-25"  # type: ignore[index]
+
+
+def test_unknown_category_is_404(client: Client) -> None:
+    two_categories()
+    assert client.get("/news/2026-10-26/nope").status_code == 404
+    assert client.get("/news/2026-10-26/nope/og.png").status_code == 404
+    assert client.get("/news/2026-10-26?category=nope").status_code == 404
+
+
+def test_empty_category_day_is_200_noindex_with_link_to_all(client: Client) -> None:
+    two_categories()
+    response = client.get("/news/2026-10-25/ai")  # 그날 AI 기사 없음
+    html = response.content.decode()
+    assert response.status_code == 200
+    assert meta(html, "robots") == "noindex, nofollow"
+    assert "이 날 AI 기사가 없습니다." in html
+    assert 'href="/news/2026-10-25"' in html
+    assert "/og-default" in meta(html, "og:image")
+    data = page_data(html)
+    assert data["empty_text"] == "이 날 AI 기사가 없습니다."
+    assert data["all_url"] == "/news/2026-10-25"
+    assert data["prev"]["url"] == "/news/2026-10-23/ai"  # type: ignore[index]
+    og = client.get("/news/2026-10-25/ai/og.png")
+    assert og.status_code == 200
+    assert Image.open(io.BytesIO(og.content)).size == (1200, 630)
+
+
+def test_query_category_redirects_to_path_keeping_other_params(client: Client) -> None:
+    two_categories()
+    response = client.get("/news/2026-10-26?category=ai&utm_source=x")
+    assert response.status_code == 301
+    assert response["Location"] == "/news/2026-10-26/ai?utm_source=x"
+    plain = client.get("/news/2026-10-26?category=ai")
+    assert plain["Location"] == "/news/2026-10-26/ai"
+    assert client.get("/news/2026-10-26?category=").status_code == 200
+
+
+def test_old_category_slug_redirects_to_new_path(client: Client) -> None:
+    two_categories()
+    svc.update_category("ai", new_slug="artificial")
+    path = client.get("/news/2026-10-26/ai?x=1")
+    assert path.status_code == 301
+    assert path["Location"] == "/news/2026-10-26/artificial?x=1"
+    query = client.get("/news/2026-10-26?category=ai")
+    assert query["Location"] == "/news/2026-10-26/artificial"
+    og = client.get("/news/2026-10-26/ai/og.png")
+    assert og.status_code == 301
+    assert og["Location"] == "/news/2026-10-26/artificial/og.png"
+    assert client.get("/news/2026-10-26/artificial").status_code == 200
+
+
+def test_category_og_png_uses_category_and_own_cache(
+    client: Client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    two_categories()
+    seen: list[tuple[int, str]] = []
+    real = og_card.render_day_card
+
+    def spy(day: date, titles: list[str], total: int, category_name: str = "") -> bytes:
+        seen.append((total, category_name))
+        return real(day, titles, total, category_name)
+
+    monkeypatch.setattr(og_card, "render_day_card", spy)
+    ai = client.get("/news/2026-10-26/ai/og.png")
+    assert ai.status_code == 200
+    assert Image.open(io.BytesIO(ai.content)).size == (1200, 630)
+    whole = client.get("/news/2026-10-26/og.png")
+    assert whole["ETag"] != ai["ETag"]
+    assert seen == [(2, "AI"), (3, "")]
+
+
+def test_sitemap_lists_category_days_with_articles_only(client: Client) -> None:
+    two_categories()
+    xml = client.get("/sitemap.xml").content.decode()
+    assert "/news/2026-10-26/ai</loc>" in xml
+    assert "/news/2026-10-25/it</loc>" in xml
+    assert "/news/2026-10-25/ai</loc>" not in xml  # 그날 AI 0건

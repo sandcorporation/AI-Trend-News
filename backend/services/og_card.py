@@ -54,13 +54,18 @@ def fit_line(text: str, font: _Font, max_width: float) -> str:
     return kept.rstrip() + ELLIPSIS
 
 
-def render_day_card(day: date, titles: list[str], total: int) -> bytes:
+def render_day_card(day: date, titles: list[str], total: int, category_name: str = "") -> bytes:
     """그날의 카드 PNG. `titles`는 위에서부터 보여 줄 제목들(최대 4개만 쓴다)."""
     image = Image.new("RGB", (WIDTH, HEIGHT), CANVAS)
     draw = ImageDraw.Draw(image)
     inner = WIDTH - MARGIN * 2
 
-    draw.text((MARGIN, 70), f"AI · IT NEWS · {day.year}", font=_font("SemiBold", 26), fill=ACCENT)
+    draw.text(
+        (MARGIN, 70),
+        f"{category_name.upper() if category_name else 'AI · IT'} NEWS · {day.year}",
+        font=_font("SemiBold", 26),
+        fill=ACCENT,
+    )
     weekday = WEEKDAYS[day.weekday()]
     draw.text(
         (MARGIN - 4, 112),
@@ -68,7 +73,12 @@ def render_day_card(day: date, titles: list[str], total: int) -> bytes:
         font=_font("Bold", 112),
         fill=INK,
     )
-    draw.text((MARGIN, 250), f"AI·IT 뉴스 {total}건", font=_font("SemiBold", 36), fill=ACCENT)
+    draw.text(
+        (MARGIN, 250),
+        f"{category_name or 'AI·IT'} 뉴스 {total}건",
+        font=_font("SemiBold", 36),
+        fill=ACCENT,
+    )
 
     title_font = _font("SemiBold", 34)
     bullet_w = _width(title_font, "· ")
