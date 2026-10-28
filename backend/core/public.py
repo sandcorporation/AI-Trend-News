@@ -216,6 +216,12 @@ class DayLinkData(TypedDict):
     url: str
 
 
+class DayTabData(TypedDict):
+    label: str
+    url: str
+    current: bool
+
+
 def _label(value: datetime | None) -> str:
     return date_format(timezone.localtime(value), "Y년 n월 j일 H:i") if value else ""
 
@@ -694,38 +700,88 @@ def _day_titles(articles: list[Article]) -> list[str]:
     return [a.title for a in sorted(articles, key=lambda a: not a.featured)]
 
 
-def _day_stamp_key(day: date, count: int, latest: datetime | None) -> str:
-    raw = f"{day.isoformat()}|{count}|{latest.isoformat() if latest else ''}"
+def _day_stamp_key(day: date, count: int, latest: datetime | None, category: str = "") -> str:
+    raw = f"{day.isoformat()}|{category}|{count}|{latest.isoformat() if latest else ''}"
     return hashlib.sha1(raw.encode(), usedforsecurity=False).hexdigest()[:16]
 
 
-def news_day(request: HttpRequest, day: str) -> HttpResponse:
-    """하루치 기사 모음(#96): 공유 링크로 열면 그날 뉴스가 모여 있고 카드 이미지가 뜬다."""
+def day_category_path(day: date, category: str = "") -> str:
+    return f"{day_path(day)}/{category}" if category else day_path(day)
+
+
+def _resolve_day_category(
+    request: HttpRequest, when: date, category: str
+) -> tuple[Category | None, HttpResponse | None]:
+    """경로 분야 slug(없으면 옛 `?category=`)를 현재 분야로. 경로 주소가 아니면 301, 없으면 404."""
+    from_query = not category
+    wanted = category or request.GET.get("category", "")
+    if not wanted:
+        return None, None
+    current = next((c for c in svc.public_categories() if c.slug == wanted), None)
+    if current is None:
+        current = svc.find_category_by_old_slug(wanted)
+    if current is None:
+        raise Http404("없는 분야입니다.")
+    if from_query or current.slug != category:
+        params = request.GET.copy()
+        params.pop("category", None)
+        query = f"?{params.urlencode()}" if params else ""
+        target = day_category_path(when, current.slug) + query
+        return current, HttpResponsePermanentRedirect(target)
+    return current, None
+
+
+def news_day(request: HttpRequest, day: str, category: str = "") -> HttpResponse:
+    """날짜(·분야) 카드 PNG(1200×630). 첫 요청 때 합성해 캐시한다. 0건·실패는 기본 이미지."""
     when = _parse_day(day)
-    articles = svc.public_day(when)
-    prev_day, next_day = svc.public_neighbor_days(when)
-    canonical = request.build_absolute_uri(day_path(when))
+    current, redirect = _resolve_day_category(request, when, category)
+    if redirect is not None:
+        return redirect
+    slug = current.slug if current else ""
+    scope = current.name if current else "AI·IT"
+    articles = svc.public_day(when, slug)
+    prev_day, next_day = svc.public_neighbor_days(when, slug)
+    here = day_category_path(when, slug)
+    canonical = request.build_absolute_uri(here)
     count = len(articles)
     titles = _day_titles(articles)
     short = _day_short(when)
     if count:
-        meta_title = f"{short} AI·IT 뉴스 {count}건 — {SITE_NAME}"
+        meta_title = f"{short} {scope} 뉴스 {count}건 — {SITE_NAME}"
         description = _snippet(" · ".join(titles[:DAY_DESCRIPTION_TITLES]), 160)
     else:
-        meta_title = f"{short} AI·IT 뉴스 — {SITE_NAME}"
+        meta_title = f"{short} {scope} 뉴스 — {SITE_NAME}"
         description = DAY_EMPTY_DESCRIPTION
-    share_title = f"{_day_long(when)} AI·IT 뉴스"
+    share_title = f"{_day_long(when)} {scope} 뉴스"
     x_url = _share(meta_title, canonical)["x_url"]
+    tabs: list[DayTabData] = [{"label": "전체", "url": day_path(when), "current": current is None}]
+    tabs += [
+        {
+            "label": c.name,
+            "url": day_category_path(when, c.slug),
+            "current": current is not None and c.pk == current.pk,
+        }
+        for c in svc.public_categories()
+    ]
+    if count:
+        empty_text = ""
+    elif current:
+        empty_text = f"이 날 {current.name} 기사가 없습니다."
+    else:
+        empty_text = "이 날은 게시된 기사가 없습니다."
     data: dict[str, object] = {
         "kind": "day",
         "site": _site(),
         "date": when.isoformat(),
         "heading": share_title,
         "count": count,
+        "category": slug,
+        "tabs": tabs,
+        "all_url": day_path(when),
         "articles": [_card(a) for a in articles],
-        "empty_text": "이 날은 게시된 기사가 없습니다." if not count else "",
-        "prev": _day_link(prev_day),
-        "next": _day_link(next_day),
+        "empty_text": empty_text,
+        "prev": _day_link(prev_day, slug),
+        "next": _day_link(next_day, slug),
         "home_url": "/",
         "share": {
             "url": canonical,
@@ -736,8 +792,8 @@ def news_day(request: HttpRequest, day: str) -> HttpResponse:
     }
     image = ""
     if count:
-        _, latest = svc.public_day_stamp(when)
-        image = f"{day_path(when)}/og.png?v={_day_stamp_key(when, count, latest)}"
+        _, latest = svc.public_day_stamp(when, slug)
+        image = f"{here}/og.png?v={_day_stamp_key(when, count, latest, slug)}"
     meta = PageMeta(
         title=meta_title,
         description=description,
@@ -749,19 +805,29 @@ def news_day(request: HttpRequest, day: str) -> HttpResponse:
     return _shell(request, meta, data, "core/public/day.html", canonical)
 
 
-def _day_link(day: date | None) -> DayLinkData | None:
+def _day_link(day: date | None, category: str = "") -> DayLinkData | None:
     if day is None:
         return None
-    return {"label": _day_long(day), "url": day_path(day)}
+    return {"label": _day_long(day), "url": day_category_path(day, category)}
 
 
-def news_day_og(request: HttpRequest, day: str) -> HttpResponse:
-    """날짜 카드 이미지(1200×630 PNG). 첫 요청 때 합성해 캐시한다. 0건·실패는 기본 이미지."""
+def news_day_og(request: HttpRequest, day: str, category: str = "") -> HttpResponse:
+    """날짜(·분야) 카드 이미지(1200×630 PNG). 첫 요청 때 합성해 캐시한다. 0건·실패는 기본 이미지."""
     when = _parse_day(day)
-    count, latest = svc.public_day_stamp(when)
+    current = None
+    if category:
+        current = next((c for c in svc.public_categories() if c.slug == category), None)
+        if current is None:
+            renamed = svc.find_category_by_old_slug(category)
+            if renamed is not None:
+                return HttpResponsePermanentRedirect(
+                    day_category_path(when, renamed.slug) + "/og.png"
+                )
+            raise Http404("없는 분야입니다.")
+    count, latest = svc.public_day_stamp(when, category)
     if not count:
         return _default_og_response()
-    key = _day_stamp_key(when, count, latest)
+    key = _day_stamp_key(when, count, latest, category)
     etag = f'"{key}"'
     headers = {"ETag": etag, "Cache-Control": f"public, max-age={OG_CACHE_SECONDS}"}
     if request.headers.get("If-None-Match") == etag:
@@ -770,8 +836,10 @@ def news_day_og(request: HttpRequest, day: str) -> HttpResponse:
     png = cache.get(cache_key)
     if png is None:
         try:
-            articles = svc.public_day(when)
-            png = og_card.render_day_card(when, _day_titles(articles), len(articles))
+            articles = svc.public_day(when, category)
+            png = og_card.render_day_card(
+                when, _day_titles(articles), len(articles), current.name if current else ""
+            )
         except Exception:  # 카드 합성이 깨져도 공유 미리보기는 기본 이미지로 이어 간다.
             logger.exception("날짜 카드 이미지 생성 실패: %s", when)
             return _default_og_response()
@@ -795,9 +863,13 @@ def sitemap(request: HttpRequest) -> HttpResponse:
     urls: list[tuple[str, datetime | None]] = [(loc("/"), None)]
     urls += [(loc(f"/?category={c.slug}"), None) for c in svc.public_categories()]
     urls.append((loc(PREDICTIONS_PATH), None))
+    now = get_clock().now()
     urls += [
-        (loc(day_path(d)), updated)
-        for d, updated in svc.public_recent_days(SITEMAP_DAYS, get_clock().now())
+        (loc(day_path(d)), updated) for d, updated in svc.public_recent_days(SITEMAP_DAYS, now)
+    ]
+    urls += [
+        (loc(day_category_path(d, slug)), updated)
+        for d, slug, updated in svc.public_recent_category_days(SITEMAP_DAYS, now)
     ]
     urls += [(loc(reverse("article", args=[a.slug])), a.updated_at) for a in svc.public_sitemap()]
     xml = render_to_string("core/public/sitemap.xml", {"urls": urls})

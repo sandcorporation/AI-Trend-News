@@ -44,6 +44,17 @@ export function DayPage({ data }: { data: DayPageData }) {
         <p className="lead">
           {data.count > 0 ? `게시된 기사 ${data.count}건` : data.empty_text}
         </p>
+        <nav className="day-tabs" aria-label="분야" data-slot="day-tabs">
+          {data.tabs.map((tab) => (
+            <a
+              key={tab.url}
+              href={tab.url}
+              aria-current={tab.current ? "page" : undefined}
+            >
+              {tab.label}
+            </a>
+          ))}
+        </nav>
         <div className="share" data-slot="share">
           <CopyLinkButton url={data.share.url} />
           <a
@@ -60,6 +71,11 @@ export function DayPage({ data }: { data: DayPageData }) {
             url={data.share.url}
           />
         </div>
+        {data.count === 0 && data.category && (
+          <p data-slot="day-all">
+            <a href={data.all_url}>이 날 전체 뉴스 보기 →</a>
+          </p>
+        )}
         {data.articles.length > 0 && (
           <div className="grid">
             {data.articles.map((card) => (

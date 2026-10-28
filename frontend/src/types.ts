@@ -144,6 +144,12 @@ export interface DayLinkData {
   url: string;
 }
 
+export interface DayTabData {
+  label: string;
+  url: string;
+  current: boolean;
+}
+
 export interface DayPageData {
   kind: "day";
   site: SiteData;
@@ -151,6 +157,11 @@ export interface DayPageData {
   date: string;
   heading: string;
   count: number;
+  /** 분야 slug. 전체면 빈 문자열 */
+  category: string;
+  tabs: DayTabData[];
+  /** 분야 없는 그날 전체 모음 주소 */
+  all_url: string;
   articles: CardData[];
   empty_text: string;
   prev: DayLinkData | null;

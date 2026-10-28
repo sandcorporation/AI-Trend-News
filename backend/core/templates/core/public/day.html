@@ -4,9 +4,14 @@
     <p class="label"><a href="{{ data.home_url }}">← 홈</a></p>
     <h1>{{ data.heading }}</h1>
     <p class="lead">{% if data.count %}게시된 기사 {{ data.count }}건{% else %}{{ data.empty_text }}{% endif %}</p>
+    <nav class="day-tabs" aria-label="분야" data-slot="day-tabs">
+      {% for tab in data.tabs %}<a href="{{ tab.url }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }}</a>
+      {% endfor %}
+    </nav>
     <div class="share" data-slot="share">
       <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
     </div>
+    {% if not data.count and data.category %}<p data-slot="day-all"><a href="{{ data.all_url }}">이 날 전체 뉴스 보기 →</a></p>{% endif %}
     {% if data.articles %}
     <div class="grid">
     {% for card in data.articles %}{% include "core/public/_card.html" %}{% endfor %}
