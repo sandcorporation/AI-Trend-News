@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -31,20 +31,15 @@ describe("design tokens", () => {
   });
 });
 
+describe("font fallbacks", () => {
+  const designCss = readFileSync(join(__dirname, "../node_modules/sandcorp-design/dist/sandcorp.css"), "utf8");
 
-describe("Foresight-only tokens", () => {
-  const css = sources[join(SRC, "tokens.css")] ?? "";
-
-  it("keeps the Pretendard metric-matched fallbacks in the font stack", () => {
+  it("come from sandcorp-design; this app keeps no tokens.css of its own", () => {
+    expect(existsSync(join(SRC, "tokens.css"))).toBe(false);
     for (const family of ["Pretendard Fallback", "Pretendard Fallback Apple", "Pretendard Fallback Win"]) {
-      expect(css).toContain(`@font-face {\n  font-family: "${family}"`);
+      expect(designCss).toMatch(new RegExp(`font-family:\\s*"?${family}"?[;}]`));
     }
-    const stack = /--font-sans:([^;]+);/.exec(css)?.[1] ?? "";
-    expect(stack.indexOf('"Pretendard Variable"')).toBeGreaterThanOrEqual(0);
+    const stack = /--font-sans:([^;]+);/.exec(designCss)?.[1] ?? "";
     expect(stack.indexOf('"Pretendard Fallback"')).toBeGreaterThan(stack.indexOf("Pretendard,"));
-  });
-
-  it("does not redefine colors that sandcorp-design owns", () => {
-    expect(css).not.toMatch(/--color-[\w-]+:/);
   });
 });
