@@ -32,7 +32,7 @@ class EditorRun(models.Model):
     def __str__(self) -> str:
         return f"실행 {self.pk} ({self.started_at:%Y-%m-%d %H:%M})"
 
-    def state(self, now: datetime) -> "EditorRun.State":
+    def state(self, now: datetime) -> EditorRun.State:
         if self.finished_at is not None:
             return self.State.FINISHED
         if now - self.started_at >= ABANDON_AFTER:

@@ -20,7 +20,7 @@ class _Resp(io.BytesIO):
         for k, v in (headers or {}).items():
             self.headers[k] = v
 
-    def __enter__(self) -> "_Resp":
+    def __enter__(self) -> _Resp:
         return self
 
     def __exit__(self, *a: object) -> None:

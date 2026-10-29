@@ -30,7 +30,7 @@ def mcp(client: Client, token_signer: Signer) -> McpClient:
 
 
 @pytest.fixture
-def api(client: Client, token_signer: Signer) -> "Api":
+def api(client: Client, token_signer: Signer) -> Api:
     return Api(client, token_signer.token(scope="admin"))
 
 

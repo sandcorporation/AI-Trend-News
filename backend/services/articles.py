@@ -88,7 +88,7 @@ class ArticleNotFound(ArticleError):
     pass
 
 
-def make_slug(text: str, exists: "type[Category] | type[Article]", fallback: str) -> str:
+def make_slug(text: str, exists: type[Category] | type[Article], fallback: str) -> str:
     """텍스트에서 slug를 만든다. 라틴 문자가 3자 미만이면 접두어+무작위 접미, 충돌해도 접미."""
     base = slugify(text)[:40].strip("-")
     if sum(c.isalpha() for c in base) < 3:
@@ -99,7 +99,7 @@ def make_slug(text: str, exists: "type[Category] | type[Article]", fallback: str
     return candidate
 
 
-def _slug_taken(model: "type[Category] | type[Article]", slug: str) -> bool:
+def _slug_taken(model: type[Category] | type[Article], slug: str) -> bool:
     if model.objects.filter(slug=slug).exists():
         return True
     return model is Article and ArticleSlugAlias.objects.filter(slug=slug).exists()
