@@ -103,7 +103,7 @@ function Prose({ text }: { text: string }) {
     .trim()
     .split(/\n{2,}/);
   return (
-    <div className="prose">
+    <div className="sc-prose">
       {paragraphs.map((para, i) => (
         <p key={i}>
           {para.split("\n").map((line, j) => (

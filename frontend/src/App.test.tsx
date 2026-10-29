@@ -564,7 +564,7 @@ test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록
   };
   const { container } = render(<App data={data} />);
   const block = q(container, '[data-slot="commentary"]');
-  const paras = q(block, ".prose").querySelectorAll("p");
+  const paras = q(block, ".sc-prose").querySelectorAll("p");
   expect(paras).toHaveLength(2);
   expect(paras.item(1).innerHTML).toBe(
     "둘째 문단 &lt;b&gt;굵게&lt;/b&gt;.<br>같은 문단 둘째 줄",
