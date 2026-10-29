@@ -15,7 +15,7 @@
   "dependencies": {
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "sandcorp-design": "github:sandcorporation/sandcorp-design#v0.5.0"
+    "sandcorp-design": "github:sandcorporation/sandcorp-design#v0.6.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

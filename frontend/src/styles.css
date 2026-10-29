@@ -1,7 +1,7 @@
 /*
  * Public site styles (#72, baeksang.dev-style editorial layout): no cards, shadows or
  * rounded corners — groups are split by 1px hairlines, three levels of type (display
- * title, body, mono uppercase label), one accent. Colors come only from tokens.css.
+ * title, body, mono uppercase label), one accent. Colors come only from sandcorp-design tokens (var(--color-*)).
  * Server templates (backend/core/templates/core/public) and React share these classes.
  */
 
