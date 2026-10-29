@@ -1,17 +1,13 @@
 /*
- * Foresight design tokens (#72, palette #86). The ONLY file that may contain raw color
- * values (enforced by src/tokens.test.ts). Everything else uses var(--color-*).
- *
- * Names and values are shared with the portfolio repo: white / near-black / navy.
- * To swap the accent, change only --color-accent, --color-accent-tint and --color-focus
- * (light + dark, six values); nothing else derives from them. Contrast is checked in
- * tokens.test.ts.
+ * Foresight-only tokens. Shared colors, type scale and spacing come from sandcorp-design
+ * (imported in main.tsx), and its tokens.css is the only place raw color values may live
+ * (src/tokens.test.ts forbids them here). The Pretendard metric-matched fallbacks below
+ * stay in this app because sandcorp-design does not ship them yet (design follow-up
+ * candidate: move the three fallback faces and the --font-sans stack there).
  */
-@import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
-@import "@fontsource-variable/jetbrains-mono/wght.css";
 
 /*
- * Metric-matched fallback for Pretendard (#98). Until the web font arrives the browser draws
+ * Metric-matched fallback for Pretendard (issue 98). Until the web font arrives the browser draws
  * with this face, so swapping in Pretendard does not move the layout. Values come from the
  * font files (fontTools, wght 400 instance of PretendardVariable.ttf vs Arial-metric
  * Liberation Sans, both unitsPerEm 2048):
@@ -33,7 +29,7 @@
 }
 
 /*
- * Hangul fallbacks per platform (#100). Measured from the real system font files with fontTools
+ * Hangul fallbacks per platform (issue 100). Measured from the real system font files with fontTools
  * (Apple SD Gothic Neo.ttc Regular/Bold, malgun.ttf/malgunbd.ttf, PretendardVariable wght 400/700;
  * advance = mean over 29 common syllables, per em; identical at both weights):
  *                    Pretendard   Apple SD Gothic Neo   Malgun Gothic
@@ -91,64 +87,8 @@
 }
 
 :root {
-  color-scheme: light dark;
-
-  /* surfaces */
-  --color-canvas: #ffffff;
-  --color-paper: #f8fafc;
-  --color-tint: #f1f4f8;
-  --color-line: #dde3eb;
-  --color-line-strong: #0b0d12;
-  /* text */
-  --color-ink: #0b0d12;
-  --color-text: #1f2430;
-  --color-muted: #5b6472;
-  --color-danger: #9b2c1f;
-  /* accent */
-  --color-accent: #1e3a8a;
-  --color-accent-tint: #e3e9f6;
-  --color-on-accent: #ffffff;
-  --color-focus: #1e3a8a;
-  /* categories (muted; tone-ai / tone-it) */
-  --color-cat-ai: #2f5586;
-  --color-cat-it: #1d6650;
-
-  /* type */
+  /* type: same as sandcorp-design plus the metric fallbacks (issue 98, issue 100) */
   --font-sans: "Pretendard Variable", Pretendard, "Pretendard Fallback", "Pretendard Fallback Apple",
     "Pretendard Fallback Win", system-ui, -apple-system, "Apple SD Gothic Neo",
     "Malgun Gothic", sans-serif;
-  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
-    Consolas, monospace;
-  --text-display: clamp(3rem, 8vw, 8rem);
-  --text-hero: clamp(2rem, 4.5vw, 3.5rem);
-  --text-h2: clamp(1.75rem, 3.6vw, 2.75rem);
-  --text-metric: clamp(2.5rem, 5vw, 4rem);
-  --text-label: 0.75rem;
-
-  /* shape and layout */
-  --radius: 2px;
-  --gutter: clamp(16px, 4vw, 40px);
-  --measure: 68ch;
-  --section-gap: clamp(3rem, 8vw, 5rem);
-  --rule-width: 7rem;
-}
-
-@media screen and (prefers-color-scheme: dark) {
-  :root {
-    --color-canvas: #0b0d12;
-    --color-paper: #12151c;
-    --color-tint: #1a1f29;
-    --color-line: #2a303c;
-    --color-line-strong: #f3f5f8;
-    --color-ink: #f3f5f8;
-    --color-text: #d5dae2;
-    --color-muted: #9aa3b0;
-    --color-danger: #f0a090;
-    --color-accent: #8fb3ff;
-    --color-accent-tint: #1c2742;
-    --color-on-accent: #0b0d12;
-    --color-focus: #8fb3ff;
-    --color-cat-ai: #7fa6e0;
-    --color-cat-it: #58b595;
-  }
 }

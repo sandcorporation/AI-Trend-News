@@ -20,13 +20,13 @@
         <p class="commentary-note">수집된 보도와 일반적인 배경 지식을 바탕으로 편집자 AI가 쓴 분석입니다. 사실 확인은 출처를 참고하세요.</p>
       </header>
       <h3>배경</h3>
-      <div class="prose">{{ c.background|linebreaks }}</div>
+      <div class="sc-prose">{{ c.background|linebreaks }}</div>
       <h3>의미</h3>
-      <div class="prose">{{ c.significance|linebreaks }}</div>
+      <div class="sc-prose">{{ c.significance|linebreaks }}</div>
       <h3>전망</h3>
       <div class="outlook">
-        <div class="outlook-col outlook-bull"><h4>낙관</h4><div class="prose">{{ c.outlook_bull|linebreaks }}</div></div>
-        <div class="outlook-col outlook-bear"><h4>회의</h4><div class="prose">{{ c.outlook_bear|linebreaks }}</div></div>
+        <div class="outlook-col outlook-bull"><h4>낙관</h4><div class="sc-prose">{{ c.outlook_bull|linebreaks }}</div></div>
+        <div class="outlook-col outlook-bear"><h4>회의</h4><div class="sc-prose">{{ c.outlook_bear|linebreaks }}</div></div>
       </div>
       {% if c.watchpoints %}
       <h3>지켜볼 신호</h3>
