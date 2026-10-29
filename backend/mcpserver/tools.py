@@ -40,6 +40,7 @@ from core.admin_schemas import (
     SourceCreate,
     SourceOut,
 )
+from core.auth_adapter import AccessToken, Scope
 from mcpserver.jsontypes import JSON
 from services import articles, collection, editor_runs, reading, sources
 from services import commentary as commentary_svc
@@ -51,7 +52,6 @@ from services.editor_runs import EditorRunError
 from services.posts import PostError
 from services.predictions import PredictionError
 from services.sources import SourceError
-from services.tokens import AccessToken, Scope
 
 type ToolResult = dict[str, JSON]
 

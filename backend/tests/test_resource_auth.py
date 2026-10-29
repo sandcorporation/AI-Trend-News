@@ -3,8 +3,9 @@ DB 없이 돈다(django_db 없음)."""
 
 import pytest
 from django.test import Client, override_settings
+from sandcorp_authkit.testing import FixedClock, SigningKey
 
-from tests.conftest import FrozenClock, Signer
+from tests.conftest import Signer
 
 pytestmark = pytest.mark.urls("tests.auth_urls")
 
@@ -55,14 +56,17 @@ def test_token_in_query_string_is_ignored(client: Client, token_signer: Signer) 
 
 @pytest.mark.parametrize("path", ["/probe/admin-only", "/probe-plain/editor"])
 def test_wrong_tokens_get_401_invalid_token(
-    client: Client, token_signer: Signer, frozen_clock: FrozenClock, path: str
+    client: Client, token_signer: Signer, frozen_clock: FixedClock, path: str
 ) -> None:
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-    impostor = Signer(Ed25519PrivateKey.generate(), token_signer.kid, frozen_clock)
     wrong = [
         "not-a-jwt",
-        impostor.token(),  # 잘못된 서명
+        token_signer.jwks.issue_access_token(
+            frozen_clock,
+            audience="https://news.sandcorp.co.kr/mcp",
+            sub="owner",
+            scope="admin",
+            key=SigningKey(token_signer.jwks.key.kid),
+        ),  # 같은 kid, 다른 키: 잘못된 서명
         token_signer.token(aud="https://sandcorp.co.kr/mcp"),  # 다른 aud
         token_signer.token(sub="intruder"),  # 다른 sub
         token_signer.token(exp=int(frozen_clock.now().timestamp()) - 31),  # 허용 30초 지남
@@ -75,7 +79,7 @@ def test_wrong_tokens_get_401_invalid_token(
 
 
 def test_expiry_leeway_boundary_over_http(
-    client: Client, token_signer: Signer, frozen_clock: FrozenClock
+    client: Client, token_signer: Signer, frozen_clock: FixedClock
 ) -> None:
     token = token_signer.token()
     frozen_clock.advance(600 + 30)

@@ -5,17 +5,17 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+from sandcorp_authkit.testing import FixedClock
 
 from adapters.discord import DiscordNotifier, FakeNotifier, set_notifier
 from collection.models import Source
 from editor.models import Alert, EditorRun
 from mcpserver import tools
-from tests.conftest import FrozenClock
 
 PROMPT = Path(__file__).resolve().parents[2] / "automation" / "editor.md"
 
 
-def finish_run_at(clock: FrozenClock) -> EditorRun:
+def finish_run_at(clock: FixedClock) -> EditorRun:
     run = EditorRun.objects.create()
     EditorRun.objects.filter(pk=run.pk).update(started_at=clock.now(), finished_at=clock.now())
     return run
@@ -23,7 +23,7 @@ def finish_run_at(clock: FrozenClock) -> EditorRun:
 
 @pytest.mark.django_db
 def test_editor_missing_alerts_once_then_recovers(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     finish_run_at(frozen_clock)
     frozen_clock.advance(25 * 3600)
@@ -47,7 +47,7 @@ def test_editor_missing_alerts_once_then_recovers(
 
 @pytest.mark.django_db
 def test_recent_run_sends_nothing_and_never_run_alerts(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     finish_run_at(frozen_clock)
     frozen_clock.advance(23 * 3600)
@@ -61,7 +61,7 @@ def test_recent_run_sends_nothing_and_never_run_alerts(
 
 @pytest.mark.django_db
 def test_abandoned_run_alerts_and_clears_after_new_finish(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     finish_run_at(frozen_clock)
     frozen_clock.advance(3600)
@@ -80,7 +80,7 @@ def test_abandoned_run_alerts_and_clears_after_new_finish(
 
 @pytest.mark.django_db
 def test_source_failures_alert_recover_and_realert(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     finish_run_at(frozen_clock)
     source = Source.objects.create(
@@ -109,7 +109,7 @@ def test_source_failures_alert_recover_and_realert(
 
 @pytest.mark.django_db
 def test_failed_send_does_not_fail_command_and_retries_next_time(
-    frozen_clock: FrozenClock,
+    frozen_clock: FixedClock,
 ) -> None:
     broken = FakeNotifier(fail=True)
     previous = set_notifier(broken)

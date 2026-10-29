@@ -2,16 +2,16 @@ from django.conf import settings
 from django.contrib import admin
 from django.urls import path
 
-from core import admin_login, public
+from core import auth_adapter, public
 from core.api import api
-from core.auth import protected_resource_metadata
+from core.auth_adapter import protected_resource_metadata
 from mcpserver.views import mcp_endpoint
 
 urlpatterns = [
     # No password login: the admin's login view starts the sandcorp-auth code flow.
-    path(f"{settings.ADMIN_PATH}login/", admin_login.login_start, name="admin_login_start"),
+    path(f"{settings.ADMIN_PATH}login/", auth_adapter.login_start, name="admin_login_start"),
     path(settings.ADMIN_PATH, admin.site.urls),
-    path("auth/callback", admin_login.login_callback, name="auth_callback"),
+    path("auth/callback", auth_adapter.login_callback, name="auth_callback"),
     path(".well-known/oauth-protected-resource", protected_resource_metadata),
     # RFC 9728 path-suffixed metadata URL for the /mcp resource: same document (as in portfolio).
     path(".well-known/oauth-protected-resource/mcp", protected_resource_metadata),

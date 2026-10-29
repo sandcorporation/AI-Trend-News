@@ -7,10 +7,10 @@ from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from sandcorp_authkit.testing import FixedClock
 
 from articles.models import Article, ArticleView
 from services import articles as svc
-from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
 
 pytestmark = pytest.mark.django_db
@@ -30,8 +30,8 @@ def age(article: Article, delta: timedelta) -> None:
 
 
 @pytest.fixture(autouse=True)
-def now(frozen_clock: FrozenClock) -> None:
-    frozen_clock._now = NOW
+def now(frozen_clock: FixedClock) -> None:
+    frozen_clock.moment = NOW
 
 
 def labels(client: Client) -> dict[str, str]:

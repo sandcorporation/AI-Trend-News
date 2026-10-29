@@ -8,11 +8,11 @@ import pytest
 from django.core.cache import cache
 from django.test import Client
 from PIL import Image
+from sandcorp_authkit.testing import FixedClock
 
 from articles.models import Article, Category
 from services import articles as svc
 from services import og_card
-from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
 
 pytestmark = pytest.mark.django_db
@@ -21,8 +21,8 @@ NOW = datetime(2026, 10, 26, 3, 0, tzinfo=UTC)  # 12:00 KST 2026-10-26
 
 
 @pytest.fixture(autouse=True)
-def now(frozen_clock: FrozenClock) -> None:
-    frozen_clock._now = NOW
+def now(frozen_clock: FixedClock) -> None:
+    frozen_clock.moment = NOW
     cache.clear()
 
 
