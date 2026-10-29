@@ -83,7 +83,7 @@ class CategoryData(TypedDict):
 class SectionData(TypedDict):
     category: CategoryData
     more_url: str
-    articles: list["CardData"]
+    articles: list[CardData]
 
 
 class SidebarData(TypedDict):
@@ -96,7 +96,7 @@ class SidebarData(TypedDict):
     sandcorp_url: str
     contact_label: str
     contact_url: str
-    prediction_rate: "SidebarRateData | None"
+    prediction_rate: SidebarRateData | None
 
 
 class CardData(TypedDict):

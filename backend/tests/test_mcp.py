@@ -72,7 +72,7 @@ class McpClient:
         }
         self.next_id = 0
 
-    def send(self, body: object) -> "_MonkeyPatchedWSGIResponse":
+    def send(self, body: object) -> _MonkeyPatchedWSGIResponse:
         return self.client.post(
             "/mcp", json.dumps(body), content_type="application/json", headers=self.headers
         )

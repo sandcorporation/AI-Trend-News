@@ -12,7 +12,7 @@ RUN pnpm build
 
 # mysqlclient has no Linux wheels: compile it here (MariaDB Connector/C headers via
 # default-libmysqlclient-dev) and ship only the shared library (libmariadb3) in the runtime stage.
-FROM python:3.13-slim AS deps
+FROM python:3.14-slim AS deps
 RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential pkg-config default-libmysqlclient-dev \
  && rm -rf /var/lib/apt/lists/*
@@ -25,7 +25,7 @@ WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends libmariadb3 \
  && rm -rf /var/lib/apt/lists/*
