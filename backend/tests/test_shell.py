@@ -96,3 +96,11 @@ def test_head_has_metrics_snippet_when_configured(client: Client) -> None:
 
 def test_head_has_no_metrics_snippet_by_default(client: Client) -> None:
     assert "m.js" not in client.get("/").content.decode()
+
+
+def test_head_has_naver_site_verification_once(client: Client) -> None:
+    html = client.get("/").content.decode()
+    tag = (
+        '<meta name="naver-site-verification" content="8f87f757bdd2af4a28abb267601e24f6082da7c9" />'
+    )
+    assert html.count(tag) == 1
