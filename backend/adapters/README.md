@@ -16,4 +16,4 @@
 시험은 `tests/conftest.py`의 픽스처로 가짜를 끼우고, 가짜에 남은 기록을 확인한다.
 
 구현 위치: 페치는 `fetch.py`(`Fetcher`, `HttpFetcher`, 등록 지점 `get_fetcher`/`set_fetcher`), 소스 어댑터는 `sources.py`(`ADAPTERS` 이름→구현 사전). 시험의 가짜는 `tests/conftest.py`의 `fake_fetcher`.
-JWKS는 `jwks.py`(`KeySource`, `JwksCache`, 등록 지점 `get_key_source`/`set_key_source`), 인가 서버는 `auth_server.py`(`AuthServer`, `HttpAuthServer`, `get_auth_server`/`set_auth_server`), 시계는 `clock.py`(`get_clock`/`set_clock`). 가짜는 `fake_jwks`·`fake_auth_server`(둘 다 autouse)와 `frozen_clock`, 토큰 서명은 `token_signer`.
+토큰 검증·JWKS·인가 서버 호출은 어댑터가 아니라 sandcorp-authkit이 한다(`core/auth_adapter.py` 한 파일이 settings를 넘긴다). 시계는 `clock.py`(`get_clock`/`set_clock`). 가짜는 `frozen_clock`(`FixedClock`)·`fake_jwks`(autouse, `FakeJwks`)·`fake_auth_server`(`FakeTokenEndpoint`), 토큰 서명은 `token_signer`.

@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 import pytest
 from django.test import Client
+from sandcorp_authkit.testing import FixedClock
 
-from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
 
 pytestmark = pytest.mark.django_db
@@ -16,8 +16,8 @@ NOW = datetime(2026, 10, 23, 3, 0, tzinfo=UTC)  # 금요일 12:00 KST
 
 
 @pytest.fixture(autouse=True)
-def now(frozen_clock: FrozenClock) -> None:
-    frozen_clock._now = NOW
+def now(frozen_clock: FixedClock) -> None:
+    frozen_clock.moment = NOW
 
 
 def site_of(html: str) -> dict[str, object]:

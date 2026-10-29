@@ -6,10 +6,10 @@ from django.core.cache import cache
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
+from sandcorp_authkit.testing import FixedClock
 
 from articles.models import Article, Commentary, Prediction
 from services import articles as svc
-from tests.conftest import FrozenClock
 from tests.test_public_site import make_article
 
 pytestmark = pytest.mark.django_db
@@ -212,7 +212,7 @@ def make_predictions(verdicts: list[str], *, hidden: bool = False, published: bo
         )  # fmt: skip
 
 
-def test_stats_empty(client: Client, frozen_clock: FrozenClock) -> None:
+def test_stats_empty(client: Client, frozen_clock: FixedClock) -> None:
     frozen_clock.advance(0)
     body = client.get(STATS).json()
     assert body["articles_total"] == 0
@@ -226,9 +226,9 @@ def test_stats_empty(client: Client, frozen_clock: FrozenClock) -> None:
 
 
 def test_stats_counts_published_and_seven_day_boundary(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
-    frozen_clock._now = NOW
+    frozen_clock.moment = NOW
     inside = make_article("안")
     edge = make_article("경계")
     outside = make_article("밖")
@@ -246,9 +246,9 @@ def test_stats_counts_published_and_seven_day_boundary(
 
 @pytest.mark.parametrize(("hours", "days"), [(0, 1), (48, 3), (10 * 24, 7)])
 def test_stats_per_day_divides_by_actual_days_when_young(
-    client: Client, frozen_clock: FrozenClock, hours: int, days: int
+    client: Client, frozen_clock: FixedClock, hours: int, days: int
 ) -> None:
-    frozen_clock._now = NOW
+    frozen_clock.moment = NOW
     first = make_article("처음")
     stamp(first, hours)
     make_article("둘")
@@ -259,9 +259,9 @@ def test_stats_per_day_divides_by_actual_days_when_young(
 
 
 def test_stats_hit_rate_null_under_five_and_excludes_undecidable_hidden(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
-    frozen_clock._now = NOW
+    frozen_clock.moment = NOW
     make_predictions(["hit", "hit", "miss", "undecidable", "pending"])
     body = client.get(STATS).json()
     assert body["predictions"] == {"judged": 3, "hit_rate": None}
@@ -274,9 +274,9 @@ def test_stats_hit_rate_null_under_five_and_excludes_undecidable_hidden(
 
 
 def test_stats_cache_header_no_cors_query_count_and_five_minute_cache(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
-    frozen_clock._now = NOW
+    frozen_clock.moment = NOW
     make_article("하나")
     with CaptureQueriesContext(connection) as ctx:
         res = client.get(STATS, HTTP_ORIGIN="https://e.com")

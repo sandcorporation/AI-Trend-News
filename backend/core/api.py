@@ -15,15 +15,15 @@ from adapters.clock import get_clock
 from articles.models import Article
 from core.admin_api import install_error_handlers
 from core.admin_api import router as admin_router
-from core.auth import install_auth_handlers
+from core.auth_adapter import install_bearer_errors
 from core.shell import SITE_NAME
 from services import articles as svc
 from services import predictions as pred_svc
 from services.commentary import public_commentary
 
 api = NinjaAPI(title="Sandcorp news API", docs_url=None)
-# Protected endpoints use `auth=RequireScope("<scope>")` (core/auth.py).
-install_auth_handlers(api)
+# Protected endpoints use `auth=scope_auth("<scope>")` (core/auth_adapter.py).
+install_bearer_errors(api)
 install_error_handlers(api)
 api.add_router("/admin", admin_router)
 

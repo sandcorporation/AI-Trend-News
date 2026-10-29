@@ -11,9 +11,9 @@ import logging
 
 from pydantic import ValidationError
 
+from core.auth_adapter import AccessToken
 from mcpserver.jsontypes import JSON
 from mcpserver.tools import ToolError, visible_tool, visible_tools
-from services.tokens import AccessToken
 
 # Newest first. initialize answers the client's version when we know it, else the newest.
 PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26")

@@ -37,7 +37,10 @@ pipeline {
 
     stage('빌드·배포') {
       steps {
-        sh 'bash deploy/deploy.sh'
+        // sandcorp-authkit(private 저장소)을 이미지 빌드에서 SSH로 받는다. 키 경로·내용은 로그에 찍지 않는다.
+        withCredentials([sshUserPrivateKey(credentialsId: 'github-farrar142', keyFileVariable: 'GIT_SSH_KEY')]) {
+          sh 'bash deploy/deploy.sh'
+        }
       }
     }
   }

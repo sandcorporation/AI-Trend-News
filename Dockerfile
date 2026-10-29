@@ -14,7 +14,7 @@ RUN pnpm build
 # default-libmysqlclient-dev) and ship only the shared library (libmariadb3) in the runtime stage.
 FROM python:3.14-slim AS deps
 RUN apt-get update \
- && apt-get install -y --no-install-recommends build-essential pkg-config default-libmysqlclient-dev \
+ && apt-get install -y --no-install-recommends build-essential pkg-config default-libmysqlclient-dev git openssh-client \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=ghcr.io/astral-sh/uv:0.12.9 /uv /usr/local/bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
@@ -23,7 +23,10 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
-RUN uv sync --frozen --no-dev --no-install-project
+# sandcorp-authkit은 private 저장소(sandcorp-auth)라 BuildKit ssh 마운트로 받는다.
+# known_hosts는 이 deps 단계에만 남고 runtime은 /opt/venv만 복사하므로 최종 이미지에 없다.
+RUN --mount=type=ssh mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null \
+ && uv sync --frozen --no-dev --no-install-project
 
 FROM python:3.14-slim AS runtime
 RUN apt-get update \

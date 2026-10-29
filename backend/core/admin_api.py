@@ -21,7 +21,7 @@ from core.admin_schemas import (
     SourceCreate,
     SourceOut,
 )
-from core.auth import RequireScope
+from core.auth_adapter import scope_auth
 from services import articles, posts, sources
 from services import predictions as predictions_svc
 from services.articles import Actor, ArticleError
@@ -30,7 +30,7 @@ from services.posts import PostError
 from services.predictions import PredictionError
 from services.sources import SourceError
 
-router = Router(auth=RequireScope("admin"), tags=["admin"])
+router = Router(auth=scope_auth("admin"), tags=["admin"])
 
 
 def install_error_handlers(api: NinjaAPI) -> None:

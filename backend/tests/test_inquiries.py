@@ -5,6 +5,7 @@ from datetime import timedelta
 import pytest
 from django.core.management import call_command
 from django.test import Client, override_settings
+from sandcorp_authkit.testing import FixedClock
 
 from adapters.portfolio import (
     FakeGateway,
@@ -14,7 +15,6 @@ from adapters.portfolio import (
 )
 from inquiries.models import Inquiry, SubmitAttempt
 from services.scheduler import COMMANDS
-from tests.conftest import FrozenClock
 
 pytestmark = pytest.mark.django_db
 
@@ -88,7 +88,7 @@ def test_honeypot_is_neither_stored_nor_sent_but_looks_successful(
 
 
 def test_rate_limit_is_per_ip_over_15_minutes_and_uses_last_forwarded_hop(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
     for _ in range(5):
         assert post(client).status_code == 200

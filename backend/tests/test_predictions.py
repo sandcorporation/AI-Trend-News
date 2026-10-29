@@ -6,6 +6,7 @@ import pytest
 from django.core.management import call_command
 from django.test import Client
 from django.utils import timezone
+from sandcorp_authkit.testing import FixedClock
 
 from adapters.discord import FakeNotifier
 from articles.models import Commentary, Prediction
@@ -15,7 +16,7 @@ from services import commentary as commentary_svc
 from services import predictions as svc
 from services.articles import Actor
 from services.commentary import PredictionIn
-from tests.conftest import FrozenClock, Signer
+from tests.conftest import Signer
 from tests.test_admin_api_and_tools import Api, obj
 from tests.test_mcp import McpClient
 from tests.test_public_site import make_article
@@ -40,7 +41,7 @@ def featured_article_id() -> int:
     return make_article("기사", featured=True).pk
 
 
-def judge(row: Prediction, verdict: str, clock: FrozenClock) -> None:
+def judge(row: Prediction, verdict: str, clock: FixedClock) -> None:
     svc.judge_prediction(row.pk, verdict, now=clock.now())
 
 
@@ -75,7 +76,7 @@ def test_due_date_uses_kst_calendar_day(created_utc: datetime, expected: date) -
     assert Prediction.objects.get().due_date == expected
 
 
-def test_rewrite_replaces_pending_but_keeps_judged_rows(frozen_clock: FrozenClock) -> None:
+def test_rewrite_replaces_pending_but_keeps_judged_rows(frozen_clock: FixedClock) -> None:
     article_id = featured_article_id()
     write(article_id, ("맞춘 예측", "1m"), ("미평가 예측", "3m"), ("그대로", "6m"))
     judge(Prediction.objects.get(claim="맞춘 예측"), "hit", frozen_clock)
@@ -91,7 +92,7 @@ def test_rewrite_replaces_pending_but_keeps_judged_rows(frozen_clock: FrozenCloc
     assert same.horizon == "12m"
 
 
-def test_same_claim_judged_row_is_not_touched(frozen_clock: FrozenClock) -> None:
+def test_same_claim_judged_row_is_not_touched(frozen_clock: FixedClock) -> None:
     article_id = featured_article_id()
     write(article_id, ("예측", "1m"))
     row = Prediction.objects.get()
@@ -101,7 +102,7 @@ def test_same_claim_judged_row_is_not_touched(frozen_clock: FrozenClock) -> None
     assert (row.horizon, row.verdict, Prediction.objects.count()) == ("1m", "miss", 1)
 
 
-def test_judge_validation_and_undo(frozen_clock: FrozenClock) -> None:
+def test_judge_validation_and_undo(frozen_clock: FixedClock) -> None:
     write(featured_article_id(), ("예측", "1m"))
     row = Prediction.objects.get()
     with pytest.raises(svc.InvalidVerdict):
@@ -115,7 +116,7 @@ def test_judge_validation_and_undo(frozen_clock: FrozenClock) -> None:
 
 
 def make_judged(
-    clock: FrozenClock, hits: int, misses: int, undecidable: int = 0, *, due: date | None = None
+    clock: FixedClock, hits: int, misses: int, undecidable: int = 0, *, due: date | None = None
 ) -> None:
     article_id = featured_article_id()
     total = hits + misses + undecidable
@@ -133,7 +134,7 @@ def make_judged(
             Prediction.objects.filter(pk=row.pk).update(due_date=due)
 
 
-def test_hit_rate_excludes_undecidable_and_sidebar_needs_five(frozen_clock: FrozenClock) -> None:
+def test_hit_rate_excludes_undecidable_and_sidebar_needs_five(frozen_clock: FixedClock) -> None:
     make_judged(frozen_clock, hits=3, misses=1, undecidable=2)
     today = date(2026, 1, 1)
     rate = svc.hit_rate(recent=False, today=today)
@@ -149,7 +150,7 @@ def test_hit_rate_none_when_nothing_judged() -> None:
     assert svc.hit_rate(recent=False, today=date(2026, 1, 1)).percent is None
 
 
-def test_recent_filter_and_public_visibility(frozen_clock: FrozenClock) -> None:
+def test_recent_filter_and_public_visibility(frozen_clock: FixedClock) -> None:
     today = date(2026, 1, 1)
     make_judged(frozen_clock, hits=1, misses=0, due=today - timedelta(days=200))
     make_judged(frozen_clock, hits=0, misses=1, due=today - timedelta(days=10))
@@ -199,13 +200,13 @@ def test_mcp_judge_is_admin_only(client: Client, token_signer: Signer) -> None:
 # --- 경보 ---
 
 
-def make_overdue(clock: FrozenClock, count: int = 1) -> None:
+def make_overdue(clock: FixedClock, count: int = 1) -> None:
     write(featured_article_id(), *[(f"예측 {i}", "1m") for i in range(count)])
     Prediction.objects.update(due_date=clock.now().date() - timedelta(days=1))
 
 
 def test_alert_sent_weekly_while_pending_and_recovers(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     make_overdue(frozen_clock, 2)
     call_command("check_alerts")
@@ -230,7 +231,7 @@ def test_alert_sent_weekly_while_pending_and_recovers(
 
 
 def test_no_alert_before_due_or_when_judged(
-    frozen_clock: FrozenClock, fake_discord: FakeNotifier
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
 ) -> None:
     write(featured_article_id(), ("예측", "1m"))
     Prediction.objects.update(due_date=frozen_clock.now().date())  # 기한 당일은 아직
@@ -248,7 +249,7 @@ def page(html: str) -> dict[str, object]:
 
 
 def test_predictions_page_shows_rate_rows_and_filters(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
     today = svc.today_of(frozen_clock.now())
     make_judged(frozen_clock, hits=2, misses=1, undecidable=1, due=today - timedelta(days=200))
@@ -285,7 +286,7 @@ def test_sitemap_lists_predictions(client: Client) -> None:
 
 
 def test_home_sidebar_rate_block_needs_five_judged(
-    client: Client, frozen_clock: FrozenClock
+    client: Client, frozen_clock: FixedClock
 ) -> None:
     make_judged(frozen_clock, hits=3, misses=1, undecidable=3)
     html = client.get("/").content.decode()
@@ -300,7 +301,7 @@ def test_home_sidebar_rate_block_needs_five_judged(
     assert rate["percent"] == 80 and rate["judged"] == 5
 
 
-def test_article_page_badges_only_judged(client: Client, frozen_clock: FrozenClock) -> None:
+def test_article_page_badges_only_judged(client: Client, frozen_clock: FixedClock) -> None:
     article_id = featured_article_id()
     write(article_id, ("맞은 예측", "1m"), ("대기 예측", "3m"))
     judge(Prediction.objects.get(claim="맞은 예측"), "hit", frozen_clock)

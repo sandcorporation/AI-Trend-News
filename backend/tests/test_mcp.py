@@ -16,12 +16,12 @@ from django.utils import timezone
 
 from articles.models import Article
 from collection.models import Item, Source
+from core.auth_adapter import AccessToken
 from editor.models import EditorRun
 from mcpserver import tools
 from mcpserver.jsontypes import JSON
 from services import articles as article_service
 from services import editor_runs
-from services.tokens import AccessToken
 from tests.conftest import Signer
 
 type Message = dict[str, JSON]

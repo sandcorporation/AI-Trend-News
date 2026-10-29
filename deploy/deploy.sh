@@ -13,6 +13,13 @@ fi
 
 compose() { docker compose "$@"; }
 
+# sandcorp-authkit은 private 저장소다. Jenkins는 GIT_SSH_KEY(키 파일 경로)를 주고, 로컬은 개발자의 ssh-agent를 쓴다.
+if [ -n "${GIT_SSH_KEY:-}" ]; then
+  eval "$(ssh-agent -s)" >/dev/null
+  trap 'ssh-agent -k >/dev/null 2>&1 || true' EXIT
+  ssh-add "$GIT_SSH_KEY" 2>/dev/null
+fi
+
 wait_healthy() {
   local svc=$1
   for i in $(seq 1 60); do
@@ -31,7 +38,7 @@ wait_healthy() {
 }
 
 echo "== 이미지 빌드"
-compose build web
+compose build --ssh default web
 
 # 운영 DB는 compose 밖(OCI MySQL HeatWave)이다. mysql 서비스는 make prod-local 덮어쓰기에만 있다.
 if compose config --services | grep -qx mysql; then
