@@ -138,6 +138,7 @@ class Alert(models.Model):
         EDITOR_MISSING = "editor_missing", "편집자 미실행"
         SOURCE_FAILING = "source_failing", "소스 연속 실패"
         PREDICTIONS_DUE = "predictions_due", "전망 평가 대기"
+        EDITOR_BUDGET = "editor_budget", "편집 예산 초과"
 
     kind = models.CharField("종류", max_length=30, choices=Kind.choices)
     target = models.CharField(

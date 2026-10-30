@@ -1,7 +1,7 @@
 {% extends "admin/change_list.html" %}
 {% block content %}
 <div class="module" id="editor-cost" style="margin-bottom:1rem;padding:.5rem 1rem">
-  이번 달({{ month_label }}, KST) 편집 호출 추정 비용 합계: <strong>US${{ month_cost }}</strong>
+  이번 달({{ month_label }}, KST) 편집 호출 추정 비용 합계 / 월 상한: <strong>US${{ month_cost }}</strong> / US${{ month_budget }}
 </div>
 {{ block.super }}
 {% endblock %}

@@ -244,7 +244,7 @@ run_scheduler (매시 25분)
 | `EDITOR_EFFORT_CLASSIFY` / `_WRITE` / `_COMMENTARY` | `medium` / `low` / `high` | 분류는 묶음 판단, 작성은 짧은 정형 글, 분석은 추론 비중이 크다. 그림자 기간에 조정한다. |
 | `EDITOR_USE_BATCH` | `true` | 2·3단계 배치 |
 | `EDITOR_BATCH_WAIT_SECONDS` | `900` | 한 주기에서 배치를 기다리는 최대 시간 |
-| `EDITOR_MONTHLY_BUDGET_USD` | `80` | 크레딧 월 $100 중 수동 사용·오차 여유 $20 |
+| `EDITOR_MONTHLY_BUDGET_USD` | `18` | 대표 결정(2026-10-30, #124): Console 지출 한도가 월 $20이라 그보다 낮게 둔다. 추정($35~72/월)보다 낮아 한도에 닿으면 남은 기간은 건너뜀이 정상이다 |
 | `EDITOR_MAX_ITEMS` / `_WRITES` / `_FEATURED` | `60` / `30` / `6` | §2 |
 
 설정의 모델 이름이 가격표에 없으면 `run_editor`가 시작하지 않고 오류를 남긴다(비용이 조용히 0으로 기록되는 것을 막는다).

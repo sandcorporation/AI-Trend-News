@@ -9,10 +9,12 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
+from django.conf import settings
+
 from adapters.discord import Notifier
 from collection.models import Source
 from editor.models import ABANDON_AFTER, Alert, EditorRun
-from services import predictions
+from services import editor_budget, predictions
 from services.editor_runs import counted_runs, last_finished_run
 
 logger = logging.getLogger("alerts")
@@ -80,6 +82,18 @@ def _predictions_condition(now: datetime) -> Condition | None:
     )
 
 
+def _budget_condition(now: datetime) -> Condition | None:
+    """이번 달 예산으로 건너뛴 실행이 있으면 켠다. 대상은 달(KST) — 달이 바뀌면 풀려 복구 한 번."""
+    if not editor_budget.skipped_this_month(now):
+        return None
+    return Condition(
+        Kind.EDITOR_BUDGET,
+        editor_budget.month_key(now),
+        f"[경보] 편집 예산 초과: 이번 달 합계 US${editor_budget.month_cost(now):.2f} / 상한 "
+        f"US${settings.EDITOR_MONTHLY_BUDGET_USD} — {editor_budget.RESUME_NOTE}.",
+    )
+
+
 def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     """점검하고 보낸 메시지들을 돌려준다."""
     conditions: dict[tuple[str, str], Condition] = {}
@@ -89,6 +103,9 @@ def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     due = _predictions_condition(now)
     if due:
         conditions[(due.kind, due.target)] = due
+    budget = _budget_condition(now)
+    if budget:
+        conditions[(budget.kind, budget.target)] = budget
     for condition in _source_conditions():
         conditions[(condition.kind, condition.target)] = condition
 
@@ -124,4 +141,6 @@ def _recovery_message(alert: Alert) -> str:
         return f"[복구] 소스 수집이 다시 성공했습니다: {name}"
     if alert.kind == Kind.PREDICTIONS_DUE:
         return "[복구] 평가 대기 중인 전망 예측이 없습니다."
+    if alert.kind == Kind.EDITOR_BUDGET:
+        return f"[복구] 편집 예산 경보를 해제합니다({alert.target} 월 한도 기간 종료)."
     return "[복구] 편집자가 다시 실행을 마쳤습니다."
