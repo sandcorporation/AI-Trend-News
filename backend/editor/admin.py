@@ -3,13 +3,16 @@ import json
 from django.conf import settings
 from django.contrib import admin
 from django.db.models import Model
-from django.http import HttpRequest
+from django.http import Http404, HttpRequest
+from django.shortcuts import get_object_or_404
 from django.template.response import TemplateResponse
+from django.urls import URLPattern, path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
 
 from editor.models import Alert, EditorCall, EditorRun
 from services.editor_budget import month_cost
+from services.editor_compare import compare
 
 
 def _pretty(value: object) -> str:
@@ -94,8 +97,10 @@ class EditorRunAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
         ("started_at", "finished_at"),
         ("created", "updated", "discarded"),
         "note",
+        "shadow_link",
     )
     readonly_fields = (
+        "shadow_link",
         "mode",
         "slot",
         "status",
@@ -120,6 +125,40 @@ class EditorRunAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
             "month_budget": settings.EDITOR_MONTHLY_BUDGET_USD,
         }
         return super().changelist_view(request, context)  # type: ignore[return-value]
+
+    def get_urls(self) -> list[URLPattern]:
+        compare_url = path(
+            "<int:run_id>/shadow/",
+            self.admin_site.admin_view(self.shadow_view),
+            name="editor_editorrun_shadow",
+        )
+        return [compare_url, *super().get_urls()]
+
+    @admin.display(description="그림자 비교")
+    def shadow_link(self, obj: EditorRun) -> str:
+        if obj.mode != EditorRun.Mode.SHADOW or obj.pk is None:
+            return "—"
+        url = reverse("admin:editor_editorrun_shadow", args=[obj.pk])
+        return format_html('<a href="{}">그림자 비교 보기 →</a>', url)
+
+    def shadow_view(self, request: HttpRequest, run_id: int) -> TemplateResponse:
+        """수집물마다 파이프라인 판단 ↔ 실제 상태, 새 기사 제목·요약 대조, 집계(설계 §9)."""
+        if not self.has_view_permission(request):
+            raise Http404
+        run = get_object_or_404(EditorRun, pk=run_id, mode=EditorRun.Mode.SHADOW)
+        comparison = compare(run)
+        diff_only = request.GET.get("diff") == "1"
+        rows = [r for r in comparison.rows if not r.match] if diff_only else comparison.rows
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": f"그림자 비교 — 실행 {run.pk} ({run.slot})",
+            "run": run,
+            "comparison": comparison,
+            "rows": rows,
+            "diff_only": diff_only,
+        }
+        return TemplateResponse(request, "admin/editor/editorrun/shadow_compare.html", context)
 
     @admin.display(description="상태")
     def run_state(self, obj: EditorRun) -> str:

@@ -1,16 +1,19 @@
 """편집자 파이프라인 실행(ADR 0006, 설계 §4·§5·§9). `run_editor` 관리 명령이 매 주기 부른다.
 
-이 티켓(#123)은 그림자 모드의 1단계(분류)까지만 한다: 편집 시각 슬롯이면 `EditorRun`
-(mode=shadow)을 열고 분류를 동기로 한 번 부르고(비교 모델이 설정돼 있으면 같은 입력으로 한 번 더)
-결과·토큰·비용을 `EditorCall`에만 남기고 끝낸다. 수집물·기사는 하나도 바꾸지 않는다.
+그림자 모드: 편집 시각 슬롯이면 `EditorRun`(mode=shadow)을 열고 1단계 분류를 동기로 한 번
+부르고(비교 모델이 설정돼 있으면 같은 입력으로 한 번 더, #123), 분류가 정한 새 기사·갱신마다
+2단계 작성을 동기로 한 번씩 부른다(#125, 앞에 예산 확인 `gate_stage`). 결과·토큰·비용은
+`EditorCall`에만 남기고 끝낸다 — 수집물·기사는 하나도 바꾸지 않는다. 실행 메모는 서버가 만든다.
 """
 
 import json
 import logging
-from dataclasses import dataclass
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from datetime import datetime, time, timedelta
 from decimal import Decimal
-from typing import Literal
+from functools import partial
 
 from anthropic.types import Message
 from django.conf import settings
@@ -18,24 +21,17 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from adapters.anthropic import LlmClient, LlmError, LlmRequest, get_llm
+from adapters.fetch import get_fetcher
+from articles.models import Article
 from editor.models import EditorCall, EditorRun
-from services import editor_budget, editor_classify, editor_prompts, llm_pricing
-from services.editor_classify import ClassifyInput, InvalidOutput
+from services import editor_budget, editor_classify, editor_prompts, editor_write, llm_pricing
+from services.editor_classify import JSON, ClassifyInput, Decision, InvalidOutput
+from services.editor_prompts import parse_effort
 
 logger = logging.getLogger("editor")
 
 CATCH_UP = timedelta(hours=3)  # 슬롯 주기를 놓쳤을 때 따라잡는 한계
 CLASSIFY_MAX_TOKENS = 16_000  # thinking 포함. SDK의 비스트리밍 상한(약 21K) 안
-
-
-Effort = Literal["low", "medium", "high", "xhigh", "max"]
-EFFORTS: tuple[Effort, ...] = ("low", "medium", "high", "xhigh", "max")
-
-
-def parse_effort(value: str) -> Effort:
-    if value not in EFFORTS:
-        raise ValueError(f"알 수 없는 effort: {value} (가능: {', '.join(EFFORTS)})")
-    return value
 
 
 def due_slot(now: datetime) -> str | None:
@@ -89,6 +85,7 @@ class Outcome:
     cache_creation_input_tokens: int = 0
     cache_read_input_tokens: int = 0
     cost_usd: Decimal = Decimal(0)
+    decision: Decision | None = None  # 분류가 성공했을 때 검증한 판단
 
     def add_usage(self, model: str, message: Message) -> None:
         usage = message.usage
@@ -106,14 +103,21 @@ def _first_text(message: Message) -> str:
     return ""
 
 
-def classify(llm: LlmClient, data: ClassifyInput, model: str, effort: str) -> Outcome:
-    """분류를 부른다. max_tokens·JSON 파싱·스키마 모양 실패는 한 번 재요청, refusal은 바로 실패."""
+Accept = Callable[[object], tuple[JSON, list[str]]]
+
+
+def call_json(
+    llm: LlmClient, model: str, request_for: Callable[[str], LlmRequest], accept: Accept
+) -> Outcome:
+    """구조화 출력 호출 하나(설계 §2 공통·§5). `request_for(retry_note)`로 요청을 만들고 `accept`가
+    (저장할 출력, 고친 까닭)을 돌려준다. max_tokens·JSON 파싱·`InvalidOutput`은 오류 문구를 붙여
+    한 번 재요청, refusal·API 오류는 바로 실패."""
     outcome = Outcome(status=EditorCall.Status.FAILED)
     retry_note = ""
     for attempt in (0, 1):
         outcome.attempt = attempt
         try:
-            message = llm.create(classify_request(data, model, effort, retry_note=retry_note))
+            message = llm.create(request_for(retry_note))
         except LlmError as error:
             outcome.error = str(error)
             if error.spend_limit_rejected:
@@ -129,19 +133,36 @@ def classify(llm: LlmClient, data: ClassifyInput, model: str, effort: str) -> Ou
             outcome.error = retry_note
             continue
         try:
-            parsed = json.loads(_first_text(message))
-            validated = editor_classify.validate(parsed, data)
+            output, problems = accept(json.loads(_first_text(message)))
         except (json.JSONDecodeError, InvalidOutput) as error:
-            retry_note = f"JSON이 아니거나 모양이 틀렸다: {error}"[:200]
+            retry_note = f"JSON이 아니거나 규칙에 맞지 않는다: {error}"[:300]
             outcome.error = retry_note
             continue
         outcome.status = EditorCall.Status.SUCCEEDED
         outcome.error = ""
-        outcome.output = {"response": parsed, "decision": dict(validated.decision)}
-        outcome.problems = validated.problems
-        if validated.problems:
-            outcome.output["problems"] = list(validated.problems)
+        outcome.output = output
+        outcome.problems = problems
         return outcome
+    return outcome
+
+
+def classify(llm: LlmClient, data: ClassifyInput, model: str, effort: str) -> Outcome:
+    """분류를 부른다. max_tokens·JSON 파싱·스키마 모양 실패는 한 번 재요청, refusal은 바로 실패."""
+
+    def accept(parsed: object) -> tuple[JSON, list[str]]:
+        validated = editor_classify.validate(parsed, data)
+        outcome_decision.append(validated.decision)
+        output: JSON = {"response": parsed, "decision": dict(validated.decision)}
+        if validated.problems:
+            output["problems"] = list(validated.problems)
+        return output, validated.problems
+
+    outcome_decision: list[Decision] = []
+    outcome = call_json(
+        llm, model, lambda note: classify_request(data, model, effort, retry_note=note), accept
+    )
+    if outcome.status == EditorCall.Status.SUCCEEDED and outcome_decision:
+        outcome.decision = outcome_decision[-1]
     return outcome
 
 
@@ -157,24 +178,32 @@ def input_summary(data: ClassifyInput) -> dict[str, object]:
 
 def _record(
     run: EditorRun,
+    *,
     key: str,
+    stage: str,
     model: str,
     effort: str,
-    data: ClassifyInput,
+    item_ids: list[int],
+    summary: JSON,
     outcome: Outcome,
     now: datetime,
+    article_id: int | None = None,
 ) -> EditorCall:
+    prompt_stage: editor_prompts.Stage = (
+        "classify" if stage == EditorCall.Stage.CLASSIFY else "write"
+    )
     return EditorCall.objects.create(
         run=run,
-        stage=EditorCall.Stage.CLASSIFY,
+        stage=stage,
         key=key,
         model=model,
         effort=effort,
-        prompt_version=editor_prompts.prompt_version(editor_prompts.system_prompt("classify")),
+        prompt_version=editor_prompts.prompt_version(editor_prompts.system_prompt(prompt_stage)),
         status=outcome.status,
         attempt=outcome.attempt,
-        item_ids=[i["id"] for i in data["items"]],
-        input=input_summary(data),
+        item_ids=item_ids,
+        article_id=article_id,
+        input=summary,
         output=outcome.output,
         stop_reason=outcome.stop_reason,
         error=outcome.error,
@@ -187,22 +216,169 @@ def _record(
     )
 
 
-def _note(outcome: Outcome) -> str:
-    if outcome.status != EditorCall.Status.SUCCEEDED or outcome.output is None:
+def _classify_note(outcome: Outcome) -> str:
+    if outcome.decision is None:
         return f"그림자 분류 실패: {outcome.error}"
-    decision = outcome.output["decision"]
-    assert isinstance(decision, dict)
-    counts = " · ".join(
-        f"{label} {len(decision[key])}"
-        for key, label in (
-            ("new_articles", "새 기사"),
-            ("updates", "갱신"),
-            ("discards", "버림"),
-            ("holds", "보류"),
-        )
+    d = outcome.decision
+    counts = (
+        f"새 기사 {len(d['new_articles'])} · 갱신 {len(d['updates'])} · "
+        f"버림 {len(d['discards'])} · 보류 {len(d['holds'])}"
     )
     fixed = f" / 검증 고침 {len(outcome.problems or [])}건" if outcome.problems else ""
     return f"그림자 분류: {counts}{fixed}"
+
+
+# --- 2단계 작성 ---
+
+
+def write(llm: LlmClient, prepared: editor_write.Prepared, model: str, effort: str) -> Outcome:
+    """작성 호출 하나(재요청 규칙은 `call_json`). `editor_probe`도 부른다."""
+
+    def accept(parsed: object) -> tuple[JSON, list[str]]:
+        checked = editor_write.check(parsed, prepared)
+        return checked["output"], checked["problems"]
+
+    return call_json(
+        llm,
+        model,
+        lambda note: editor_write.request(prepared["data"], model, effort, retry_note=note),
+        accept,
+    )
+
+
+@dataclass
+class WriteStage:
+    """작성 단계의 결과 요약(실행 메모용)."""
+
+    calls: int = 0
+    failed: int = 0
+    unpublished: list[str] = field(default_factory=list)  # 「제목 — 까닭」
+    stopped: bool = False  # 예산·지출 한도로 실행을 닫았다
+
+
+def _write_one(
+    run: EditorRun,
+    llm: LlmClient,
+    *,
+    stage: str,
+    key: str,
+    prepare: Callable[[], editor_write.Prepared],
+    item_ids: list[int],
+    article_id: int | None,
+    now: datetime,
+) -> Outcome:
+    model, effort = settings.EDITOR_MODEL_WRITE, settings.EDITOR_EFFORT_WRITE
+    try:
+        prepared = prepare()
+    except Article.DoesNotExist:
+        outcome = Outcome(status=EditorCall.Status.FAILED, error="갱신 대상 기사가 없다")
+        _record(
+            run, key=key, stage=stage, model=model, effort=effort, item_ids=item_ids,
+            summary={}, outcome=outcome, now=now,
+        )  # fmt: skip
+        return outcome
+
+    outcome = write(llm, prepared, model, effort)
+    _record(
+        run,
+        key=key,
+        stage=stage,
+        model=model,
+        effort=effort,
+        item_ids=item_ids,
+        summary=editor_write.input_summary(prepared["data"]),
+        outcome=outcome,
+        now=now,
+        article_id=article_id,
+    )
+    return outcome
+
+
+def write_stage(
+    run: EditorRun, llm: LlmClient, decision: Decision, data: ClassifyInput, now: datetime
+) -> WriteStage:
+    """분류의 새 기사·갱신마다 작성 호출 한 번(동기). 앞에서 예산을 확인한다(#124 `gate_stage`).
+
+    호출마다 독립이다 — 하나가 실패해도 나머지는 계속한다. Console 지출 한도 거절이면 멈춘다.
+    """
+    result = WriteStage()
+    new, updates = decision["new_articles"], decision["updates"]
+    if not new and not updates:
+        return result
+    if not editor_budget.gate_stage(run, EditorCall.Stage.WRITE_NEW, len(new) + len(updates), now):
+        result.stopped = True
+        return result
+    reader = editor_write.RunReader(get_fetcher())
+    names = {c["slug"]: c["name"] for c in data["categories"]}
+
+    jobs: list[tuple[str, str, Callable[[], editor_write.Prepared], list[int], int | None]] = []
+    for n, entry in enumerate(new, start=1):
+        jobs.append(
+            (
+                EditorCall.Stage.WRITE_NEW,
+                f"r{run.pk}-write-{n}",
+                partial(editor_write.prepare_new, entry, names, reader),
+                entry["item_ids"],
+                None,
+            )
+        )
+    for n, update in enumerate(updates, start=1):
+        jobs.append(
+            (
+                EditorCall.Stage.WRITE_UPDATE,
+                f"r{run.pk}-update-{n}",
+                partial(editor_write.prepare_update, update, reader),
+                update["item_ids"],
+                update["article_id"],
+            )
+        )
+
+    for stage, key, prepare, item_ids, article_id in jobs:
+        outcome = _write_one(
+            run, llm, stage=stage, key=key, prepare=prepare, item_ids=item_ids,
+            article_id=article_id, now=now,
+        )  # fmt: skip
+        result.calls += 1
+        run.cost_usd += outcome.cost_usd
+        if outcome.limit_status is not None:
+            editor_budget.mark_limit_rejected(run, outcome.limit_status, now)
+            result.stopped = True
+            return result
+        if outcome.status != EditorCall.Status.SUCCEEDED or outcome.output is None:
+            result.failed += 1
+            continue
+        article = outcome.output.get("article")
+        if isinstance(article, dict) and not article.get("published"):
+            classify_reason = next(
+                (a["reason"] for a in new if a["item_ids"] == item_ids and not a["published"]), ""
+            )
+            why = article.get("unpublish_reason") or classify_reason or "까닭 없음"
+            result.unpublished.append(f"{article.get('title')} — {why}")
+    return result
+
+
+def _run_note(outcome: Outcome, data: ClassifyInput, writes: WriteStage, failed_calls: int) -> str:
+    """실행 종료 메모(서버가 만든다): 분류·작성 건수, 비게시·보류 까닭, 안 쓴 분야, 실패 호출."""
+    parts = [_classify_note(outcome)]
+    decision = outcome.decision
+    if decision is None:
+        return parts[0]
+    if writes.calls:
+        parts.append(f"작성 {writes.calls}건(실패 {writes.failed})")
+    if writes.unpublished:
+        parts.append(f"비게시 {len(writes.unpublished)}: " + "; ".join(writes.unpublished[:5]))
+    hold_reasons = Counter(h["reason"] or "까닭 없음" for h in decision["holds"])
+    if hold_reasons:
+        parts.append("보류 까닭: " + ", ".join(f"{r} {n}" for r, n in hold_reasons.most_common(3)))
+    used = {a["category"] for a in decision["new_articles"]}
+    article_category = {a["id"]: a["category"] for a in data["recent_articles"]}
+    used |= {article_category[u["article_id"]] for u in decision["updates"]}
+    unused = [c["name"] for c in data["categories"] if c["slug"] not in used]
+    if unused:
+        parts.append("안 쓴 분야: " + ", ".join(unused))
+    if failed_calls:
+        parts.append(f"실패 호출 {failed_calls}")
+    return " / ".join(parts)
 
 
 def run_editor(now: datetime) -> str:
@@ -230,9 +406,10 @@ def run_editor(now: datetime) -> str:
     models = [settings.EDITOR_MODEL_CLASSIFY]
     if settings.EDITOR_MODEL_CLASSIFY_COMPARE:
         models.append(settings.EDITOR_MODEL_CLASSIFY_COMPARE)
-    for model in models:
+    for model in [*models, settings.EDITOR_MODEL_WRITE]:
         llm_pricing.check_model(model)
     parse_effort(effort)
+    parse_effort(settings.EDITOR_EFFORT_WRITE)
 
     try:
         with transaction.atomic():
@@ -255,7 +432,11 @@ def run_editor(now: datetime) -> str:
     for n, model in enumerate(models):
         outcome = classify(llm, data, model, effort)
         key = f"r{run.pk}-classify" if n == 0 else f"r{run.pk}-classify-compare"
-        _record(run, key, model, effort, data, outcome, now)
+        _record(
+            run, key=key, stage=EditorCall.Stage.CLASSIFY, model=model, effort=effort,
+            item_ids=[i["id"] for i in data["items"]], summary=input_summary(data),
+            outcome=outcome, now=now,
+        )  # fmt: skip
         outcomes.append(outcome)
 
     main = outcomes[0]
@@ -265,15 +446,20 @@ def run_editor(now: datetime) -> str:
         editor_budget.mark_limit_rejected(run, limited.limit_status, now)
         logger.warning("Console 지출 한도 거절 — 슬롯 %s: %s", slot, run.note)
         return f"편집 파이프라인: 슬롯 {slot} {run.note}"
-    run.status = (
-        EditorRun.Status.FINISHED
-        if main.status == EditorCall.Status.SUCCEEDED
-        else EditorRun.Status.FAILED
-    )
+
+    writes = WriteStage()
+    if main.decision is not None:
+        writes = write_stage(run, llm, main.decision, data, now)
+        if writes.stopped:
+            logger.warning("편집 파이프라인 작성 단계 중단 — 슬롯 %s: %s", slot, run.note)
+            return f"편집 파이프라인: 슬롯 {slot} {run.note} (US${run.cost_usd})"
+
+    run.status = EditorRun.Status.FINISHED if main.decision is not None else EditorRun.Status.FAILED
     run.finished_at = now
-    run.note = _note(main)
+    failed_calls = run.calls.filter(status=EditorCall.Status.FAILED).count()
+    run.note = _run_note(main, data, writes, failed_calls)
     if len(outcomes) > 1:
-        run.note += f" / 비교 {models[1]}: {_note(outcomes[1]).removeprefix('그림자 ')}"
+        run.note += f" / 비교 {models[1]}: {_classify_note(outcomes[1]).removeprefix('그림자 ')}"
     run.save()
     return (
         f"편집 파이프라인: 슬롯 {slot} {run.get_status_display()} — {run.note} (US${run.cost_usd})"

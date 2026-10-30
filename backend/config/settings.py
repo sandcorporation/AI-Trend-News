@@ -133,6 +133,8 @@ EDITOR_PIPELINE_MODE = env("EDITOR_PIPELINE_MODE", "off")  # off / shadow / live
 EDITOR_RUN_HOURS = tuple(int(h) for h in env("EDITOR_RUN_HOURS", "6,12,18").split(",") if h.strip())
 EDITOR_MODEL_CLASSIFY = env("EDITOR_MODEL_CLASSIFY", "claude-sonnet-5-5")
 EDITOR_EFFORT_CLASSIFY = env("EDITOR_EFFORT_CLASSIFY", "medium")
+EDITOR_MODEL_WRITE = env("EDITOR_MODEL_WRITE", "claude-sonnet-5-5")
+EDITOR_EFFORT_WRITE = env("EDITOR_EFFORT_WRITE", "low")
 # 그림자 비교용 두 번째 분류 모델(예 claude-haiku-5-5). 비우면 끔.
 EDITOR_MODEL_CLASSIFY_COMPARE = env("EDITOR_MODEL_CLASSIFY_COMPARE")
 # 월 예산 상한(US$, #124). Console 워크스페이스 지출 한도가 월 $20이라 그보다 낮게 둔다 — 넘으면

@@ -28,14 +28,17 @@ from adapters.anthropic import (
 )
 from adapters.clock import set_clock
 from adapters.discord import FakeNotifier
+from adapters.fetch import FetchError, set_fetcher
 from articles.models import Article
 from collection.models import Item, Source
 from editor.models import Alert, EditorCall, EditorRun
 from services import articles as svc
-from services import editor_prompts
+from services import editor_budget, editor_prompts, editor_write
 from services.alerts import check_alerts
 from services.editor_classify import ClassifyInput, output_schema, validate
+from services.editor_compare import compare
 from services.editor_runs import start_run
+from services.editor_write import FETCHES_PER_RUN, RunReader
 from services.llm_pricing import UnknownModel, cost_usd
 from services.retention import prune_items
 
@@ -58,6 +61,43 @@ def clock() -> Iterator[FixedClock]:
 def shadow() -> Iterator[None]:
     with override_settings(**SHADOW):
         yield
+
+
+class Pages:
+    """URL별 원문 HTML. 등록하지 않은 URL은 `FetchError`(시험에서 실제 네트워크 금지)."""
+
+    def __init__(self) -> None:
+        self.pages: dict[str, bytes | Exception] = {}
+        self.requested: list[str] = []
+
+    def fetch(self, url: str) -> bytes:
+        self.requested.append(url)
+        page = self.pages.get(url, FetchError("HTTP 404"))
+        if isinstance(page, Exception):
+            raise page
+        return page
+
+
+@pytest.fixture(autouse=True)
+def pages() -> Iterator[Pages]:
+    fetcher = Pages()
+    previous = set_fetcher(fetcher)
+    yield fetcher
+    set_fetcher(previous)
+
+
+def written(**override: object) -> dict[str, object]:
+    """작성 단계(새 기사)의 규칙에 맞는 응답."""
+    reply: dict[str, object] = {
+        "title": "오픈AI, 새 모델 공개",
+        "slug": "openai-new-model",
+        "summary": "오픈AI가 새 모델을 공개했다. 성능이 올랐다.",
+        "tags": ["OpenAI", "모델"],
+        "published": True,
+        "unpublish_reason": "",
+    }
+    reply.update(override)
+    return reply
 
 
 def make_items(n: int) -> list[Item]:
@@ -115,7 +155,7 @@ def test_shadow_slot_records_one_call_and_changes_nothing(
 ) -> None:
     categories()
     items = make_items(3)
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
 
     message = run()
 
@@ -125,7 +165,7 @@ def test_shadow_slot_records_one_call_and_changes_nothing(
         "2026-10-30T06",
         "finished",
     )
-    call = EditorCall.objects.get()
+    call = EditorCall.objects.get(stage="classify")
     assert (call.stage, call.status, call.model, call.effort) == (
         "classify",
         "succeeded",
@@ -139,7 +179,8 @@ def test_shadow_slot_records_one_call_and_changes_nothing(
     decision = call.output["decision"]
     assert [a["item_ids"] for a in decision["new_articles"]] == [[items[0].pk]]
     assert len(decision["discards"]) == 2
-    assert call.cost_usd > 0 and editor_run.cost_usd == call.cost_usd
+    write = EditorCall.objects.get(stage="write_new")
+    assert call.cost_usd > 0 and editor_run.cost_usd == call.cost_usd + write.cost_usd
     assert call.cache_creation_input_tokens > 0  # 첫 요청이 시스템 프롬프트 캐시를 쓴다
     assert re.fullmatch(r"[0-9a-f]{12}", call.prompt_version)
     # 그림자: 수집물·기사는 그대로
@@ -147,7 +188,7 @@ def test_shadow_slot_records_one_call_and_changes_nothing(
     assert not Article.objects.exists()
     assert "새 기사 1" in editor_run.note and "그림자" in message
     # 입력 요약에 본문을 남기지 않는다
-    assert "발췌" not in json.dumps(call.input, ensure_ascii=False)
+    assert "발췌 발췌" not in json.dumps(call.input, ensure_ascii=False)
 
 
 def test_request_shape_schema_enum_data_block_and_cache(
@@ -155,7 +196,7 @@ def test_request_shape_schema_enum_data_block_and_cache(
 ) -> None:
     categories()
     items = make_items(2)
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     run()
 
     request = json.loads(json.dumps(fake_llm.requests[0]))  # 깊은 색인을 위해 평범한 JSON으로
@@ -176,16 +217,17 @@ def test_system_prompt_is_same_bytes_across_runs(
 ) -> None:
     categories()
     items = make_items(2)
-    fake_llm.queue(answer(items), answer(items))
+    fake_llm.queue(answer(items), written(), answer(items), written())
     run()
     clock.advance(6 * 3600)  # 12:25 슬롯, 분야를 하나 더해도
     svc.add_category("우주항공기술")
     run()
 
-    first, second = fake_llm.requests
+    first, second = fake_llm.requests[0], fake_llm.requests[2]
     assert first["system"] == second["system"]
     assert "우주항공기술" not in first["system"][0]["text"]
-    assert EditorCall.objects.filter(cache_read_input_tokens__gt=0).count() == 1
+    classify = EditorCall.objects.filter(stage="classify")
+    assert classify.filter(cache_read_input_tokens__gt=0).count() == 1
 
 
 def test_compare_model_records_second_call_with_same_input(
@@ -193,17 +235,18 @@ def test_compare_model_records_second_call_with_same_input(
 ) -> None:
     categories()
     items = make_items(2)
-    fake_llm.queue(answer(items), answer(items, new_articles=[]))
+    fake_llm.queue(answer(items), answer(items, new_articles=[]), written())
     with override_settings(**SHADOW, EDITOR_MODEL_CLASSIFY_COMPARE="claude-haiku-5-5"):
         run()
 
-    calls = list(EditorCall.objects.order_by("id"))
+    calls = list(EditorCall.objects.filter(stage="classify").order_by("id"))
     assert [c.model for c in calls] == ["claude-sonnet-5-5", "claude-haiku-5-5"]
     assert calls[0].key.endswith("-classify") and calls[1].key.endswith("-classify-compare")
     assert calls[0].input == calls[1].input
     assert fake_llm.requests[0]["messages"] == fake_llm.requests[1]["messages"]
     editor_run = EditorRun.objects.get()
-    assert editor_run.cost_usd == calls[0].cost_usd + calls[1].cost_usd
+    write = EditorCall.objects.get(stage="write_new")  # 작성은 주 분류의 판단으로만
+    assert editor_run.cost_usd == calls[0].cost_usd + calls[1].cost_usd + write.cost_usd
     assert "비교 claude-haiku-5-5" in editor_run.note
 
 
@@ -224,15 +267,15 @@ def test_same_slot_runs_once_and_catches_up_within_three_hours(
 ) -> None:
     categories()
     items = make_items(1)
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     run()
     clock.advance(3600)  # 07:25, 같은 슬롯
     assert "이미 열림" in run()
-    assert EditorRun.objects.count() == 1 and len(fake_llm.requests) == 1
+    assert EditorRun.objects.count() == 1 and len(fake_llm.requests) == 2
 
     # 놓친 슬롯: 12시 슬롯을 14:25에 따라잡는다
     set_clock(FixedClock(datetime(2026, 10, 30, 14, 25, tzinfo=KST).astimezone(UTC)))
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     run()
     assert EditorRun.objects.filter(slot="2026-10-30T12").exists()
 
@@ -298,11 +341,11 @@ def test_max_tokens_retries_once_then_succeeds(
 ) -> None:
     categories()
     items = make_items(1)
-    fake_llm.queue(Truncated(), answer(items))
+    fake_llm.queue(Truncated(), answer(items), written())
     run()
-    call = EditorCall.objects.get()
+    call = EditorCall.objects.get(stage="classify")
     assert (call.status, call.attempt) == ("succeeded", 1)
-    assert len(fake_llm.requests) == 2
+    assert len(fake_llm.requests) == 3
     retry_text = fake_llm.requests[1]["messages"][0]["content"]
     assert isinstance(retry_text, str) and "max_tokens" in retry_text
     assert call.cache_read_input_tokens > 0  # 두 요청의 토큰을 합친다
@@ -587,15 +630,15 @@ def test_admin_shows_month_total_and_calls(
 ) -> None:
     categories()
     items = make_items(1)
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     run()
     owner = get_user_model().objects.create_superuser("owner", password=None)
     client.force_login(owner)
 
     listing = client.get(f"/{settings.ADMIN_PATH}editor/editorrun/")
     assert listing.status_code == 200
-    call = EditorCall.objects.get()
-    assert listing.context["month_cost"] == call.cost_usd
+    call = EditorCall.objects.get(stage="classify")
+    assert listing.context["month_cost"] == EditorRun.objects.get().cost_usd
     assert "편집 호출 추정 비용 합계" in listing.content.decode()
 
     detail = client.get(f"/{settings.ADMIN_PATH}editor/editorrun/{call.run_id}/change/")
@@ -637,11 +680,11 @@ def fixed_cost_call(run: EditorRun, cost: str, stage: str = "classify", n: int =
 def test_under_budget_runs_normally(clock: FixedClock, shadow: None, fake_llm: FakeLlm) -> None:
     categories()
     items = make_items(1)
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     with override_settings(EDITOR_MONTHLY_BUDGET_USD=Decimal("18")):
         run()
     assert EditorRun.objects.get().status == EditorRun.Status.FINISHED
-    assert len(fake_llm.requests) == 1
+    assert len(fake_llm.requests) == 2
 
 
 def test_over_budget_skips_run_alerts_once_and_recovers_next_month(
@@ -686,7 +729,7 @@ def test_next_month_runs_again_after_budget_reset(
     past = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot="2026-10-29T18")
     fixed_cost_call(past, "20", "commentary")  # 분류 예상액은 표 값 그대로
     clock.advance((2 * 24 + 6) * 3600)  # 11월 1일 12:25 KST
-    fake_llm.queue(answer(items))
+    fake_llm.queue(answer(items), written())
     run()
     assert EditorRun.objects.latest("pk").status == EditorRun.Status.FINISHED
 
@@ -759,3 +802,490 @@ def test_admin_header_shows_budget(client: Client, clock: FixedClock) -> None:
     with override_settings(EDITOR_MONTHLY_BUDGET_USD=Decimal("18")):
         html = client.get(f"/{settings.ADMIN_PATH}editor/editorrun/").content.decode()
     assert "월 상한" in html and "US$18" in html
+
+
+# --- 2단계 기사 작성(#125) ---
+
+
+def page(text: str) -> bytes:
+    return f"<html><body><article><p>{text}</p></article></body></html>".encode()
+
+
+def data_block(request: object) -> dict[str, object]:
+    plain = json.loads(json.dumps(request))
+    user = plain["messages"][0]["content"]
+    parsed: dict[str, object] = json.loads(user.split("<data>\n", 1)[1].split("\n</data>", 1)[0])
+    return parsed
+
+
+def existing_article(item: Item, image_url: str = "") -> Article:
+    slug = svc.list_categories()[0].slug
+    return svc.create_article(
+        svc.Actor.EDITOR,
+        item_ids=[item.pk],
+        title="기존 기사",
+        summary="기존 요약.",
+        category=slug,
+        tags=["OpenAI", "모델"],
+        published=True,
+        image_url=image_url,
+        slug="old-article",
+    )
+
+
+def test_shadow_slot_calls_classify_once_and_write_per_article_and_changes_nothing(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, pages: Pages
+) -> None:
+    categories()
+    old_item, *items = make_items(4)
+    article = existing_article(old_item)
+    slug = svc.list_categories()[0].slug
+    decision = answer(
+        items,
+        new_articles=[
+            {"item_ids": [items[0].pk], "category": slug, "published": True,
+             "featured": True, "reason": "발표"},
+            {"item_ids": [items[1].pk], "category": slug, "published": True,
+             "featured": False, "reason": "출시"},
+        ],
+        updates=[{"article_id": article.pk, "item_ids": [items[2].pk], "reason": "후속"}],
+        discards=[],
+    )  # fmt: skip
+    update_reply: dict[str, object] = {
+        "title": None,
+        "summary": "기존 요약에 후속 사실을 더했다.",
+        "tags": None,
+        "reason": "후속 사실",
+    }
+    fake_llm.queue(decision, written(), written(slug="second-model"), update_reply)
+
+    run()
+
+    calls = list(EditorCall.objects.order_by("id"))
+    assert [(c.stage, c.status) for c in calls] == [
+        ("classify", "succeeded"),
+        ("write_new", "succeeded"),
+        ("write_new", "succeeded"),
+        ("write_update", "succeeded"),
+    ]
+    editor_run = EditorRun.objects.get()
+    assert [c.key for c in calls[1:]] == [
+        f"r{editor_run.pk}-write-1",
+        f"r{editor_run.pk}-write-2",
+        f"r{editor_run.pk}-update-1",
+    ]
+    assert calls[1].item_ids == [items[0].pk] and calls[3].article_id == article.pk
+    assert calls[3].output is not None
+    assert calls[3].output["changes"]["summary"] == "기존 요약에 후속 사실을 더했다."
+    assert calls[3].output["changes"]["title"] is None
+    assert editor_run.cost_usd == sum((c.cost_usd for c in calls), Decimal(0))
+    # 작성 요청: write 프롬프트(캐시), 새 기사 스키마, 분류 결정이 입력에
+    write_request = json.loads(json.dumps(fake_llm.requests[1]))
+    assert "이번 단계: 기사 작성" in write_request["system"][0]["text"]
+    assert write_request["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert write_request["output_config"]["effort"] == "low"
+    schema = write_request["output_config"]["format"]["schema"]
+    assert set(schema["required"]) == {
+        "title", "slug", "summary", "tags", "published", "unpublish_reason"
+    }  # fmt: skip
+    assert "image" not in json.dumps(schema)  # 모델 출력에 URL 칸이 없다
+    data = data_block(fake_llm.requests[1])
+    assert data["decided"] == {"published": True, "featured": True}
+    update_data = data_block(fake_llm.requests[3])
+    assert update_data["kind"] == "update" and update_data["article"] == {
+        "id": article.pk, "title": "기존 기사", "summary": "기존 요약.", "tags": ["OpenAI", "모델"]
+    }  # fmt: skip
+    # 그림자: 수집물·기사는 그대로
+    assert set(
+        Item.objects.filter(pk__in=[i.pk for i in items]).values_list("status", flat=True)
+    ) == {Item.Status.PENDING}
+    assert list(Article.objects.values_list("pk", flat=True)) == [article.pk]
+    article.refresh_from_db()
+    assert article.summary == "기존 요약."
+    assert "작성 3건(실패 0)" in editor_run.note
+
+
+def test_write_input_caps_text_per_item_and_items_per_article(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, pages: Pages
+) -> None:
+    categories()
+    items = make_items(5)
+    long_text = "가" * 9000
+    for item in items:
+        pages.pages[item.url] = page(long_text)
+    slug = svc.list_categories()[0].slug
+    bundle = [i.pk for i in items[:4]]
+    fake_llm.queue(
+        answer(
+            items,
+            new_articles=[{"item_ids": bundle, "category": slug, "published": True,
+                           "featured": False, "reason": "같은 뉴스"}],
+            discards=[{"item_id": items[4].pk, "reason": "홍보"}],
+        ),
+        written(),
+    )  # fmt: skip
+
+    run()
+
+    data = data_block(fake_llm.requests[1])
+    sent = data["items"]
+    assert isinstance(sent, list)
+    assert [i["id"] for i in sent] == bundle  # 분류가 묶은 순서
+    assert [len(i["text"]) for i in sent] == [4000, 4000, 4000, 0]
+    assert "3건 초과" in sent[3]["reason"] and sent[3]["excerpt"]
+    assert pages.requested == [i.url for i in items[:3]]  # 넷째는 받지도 않는다
+    call = EditorCall.objects.get(stage="write_new")
+    assert call.input["items"][0] == {"id": bundle[0], "text_chars": 4000, "reason": ""}
+    assert "가가가" not in json.dumps(call.input, ensure_ascii=False)  # 원문은 저장하지 않는다
+    assert "발췌 발췌" not in json.dumps(call.input, ensure_ascii=False)
+
+
+def test_fetch_failure_falls_back_to_excerpt(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, pages: Pages
+) -> None:
+    categories()
+    items = make_items(1)
+    pages.pages[items[0].url] = FetchError("직접 403, 대체 503")
+    fake_llm.queue(answer(items), written())
+
+    run()
+
+    sent = data_block(fake_llm.requests[1])["items"]
+    assert isinstance(sent, list)
+    assert sent[0]["text"] == "" and "직접 403" in sent[0]["reason"]
+    assert sent[0]["excerpt"].startswith("발췌")
+    call = EditorCall.objects.get(stage="write_new")
+    assert call.status == "succeeded"
+    assert call.input["items"][0]["text_chars"] == 0
+
+
+def test_run_reader_caches_urls_and_caps_fetches() -> None:
+    fetcher = Pages()
+    fetcher.pages = {f"https://e.com/{n}": page("본문 " * 100) for n in range(3)}
+    reader = RunReader(fetcher, limit=2)
+    first = reader.read("https://e.com/0")
+    assert reader.read("https://e.com/0") == first and first["text"].startswith("본문")
+    reader.read("https://e.com/1")
+    capped = reader.read("https://e.com/2")
+    assert capped["text"] == "" and "페치 상한 2회" in capped["reason"]
+    assert fetcher.requested == ["https://e.com/0", "https://e.com/1"]
+    assert FETCHES_PER_RUN == 60
+
+
+def test_image_is_first_bundled_image_and_update_fills_only_empty(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    old_with, old_without, *items = make_items(6)
+    Item.objects.filter(pk=items[1].pk).update(image_url="https://img.example.com/b.jpg")
+    Item.objects.filter(pk=items[2].pk).update(image_url="https://img.example.com/c.jpg")
+    Item.objects.filter(pk=items[3].pk).update(image_url="https://img.example.com/d.jpg")
+    with_image = existing_article(old_with, image_url="https://img.example.com/old.jpg")
+    without_image = svc.create_article(
+        svc.Actor.EDITOR, item_ids=[old_without.pk], title="이미지 없는 기사", summary="요약.",
+        category=svc.list_categories()[0].slug, tags=["a", "b"], slug="no-image",
+    )  # fmt: skip
+    slug = svc.list_categories()[0].slug
+    fake_llm.queue(
+        answer(
+            items,
+            new_articles=[{"item_ids": [items[0].pk, items[1].pk, items[2].pk], "category": slug,
+                           "published": True, "featured": False, "reason": "발표"}],
+            updates=[
+                {"article_id": with_image.pk, "item_ids": [items[3].pk], "reason": "후속"},
+                {"article_id": without_image.pk, "item_ids": [], "reason": "빈 묶음"},
+            ],
+            discards=[],
+        ),
+        written(),
+        {"title": None, "summary": None, "tags": None, "reason": "그대로"},
+    )  # fmt: skip
+
+    run()
+
+    new = EditorCall.objects.get(stage="write_new")
+    assert new.output is not None
+    assert new.output["article"]["image_url"] == "https://img.example.com/b.jpg"
+    update = EditorCall.objects.get(stage="write_update")
+    assert update.output is not None
+    assert update.output["changes"]["image_url"] is None  # 기사에 이미지가 이미 있다
+    filled = editor_write.prepare_update(
+        {"article_id": without_image.pk, "item_ids": [items[3].pk], "reason": ""},
+        RunReader(Pages()),
+    )
+    assert filled["image_url"] == "https://img.example.com/d.jpg"
+
+
+@pytest.mark.parametrize(
+    ("classified", "wrote", "expected"),
+    [(True, True, True), (True, False, False), (False, True, False)],
+)
+def test_published_is_classify_and_write(
+    classified: bool,
+    wrote: bool,
+    expected: bool,
+    clock: FixedClock,
+    shadow: None,
+    fake_llm: FakeLlm,
+) -> None:
+    categories()
+    items = make_items(1)
+    slug = svc.list_categories()[0].slug
+    fake_llm.queue(
+        answer(
+            items,
+            new_articles=[{"item_ids": [items[0].pk], "category": slug, "published": classified,
+                           "featured": classified, "reason": "단독 보도"}],
+        ),
+        written(published=wrote, unpublish_reason="" if wrote else "출처 불분명"),
+    )  # fmt: skip
+
+    run()
+
+    call = EditorCall.objects.get(stage="write_new")
+    assert call.output is not None
+    article = call.output["article"]
+    assert (article["published"], article["featured"]) == (expected, expected)
+    note = EditorRun.objects.get().note
+    if not expected:
+        assert "비게시 1: 오픈AI, 새 모델 공개 — " in note
+        assert ("출처 불분명" if classified else "단독 보도") in note
+    if classified and not wrote:
+        assert any("비게시로 내림" in p for p in call.output["problems"])
+
+
+def test_rule_violation_retries_once_with_error_then_fails(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    items = make_items(1)
+    too_long = "가" * 41
+    fake_llm.queue(answer(items), written(title=too_long), written(tags=["하나"]))
+
+    run()
+
+    call = EditorCall.objects.get(stage="write_new")
+    assert (call.status, call.attempt) == ("failed", 1)
+    assert len(fake_llm.requests) == 3
+    retry = fake_llm.requests[2]["messages"][0]["content"]
+    assert isinstance(retry, str) and "제목은 1~40자" in retry and "41자" in retry
+    assert "태그는 2~5개" in call.error
+    editor_run = EditorRun.objects.get()
+    assert editor_run.status == "finished"  # 작성 호출 하나의 실패는 실행 실패가 아니다
+    assert "작성 1건(실패 1)" in editor_run.note and "실패 호출 1" in editor_run.note
+
+
+def test_rule_violation_then_good_answer_succeeds(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    items = make_items(1)
+    four_sentences = "하나다. 둘이다. 셋이다. 넷이다."
+    fake_llm.queue(answer(items), written(summary=four_sentences), written())
+    run()
+    call = EditorCall.objects.get(stage="write_new")
+    assert (call.status, call.attempt) == ("succeeded", 1)
+    retry = fake_llm.requests[2]["messages"][0]["content"]
+    assert isinstance(retry, str) and "요약은 1~3문장" in retry
+
+
+def test_invalid_slug_is_replaced_by_make_slug_and_recorded(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    old, *items = make_items(2)
+    existing_article(old)  # slug old-article
+    fake_llm.queue(answer(items), written(title="OpenAI GPT launch", slug="오픈AI 모델"))
+    run()
+    call = EditorCall.objects.get(stage="write_new")
+    assert call.output is not None
+    assert call.output["article"]["slug"] == "openai-gpt-launch"
+    assert any("slug 형식 오류" in p for p in call.output["problems"])
+    assert call.attempt == 0  # slug는 재요청 사유가 아니다
+
+
+def test_duplicate_slug_gets_suffix(clock: FixedClock, shadow: None, fake_llm: FakeLlm) -> None:
+    categories()
+    old, *items = make_items(2)
+    existing_article(old)
+    fake_llm.queue(answer(items), written(slug="old-article"))
+    run()
+    call = EditorCall.objects.get(stage="write_new")
+    assert call.output is not None and call.output["article"]["slug"] == "old-article-2"
+
+
+def test_write_api_error_fails_only_that_call(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    items = make_items(2)
+    slug = svc.list_categories()[0].slug
+    entry = {"category": slug, "published": True, "featured": False, "reason": "발표"}
+    fake_llm.queue(
+        answer(
+            items,
+            new_articles=[{"item_ids": [i.pk], **entry} for i in items],
+            discards=[],
+        ),
+        LlmError("API 오류 529: OverloadedError", status_code=529),
+        written(),
+    )
+    run()
+    statuses = list(
+        EditorCall.objects.filter(stage="write_new").order_by("id").values_list("status", flat=True)
+    )
+    assert statuses == ["failed", "succeeded"]
+    assert EditorRun.objects.get().status == "finished"
+    assert set(Item.objects.values_list("status", flat=True)) == {Item.Status.PENDING}
+
+
+def test_spend_limit_during_write_stops_and_marks_budget(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, fake_discord: FakeNotifier
+) -> None:
+    categories()
+    items = make_items(2)
+    slug = svc.list_categories()[0].slug
+    entry = {"category": slug, "published": True, "featured": False, "reason": "발표"}
+    fake_llm.queue(
+        answer(items, new_articles=[{"item_ids": [i.pk], **entry} for i in items], discards=[]),
+        LlmError("spend limit", status_code=402),
+    )
+    run()
+    editor_run = EditorRun.objects.get()
+    assert editor_run.status == EditorRun.Status.SKIPPED_BUDGET
+    assert "HTTP 402" in editor_run.note
+    assert EditorCall.objects.filter(stage="write_new").count() == 1  # 둘째는 부르지 않는다
+    assert len(fake_llm.requests) == 2
+    assert any("편집 예산" in m for m in check_alerts(fake_discord, timezone.now()))
+
+
+def test_budget_gate_before_write_stage_skips_writes(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    categories()
+    items = make_items(1)
+    fake_llm.queue(answer(items))  # 작성 응답은 넣지 않는다 — 부르면 시험이 깨진다
+    # 분류(표 값 0.104)는 상한 안, 작성 예상액(기록 없으면 표 값)은 상한을 넘는다
+    monkeypatch.setitem(editor_budget.DEFAULT_CALL_COST, EditorCall.Stage.WRITE_NEW, Decimal(100))
+    with override_settings(EDITOR_MONTHLY_BUDGET_USD=Decimal("18")):
+        run()
+    editor_run = EditorRun.objects.get()
+    assert editor_run.status == EditorRun.Status.SKIPPED_BUDGET
+    assert "월 예산 초과" in editor_run.note
+    assert list(EditorCall.objects.values_list("stage", flat=True)) == ["classify"]
+
+
+def test_no_key_never_reaches_write_stage(clock: FixedClock, fake_llm: FakeLlm) -> None:
+    categories()
+    make_items(2)
+    with override_settings(EDITOR_PIPELINE_MODE="shadow", SANDCORP_NEWS_CLAUDE_KEY=""):
+        assert "키 없음" in run()
+    assert not EditorRun.objects.exists() and not fake_llm.requests
+
+
+def test_unknown_write_model_does_not_open_run(clock: FixedClock, fake_llm: FakeLlm) -> None:
+    categories()
+    make_items(1)
+    with (
+        override_settings(**SHADOW, EDITOR_MODEL_WRITE="claude-unknown-9"),
+        pytest.raises((UnknownModel, CommandError)),
+    ):
+        run()
+    assert not EditorRun.objects.exists()
+
+
+def test_run_note_lists_holds_unused_categories_and_failures(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    items = make_items(3)
+    fake_llm.queue(
+        answer(
+            items,
+            discards=[{"item_id": items[1].pk, "reason": "홍보"}],
+            holds=[{"item_id": items[2].pk, "reason": "출처 확인 필요"}],
+        ),
+        written(),
+    )
+    run()
+    note = EditorRun.objects.get().note
+    assert "보류 까닭: 출처 확인 필요 1" in note
+    assert "안 쓴 분야: IT" in note
+    assert "실패 호출" not in note
+
+
+# --- 그림자 비교(#125) ---
+
+
+def test_shadow_compare_aggregates_against_routine_results(
+    client: Client, clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    old, a, b, c, d, e = make_items(6)
+    article = existing_article(old)
+    slug = svc.list_categories()[0].slug
+    entry = {"category": slug, "published": True, "featured": False, "reason": "발표"}
+    fake_llm.queue(
+        answer(
+            [a],
+            new_articles=[{"item_ids": [a.pk], **entry}, {"item_ids": [b.pk], **entry}],
+            updates=[{"article_id": article.pk, "item_ids": [c.pk], "reason": "후속"}],
+            discards=[{"item_id": d.pk, "reason": "홍보"}],
+            holds=[{"item_id": e.pk, "reason": "애매"}],
+        ),
+        written(title="파이프라인 제목 A"),
+        written(title="파이프라인 제목 B"),
+        {"title": None, "summary": None, "tags": None, "reason": "그대로"},
+    )
+    run()
+    editor_run = EditorRun.objects.get()
+
+    # 15분 뒤 루틴: a는 새 기사(일치), b는 버림(갈림), c는 다른 새 기사(갈림),
+    # d는 버림(일치), e는 그대로 미처리(일치)
+    routine_a = svc.create_article(
+        svc.Actor.EDITOR, item_ids=[a.pk], title="루틴 제목 A", summary="루틴 요약 A.",
+        category=slug, tags=["x", "y"], published=True, slug="routine-a",
+    )  # fmt: skip
+    svc.discard_item(svc.Actor.EDITOR, b.pk)
+    routine_c = svc.create_article(
+        svc.Actor.EDITOR, item_ids=[c.pk], title="루틴 제목 C", summary="루틴 요약 C.",
+        category=slug, tags=["x", "y"], published=True, slug="routine-c",
+    )  # fmt: skip
+    svc.discard_item(svc.Actor.EDITOR, d.pk)
+
+    result = compare(editor_run)
+    by_item = {r.item_id: r for r in result.rows}
+    assert [by_item[i.pk].match for i in (a, b, c, d, e)] == [True, False, False, True, True]
+    assert (by_item[c.pk].pipeline, by_item[c.pk].actual) == ("update", "new")
+    assert by_item[c.pk].pipeline_target == "기존 기사"
+    assert result.match_rate == 60.0
+    assert result.pipeline_only == 1  # B
+    assert [r["id"] for r in result.routine_only] == [routine_c.pk]
+    assert result.pairs[0].title == "파이프라인 제목 A"
+    assert [r["title"] for r in result.pairs[0].routine] == ["루틴 제목 A"]
+    assert result.pairs[0].routine[0]["summary"] == "루틴 요약 A."
+    assert result.cost_usd == editor_run.cost_usd and result.calls == 4
+    assert routine_a.pk != routine_c.pk
+
+    owner = get_user_model().objects.create_superuser("owner", password=None)
+    client.force_login(owner)
+    detail = client.get(f"/{settings.ADMIN_PATH}editor/editorrun/{editor_run.pk}/change/")
+    assert "그림자 비교 보기" in detail.content.decode()
+    url = f"/{settings.ADMIN_PATH}editor/editorrun/{editor_run.pk}/shadow/"
+    full = client.get(url)
+    html = full.content.decode()
+    assert full.status_code == 200
+    assert 'data-stat="match-rate">60.0%' in html and 'data-stat="pipeline-only">1' in html
+    assert 'data-stat="routine-only">1' in html
+    assert "파이프라인 제목 A" in html and "루틴 요약 A." in html
+    diff = client.get(url + "?diff=1").content.decode()
+    assert f'data-item="{b.pk}"' in diff and f'data-item="{a.pk}"' not in diff
+
+
+def test_shadow_compare_requires_login_and_shadow_run(client: Client) -> None:
+    routine = start_run()
+    url = f"/{settings.ADMIN_PATH}editor/editorrun/{routine.pk}/shadow/"
+    assert client.get(url).status_code == 302  # 로그인 화면으로
+    owner = get_user_model().objects.create_superuser("owner", password=None)
+    client.force_login(owner)
+    assert client.get(url).status_code == 404  # 루틴 실행에는 비교가 없다
