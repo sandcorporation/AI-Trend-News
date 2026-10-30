@@ -268,6 +268,16 @@ def test_other_public_pages_have_default_large_card(client: Client, path: str) -
     assert len(_tags(html, "og:image:alt")) == 1
 
 
+@pytest.mark.parametrize("path", ["/", "/predictions", "/contact"])
+def test_footer_has_direct_made_by_sandcorp_backlink(client: Client, path: str) -> None:
+    html = client.get(path).content.decode()
+    m = re.search(r'<a href="(https://sandcorp\.co\.kr/[^"]*)"([^>]*)>Made by Sandcorp</a>', html)
+    assert m, "직접 링크 없음"
+    assert m.group(1) == "https://sandcorp.co.kr/?utm_source=foresight&amp;utm_medium=footer"
+    assert "rel=" not in m.group(2) and "target=" not in m.group(2)
+    assert "/go/sandcorp?from=footer" in html
+
+
 def test_default_og_image_is_served_png_1200x630(client: Client) -> None:
     from pathlib import Path
 

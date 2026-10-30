@@ -51,7 +51,9 @@ export function Layout({
           <a href="/predictions">전망 기록표</a> ·{" "}
           <a href="/sitemap.xml">sitemap</a>
         </p>
-        <p className="footer-copy label">© Sandcorp · {site.name}</p>
+        <p className="footer-copy label">© Sandcorp · {site.name} ·{" "}
+          <a href={site.made_by_url}>{site.made_by_label}</a>
+        </p>
       </footer>
     </div>
   );
