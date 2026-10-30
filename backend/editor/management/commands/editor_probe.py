@@ -3,7 +3,8 @@
 로컬 DB의 미처리 수집물 몇 건으로 단계 하나를 **실제 모델**에 보내고 스키마 통과·검증 결과·토큰·
 추정 비용을 출력한다. 아무것도 저장하지 않는다(EditorRun·EditorCall도 만들지 않는다).
 `--stage write`는 분류를 한 번 부르고 그 판단의 새 기사·갱신 앞 `--writes`건을 작성까지 부른다
-(원문은 실제로 받는다).
+(원문은 실제로 받는다). `--stage commentary --article <id>`는 로컬 DB의 기사 하나로 3단계 분석을
+한 번 부른다(추천·분석 여부는 따지지 않는다 — 확인용). 포스트 링크는 그 기사 slug로 붙는다.
 키는 `set -a; source ~/.config/sandcorp/news-claude.env; set +a`로 환경에만 올린다.
 """
 
@@ -18,8 +19,9 @@ from django.core.management.base import BaseCommand, CommandError, CommandParser
 from adapters.anthropic import LlmClient, LlmNotConfigured, get_llm
 from adapters.clock import get_clock
 from adapters.fetch import get_fetcher
-from services import editor_classify, editor_write, llm_pricing
-from services.editor_pipeline import Outcome, classify, write
+from articles.models import Article, ArticleItem
+from services import editor_classify, editor_commentary, editor_write, llm_pricing
+from services.editor_pipeline import Outcome, classify, commentary, write
 from services.editor_prompts import parse_effort
 
 
@@ -27,7 +29,10 @@ class Command(BaseCommand):
     help = "실제 API로 편집 단계 하나를 소량 확인한다(저장 없음). 비용이 든다."
 
     def add_arguments(self, parser: CommandParser) -> None:
-        parser.add_argument("--stage", choices=["classify", "write"], default="classify")
+        parser.add_argument(
+            "--stage", choices=["classify", "write", "commentary"], default="classify"
+        )
+        parser.add_argument("--article", type=int, default=0, help="commentary: 기사 id")
         parser.add_argument("--writes", type=int, default=2, help="write: 작성 호출 수(기본 2)")
         parser.add_argument("--items", type=int, default=5, help="수집물 수(기본 5)")
         parser.add_argument("--model", default="", help="기본은 EDITOR_MODEL_CLASSIFY")
@@ -36,6 +41,9 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:  # noqa: ANN401 - Django 명령 서명
         stage = options["stage"]
+        if stage == "commentary":
+            self._commentary(options)
+            return
         model = settings.EDITOR_MODEL_CLASSIFY
         effort = settings.EDITOR_EFFORT_CLASSIFY
         write_model = options["model"] or settings.EDITOR_MODEL_WRITE
@@ -75,6 +83,45 @@ class Command(BaseCommand):
                 self.stdout.write(json.dumps(decision, ensure_ascii=False, indent=2))
         if stage == "write" and outcome.decision is not None:
             self._write(llm, outcome, data, write_model, write_effort, options)
+
+    def _commentary(self, options: dict[str, Any]) -> None:  # noqa: ANN401 - Django 명령 옵션
+        model = options["model"] or settings.EDITOR_MODEL_COMMENTARY
+        effort = options["effort"] or settings.EDITOR_EFFORT_COMMENTARY
+        try:
+            llm_pricing.check_model(model)
+            parse_effort(effort)
+            llm = get_llm()
+        except (llm_pricing.UnknownModel, ValueError, LlmNotConfigured) as error:
+            raise CommandError(str(error)) from None
+        article = Article.objects.select_related("category").filter(pk=options["article"]).first()
+        if article is None:
+            raise CommandError("--article로 로컬 DB의 기사 id를 준다")
+        item_ids = list(
+            ArticleItem.objects.filter(article=article)
+            .order_by("id")
+            .values_list("item_id", flat=True)
+        )
+        plan: editor_commentary.Plan = {
+            "kind": "update",
+            "write_key": "probe",
+            "article_id": article.pk,
+            "category": article.category.slug,
+            "title": article.title,
+            "summary": article.summary,
+            "slug": article.slug,
+            "item_ids": item_ids,
+        }
+        reader = editor_write.RunReader(get_fetcher())
+        data = editor_commentary.prepare(plan, reader, get_clock().now())
+        self.stdout.write(
+            f"단계 commentary / 모델 {model} / effort {effort} / 기사 {article.pk} / "
+            f"원문 길이 {[len(i['text']) for i in data['items']]} / "
+            f"관련 기사 {len(data['related'])}건"
+        )
+        outcome = commentary(llm, data, plan, model, effort)
+        self._report(outcome)
+        if options["show"] and outcome.output is not None:
+            self.stdout.write(json.dumps(outcome.output, ensure_ascii=False, indent=2))
 
     def _report(self, outcome: Outcome) -> None:
         self.stdout.write(

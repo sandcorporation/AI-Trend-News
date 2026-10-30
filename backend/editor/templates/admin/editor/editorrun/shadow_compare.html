@@ -78,6 +78,32 @@
   </table>
   </div>
 
+  <h2>분석 대조</h2>
+  <div id="shadow-commentaries">
+  {% for c in comparison.commentaries %}
+    <div class="module" data-commentary="{{ c.key }}">
+      <p><strong>{{ c.kind }} · {{ c.title }}</strong> <span class="muted">· {{ c.status }}{% if c.error %} · {{ c.error }}{% endif %}</span><br>
+        루틴: {% if c.routine_article %}<a href="{% url 'admin:articles_article_change' c.routine_article.id %}">{{ c.routine_article.title }}</a>{% if c.routine_hidden %} <span class="muted">(숨긴 분석)</span>{% endif %}{% else %}<span class="muted">같은 기사 없음</span>{% endif %}</p>
+      <div class="wrap">
+      <table>
+        <thead><tr><th>칸</th><th>파이프라인</th><th>루틴</th></tr></thead>
+        <tbody>
+        {% for s in c.sections %}
+          <tr>
+            <td>{{ s.label }}</td>
+            <td data-label="파이프라인:">{{ s.pipeline|default:"—"|linebreaksbr }}</td>
+            <td data-label="루틴:">{{ s.routine|default:"—"|linebreaksbr }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  {% empty %}
+    <p class="muted">이 실행에는 분석 호출이 없다.</p>
+  {% endfor %}
+  </div>
+
   {% if comparison.routine_only %}
   <h2>루틴만 만든 기사</h2>
   <ul id="shadow-routine-only">

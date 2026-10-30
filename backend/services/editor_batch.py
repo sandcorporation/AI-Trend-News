@@ -1,4 +1,7 @@
-"""2단계 작성의 Message Batches 경로(#126, 설계 §4·§5). 50% 할인 대신 결과가 나중에 온다.
+"""2·3단계의 Message Batches 경로(#126·#127, 설계 §4·§5). 50% 할인 대신 결과가 나중에 온다.
+
+3단계(분석·포스트)는 작성 호출이 모두 끝 상태가 된 뒤 `advance`가 `editor_commentary.enqueue`로
+만들어(예산 확인 포함) 같은 걸음에서 제출한다 — 분석은 작성 결과(가상 기사)를 입력으로 쓴다.
 
 흐름: 분류가 정한 새 기사·갱신마다 `EditorCall`(`via_batch`, `queued`)을 만들고 → `advance`가
 한 묶음으로 제출(`submitted`, 24시간 시계는 `submitted_at`부터) → 끝난 배치의 결과를 `custom_id`
@@ -31,7 +34,7 @@ from adapters.anthropic import BatchRequest, BatchResult, LlmClient, LlmError
 from adapters.fetch import get_fetcher
 from articles.models import Article, Category
 from editor.models import EditorCall, EditorRun
-from services import editor_budget, editor_prompts, editor_write, llm_pricing
+from services import editor_budget, editor_commentary, editor_prompts, editor_write, llm_pricing
 from services.editor_classify import Decision, InvalidOutput
 
 logger = logging.getLogger("editor")
@@ -100,6 +103,7 @@ def pending_runs() -> list[EditorRun]:
 def advance(run: EditorRun, llm: LlmClient, now: datetime) -> bool:
     """실행을 한 걸음 민다: 끝난 배치 회수 → 대기 호출 제출. 모든 배치 호출이 끝났으면 True."""
     _collect(run, llm, now)
+    _enqueue_commentary(run, now)
     _submit_queued(run, llm, now)
     run.refresh_from_db()
     run.cost_usd = run.calls.aggregate(total=Sum("cost_usd"))["total"] or Decimal(0)
@@ -107,6 +111,17 @@ def advance(run: EditorRun, llm: LlmClient, now: datetime) -> bool:
     if run.status != EditorRun.Status.RUNNING:
         return True
     return not run.calls.filter(via_batch=True).exclude(status__in=TERMINAL).exists()
+
+
+def _enqueue_commentary(run: EditorRun, now: datetime) -> None:
+    """작성 호출이 모두 끝났고 3단계를 아직 시작하지 않았으면 분석 호출을 만든다(2단계 → 3단계)."""
+    if run.status != EditorRun.Status.RUNNING:
+        return
+    if run.calls.filter(stage=EditorCall.Stage.COMMENTARY).exists():
+        return
+    if run.calls.filter(stage__in=WRITE_STAGES).exclude(status__in=TERMINAL).exists():
+        return
+    editor_commentary.enqueue(run, now, via_batch=True)
 
 
 # --- 회수 ---
@@ -219,13 +234,13 @@ def _problem(call: EditorCall, result: BatchResult) -> _Problem | None:
     if message.stop_reason == "max_tokens":
         return _Problem("max_tokens에 걸려 JSON이 잘렸다")
     try:
-        checked = editor_write.check(
-            json.loads(_first_text(message)),
-            editor_write.checkable(_plan(call)),
-        )
+        parsed = json.loads(_first_text(message))
+        if call.stage == EditorCall.Stage.COMMENTARY:
+            call.output = editor_commentary.check(parsed, editor_commentary.plan_of(call))
+        else:
+            call.output = editor_write.check(parsed, editor_write.checkable(_plan(call)))["output"]
     except (json.JSONDecodeError, InvalidOutput) as error:
         return _Problem(f"JSON이 아니거나 규칙에 맞지 않는다: {error}"[:300])
-    call.output = checked["output"]
     return None
 
 
@@ -250,7 +265,9 @@ def _submit_queued(run: EditorRun, llm: LlmClient, now: datetime) -> None:
         else:
             fresh.append(call)
     retries = [c for c in fresh if c.attempt > 0]
-    if retries and not editor_budget.check(EditorCall.Stage.WRITE_NEW, len(retries), now).allowed:
+    # 작성과 분석은 함께 대기하지 않는다(분석은 작성이 모두 끝난 뒤 만든다).
+    # 첫 재제출의 단계로 예상액을 본다.
+    if retries and not editor_budget.check(retries[0].stage, len(retries), now).allowed:
         for call in retries:
             _end(call, EditorCall.Status.FAILED, "월 예산 초과로 재제출하지 않음", now)
         fresh = [c for c in fresh if c.attempt == 0]
@@ -262,6 +279,10 @@ def _submit_queued(run: EditorRun, llm: LlmClient, now: datetime) -> None:
     requests: list[BatchRequest] = []
     ready: list[EditorCall] = []
     for call in fresh:
+        if call.stage == EditorCall.Stage.COMMENTARY:
+            requests.append(_commentary_request(call, reader, now))
+            ready.append(call)
+            continue
         plan = _plan(call)
         try:
             prepared = editor_write.prepare_plan(plan, names, reader)
@@ -304,6 +325,25 @@ def _submit_queued(run: EditorRun, llm: LlmClient, now: datetime) -> None:
         call.batch_id = batch_id
         call.submitted_at = now
         call.save(update_fields=["status", "batch_id", "submitted_at"])
+
+
+def _commentary_request(
+    call: EditorCall, reader: editor_write.RunReader, now: datetime
+) -> BatchRequest:
+    """분석 호출의 배치 요청. 입력(원문 포함)은 제출·재제출 때마다 계획으로 새로 만든다."""
+    plan = editor_commentary.plan_of(call)
+    data = editor_commentary.prepare(plan, reader, now)
+    retry_note = str(call.input.get("retry_note", ""))
+    call.input = {
+        **editor_commentary.input_summary(data),
+        "plan": dict(plan),
+        **({"retry_note": retry_note} if retry_note else {}),
+    }
+    call.save(update_fields=["input"])
+    return {
+        "custom_id": call.key,
+        "params": editor_commentary.request(data, call.model, call.effort, retry_note=retry_note),
+    }
 
 
 def _end(call: EditorCall, status: str, error: str, now: datetime) -> None:

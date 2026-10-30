@@ -17,12 +17,13 @@ from django.utils import timezone
 
 from editor.models import EditorCall, EditorRun
 
-# 기록이 없을 때 쓰는 호출당 예상액(US$, 설계 §7 표 ÷ 호출 수). 조합 A(Sonnet), 2·3단계는 배치.
+# 기록이 없을 때 쓰는 호출당 예상액(US$, 설계 §7 표 ÷ 호출 수). 1·2단계는 Sonnet, 3단계는 Opus
+# (대표 결정 2026-10-30, $0.372 ÷ 4), 2·3단계는 배치.
 DEFAULT_CALL_COST: dict[str, Decimal] = {
     EditorCall.Stage.CLASSIFY: Decimal("0.104"),
     EditorCall.Stage.WRITE_NEW: Decimal("0.0135"),
     EditorCall.Stage.WRITE_UPDATE: Decimal("0.0135"),
-    EditorCall.Stage.COMMENTARY: Decimal("0.0465"),
+    EditorCall.Stage.COMMENTARY: Decimal("0.093"),
 }
 AVERAGE_WINDOW = timedelta(days=7)
 RESUME_NOTE = "월 한도 도달, 다음 달 1일 재개"

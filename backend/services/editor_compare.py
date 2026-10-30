@@ -5,6 +5,9 @@
 그 전부터 있었으면 갱신, 버림은 버림, 미처리는 보류. 일치는 갈래가 같고, 갱신이면 대상 기사도
 같을 때다(새 기사의 묶음 경계는 따지지 않는다 — 제목·요약 대조로 사람이 본다).
 
+분석 대조(#127): 3단계 호출마다 파이프라인 분석·포스트와, 같은 기사(새 기사면 같은 수집물로 루틴이
+만든 기사, 갱신이면 대상 기사)의 루틴 분석·카카오 포스트 초안을 칸별로 나란히 놓는다.
+
 읽기만 한다. admin 「편집자 실행」 상세의 「그림자 비교」 화면이 부른다.
 """
 
@@ -12,9 +15,10 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Literal, TypedDict
 
-from articles.models import Article
+from articles.models import Article, Commentary
 from collection.models import Item
 from editor.models import EditorCall, EditorRun
+from posts.models import Post
 
 Kind = Literal["new", "update", "discard", "hold"]
 KIND_LABELS: dict[Kind, str] = {
@@ -71,11 +75,45 @@ class NewPair:
 
 
 @dataclass
+class Section:
+    label: str
+    pipeline: str
+    routine: str
+
+
+@dataclass
+class CommentaryPair:
+    """3단계 호출 하나와 같은 기사의 루틴 분석."""
+
+    key: str
+    kind: str  # 「새 기사」·「갱신」
+    title: str
+    status: str
+    error: str
+    routine_article: ArticleRef | None
+    routine_hidden: bool
+    sections: list[Section] = field(default_factory=list)
+
+
+SECTION_LABELS: tuple[tuple[str, str], ...] = (
+    ("background", "배경"),
+    ("significance", "의미"),
+    ("outlook_bull", "낙관 관점"),
+    ("outlook_bear", "회의 관점"),
+    ("watchpoints", "지켜볼 신호"),
+    ("opinion", "의견"),
+    ("predictions", "예측"),
+    ("post", "포스트 초안"),
+)
+
+
+@dataclass
 class Comparison:
     run: EditorRun
     rows: list[Row] = field(default_factory=list)
     pairs: list[NewPair] = field(default_factory=list)
     routine_only: list[ArticleRef] = field(default_factory=list)
+    commentaries: list[CommentaryPair] = field(default_factory=list)
     cost_usd: Decimal = Decimal(0)
     calls: int = 0
 
@@ -203,7 +241,78 @@ def compare(run: EditorRun) -> Comparison:
         if not item_ids & pipeline_new_items:
             result.routine_only.append(_ref(article))
     result.pairs = list(pairs.values())
+    result.commentaries = _commentaries(run, result.pairs)
     return result
+
+
+def _flat(value: object) -> str:
+    """분석 칸 하나를 글로: 문자열 그대로, 목록은 줄마다(예측은 「claim (기간) — basis」)."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        lines: list[str] = []
+        for entry in value:
+            if isinstance(entry, dict):
+                claim, horizon = entry.get("claim", ""), entry.get("horizon", "")
+                lines.append(f"{claim} ({horizon}) — {entry.get('basis', '')}")
+            else:
+                lines.append(str(entry))
+        return "\n".join(lines)
+    return ""
+
+
+def _routine_fields(article: Article | None) -> tuple[dict[str, str], bool]:
+    if article is None:
+        return {}, False
+    found = Commentary.objects.filter(article=article).first()
+    fields: dict[str, str] = {}
+    if found is not None:
+        for key, _ in SECTION_LABELS[:-1]:
+            fields[key] = _flat(getattr(found, key))
+    post = Post.objects.filter(article=article, channel=Post.Channel.KAKAO).first()
+    if post is not None:
+        fields["post"] = post.text
+    return fields, bool(found is not None and found.hidden)
+
+
+def _commentaries(run: EditorRun, pairs: list[NewPair]) -> list[CommentaryPair]:
+    calls = run.calls.filter(stage=EditorCall.Stage.COMMENTARY).order_by("id")
+    by_items = {tuple(p.item_ids): p for p in pairs}
+    found: list[CommentaryPair] = []
+    for call in calls:
+        plan = _object(_object(call.input).get("plan"))
+        kind = str(plan.get("kind", ""))
+        routine: Article | None = None
+        if kind == "update" and call.article_id is not None:
+            routine = Article.objects.filter(pk=call.article_id).first()
+        elif kind == "new":
+            pair = by_items.get(tuple(call.item_ids))
+            ids = [r["id"] for r in pair.routine] if pair else []
+            candidates = list(Article.objects.filter(pk__in=ids).order_by("id"))
+            routine = next(
+                (a for a in candidates if Commentary.objects.filter(article=a).exists()),
+                candidates[0] if candidates else None,
+            )
+        output = _object(call.output)
+        mine = {k: _flat(v) for k, v in _object(output.get("commentary")).items()}
+        mine["post"] = str(_object(output.get("post")).get("text", ""))
+        theirs, hidden = _routine_fields(routine)
+        found.append(
+            CommentaryPair(
+                key=call.key,
+                kind="갱신" if kind == "update" else "새 기사",
+                title=str(plan.get("title", "")),
+                status=call.get_status_display(),
+                error=call.error,
+                routine_article=_ref(routine) if routine else None,
+                routine_hidden=hidden,
+                sections=[
+                    Section(label, mine.get(key, ""), theirs.get(key, ""))
+                    for key, label in SECTION_LABELS
+                ],
+            )
+        )
+    return found
 
 
 def _int(value: object) -> int | None:
