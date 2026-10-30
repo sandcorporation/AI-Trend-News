@@ -15,7 +15,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: news-web:latest
+    # 운영(oracle)은 Jenkins 가 NEWS_IMAGE 로 ghcr 의 <커밋 sha> 이미지를 준다(#142). 없으면 로컬에서 빌드한다.
+    image: ${NEWS_IMAGE:-news-web:latest}
     env_file: [.env]
     environment:
       DJANGO_DEBUG: "0"
@@ -42,7 +43,7 @@ services:
   # i.e. :25 past each hour, 15 minutes before the editor routine at 06:40/12:40/18:40 KST).
   # A failing command is logged and never stops the loop.
   scheduler:
-    image: news-web:latest
+    image: ${NEWS_IMAGE:-news-web:latest}
     command:
       - python
       - manage.py
