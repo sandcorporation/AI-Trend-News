@@ -619,3 +619,143 @@ def test_editor_probe_prints_and_saves_nothing(fake_llm: FakeLlm) -> None:
 
 def test_mcp_runs_stay_routine() -> None:
     assert start_run().mode == EditorRun.Mode.ROUTINE
+
+
+# --- 월 예산 상한(#124) ---
+
+
+def budget_msgs(notifier: FakeNotifier) -> list[str]:
+    return [m for m in notifier.sent if "예산" in m]
+
+
+def fixed_cost_call(run: EditorRun, cost: str, stage: str = "classify", n: int = 0) -> EditorCall:
+    return EditorCall.objects.create(
+        run=run, stage=stage, key=f"fixed-{stage}-{cost}-{n}", cost_usd=Decimal(cost)
+    )
+
+
+def test_under_budget_runs_normally(clock: FixedClock, shadow: None, fake_llm: FakeLlm) -> None:
+    categories()
+    items = make_items(1)
+    fake_llm.queue(answer(items))
+    with override_settings(EDITOR_MONTHLY_BUDGET_USD=Decimal("18")):
+        run()
+    assert EditorRun.objects.get().status == EditorRun.Status.FINISHED
+    assert len(fake_llm.requests) == 1
+
+
+def test_over_budget_skips_run_alerts_once_and_recovers_next_month(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm, fake_discord: FakeNotifier
+) -> None:
+    categories()
+    make_items(2)
+    past = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot="2026-10-29T18")
+    fixed_cost_call(past, "17.95")  # 17.95 + 예상 0.104 > 18
+
+    out = run()
+    skipped = EditorRun.objects.get(slot="2026-10-30T06")
+    assert skipped.status == EditorRun.Status.SKIPPED_BUDGET and skipped.finished_at is not None
+    assert "17.95" in skipped.note and "상한 US$18" in skipped.note
+    assert "월 한도 도달, 다음 달 1일 재개" in skipped.note and "건너뜀" in out
+    assert not fake_llm.requests  # 호출하지 않았다
+    assert Item.objects.filter(status=Item.Status.PENDING).count() == 2  # 수집물은 그대로
+
+    check_alerts(fake_discord, clock.now())
+    assert len(budget_msgs(fake_discord)) == 1
+    assert "월 한도 도달, 다음 달 1일 재개" in budget_msgs(fake_discord)[0]
+
+    clock.advance(6 * 3600)  # 다음 슬롯(12시)도 건너뛴다 — 재발송은 없다
+    run()
+    assert EditorRun.objects.filter(status=EditorRun.Status.SKIPPED_BUDGET).count() == 2
+    check_alerts(fake_discord, clock.now())
+    assert len(budget_msgs(fake_discord)) == 1
+
+    clock.advance(2 * 86400)  # 11월 1일 이후 — 합계가 0으로 돌아가 복구 한 번
+    check_alerts(fake_discord, clock.now())
+    assert len(budget_msgs(fake_discord)) == 2 and "복구" in budget_msgs(fake_discord)[1]
+    check_alerts(fake_discord, clock.now())
+    assert len(budget_msgs(fake_discord)) == 2
+    assert not Alert.objects.get(kind=Alert.Kind.EDITOR_BUDGET).active
+
+
+def test_next_month_runs_again_after_budget_reset(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    items = make_items(1)
+    past = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot="2026-10-29T18")
+    fixed_cost_call(past, "20", "commentary")  # 분류 예상액은 표 값 그대로
+    clock.advance((2 * 24 + 6) * 3600)  # 11월 1일 12:25 KST
+    fake_llm.queue(answer(items))
+    run()
+    assert EditorRun.objects.latest("pk").status == EditorRun.Status.FINISHED
+
+
+def test_estimate_uses_seven_day_average_else_table(clock: FixedClock) -> None:
+    from services import editor_budget
+
+    now = clock.now()
+    assert editor_budget.call_estimate("classify", now) == Decimal("0.104")
+    past = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot="2026-10-29T18")
+    fixed_cost_call(past, "0.20", n=1)
+    fixed_cost_call(past, "0.40", n=2)
+    old = fixed_cost_call(past, "9", n=3)
+    EditorCall.objects.filter(pk=old.pk).update(created_at=now - timedelta(days=8))
+    assert editor_budget.call_estimate("classify", now) == Decimal("0.30")
+
+
+def test_stage_gate_skips_run_when_estimate_exceeds(clock: FixedClock) -> None:
+    from services import editor_budget
+
+    now = clock.now()
+    run_ = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot="2026-10-30T06")
+    fixed_cost_call(run_, "17.9")
+    assert editor_budget.gate_stage(run_, "write_new", 2, now)  # 17.9 + 0.027
+    assert not editor_budget.gate_stage(run_, "commentary", 3, now)  # 17.9 + 0.1395 > 18
+    run_.refresh_from_db()
+    assert run_.status == EditorRun.Status.SKIPPED_BUDGET and "상한" in run_.note
+
+
+@pytest.mark.parametrize("status", [400, 403])
+def test_console_limit_rejection_is_handled_like_budget(
+    status: int, clock: FixedClock, shadow: None, fake_llm: FakeLlm, fake_discord: FakeNotifier
+) -> None:
+    categories()
+    make_items(1)
+    fake_llm.queue(LlmError("API 오류", status_code=status))
+    run()
+    skipped = EditorRun.objects.get()
+    assert skipped.status == EditorRun.Status.SKIPPED_BUDGET
+    assert f"HTTP {status}" in skipped.note and "다음 달 1일 재개" in skipped.note
+    check_alerts(fake_discord, clock.now())
+    assert len(budget_msgs(fake_discord)) == 1
+
+
+def test_server_error_is_not_a_budget_event(
+    clock: FixedClock, shadow: None, fake_llm: FakeLlm
+) -> None:
+    categories()
+    make_items(1)
+    fake_llm.queue(LlmError("API 오류", status_code=500))
+    run()
+    assert EditorRun.objects.get().status == EditorRun.Status.FAILED
+
+
+def test_no_key_in_production_skips_quietly_without_run_or_alert(
+    clock: FixedClock, fake_llm: FakeLlm, fake_discord: FakeNotifier
+) -> None:
+    """운영에는 키가 없다 — 켜 두어도(shadow) 기록 없이 건너뛰고 경보도 없다."""
+    make_items(1)
+    with override_settings(EDITOR_PIPELINE_MODE="shadow", SANDCORP_NEWS_CLAUDE_KEY=""):
+        out = run()
+    assert "키 없음" in out and not EditorRun.objects.exists() and not fake_llm.requests
+    check_alerts(fake_discord, clock.now())
+    assert not any("예산" in m for m in fake_discord.sent)
+
+
+def test_admin_header_shows_budget(client: Client, clock: FixedClock) -> None:
+    owner = get_user_model().objects.create_superuser("owner", password=None)
+    client.force_login(owner)
+    with override_settings(EDITOR_MONTHLY_BUDGET_USD=Decimal("18")):
+        html = client.get(f"/{settings.ADMIN_PATH}editor/editorrun/").content.decode()
+    assert "월 상한" in html and "US$18" in html

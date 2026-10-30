@@ -15,12 +15,11 @@ from typing import Literal
 from anthropic.types import Message
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
 from django.utils import timezone
 
 from adapters.anthropic import LlmClient, LlmError, LlmRequest, get_llm
 from editor.models import EditorCall, EditorRun
-from services import editor_classify, editor_prompts, llm_pricing
+from services import editor_budget, editor_classify, editor_prompts, llm_pricing
 from services.editor_classify import ClassifyInput, InvalidOutput
 
 logger = logging.getLogger("editor")
@@ -82,6 +81,7 @@ class Outcome:
     attempt: int = 0
     stop_reason: str = ""
     error: str = ""
+    limit_status: int | None = None  # Console 지출 한도 거절로 보이는 HTTP 상태
     output: dict[str, object] | None = None
     problems: list[str] | None = None
     input_tokens: int = 0
@@ -116,6 +116,8 @@ def classify(llm: LlmClient, data: ClassifyInput, model: str, effort: str) -> Ou
             message = llm.create(classify_request(data, model, effort, retry_note=retry_note))
         except LlmError as error:
             outcome.error = str(error)
+            if error.spend_limit_rejected:
+                outcome.limit_status = error.status_code
             return outcome
         outcome.add_usage(model, message)
         outcome.stop_reason = message.stop_reason or ""
@@ -238,6 +240,10 @@ def run_editor(now: datetime) -> str:
     except IntegrityError:
         return f"편집 파이프라인: 슬롯 {slot}은 이미 열림"
 
+    if not editor_budget.gate_new_run(run, len(models), now):
+        logger.warning("편집 예산 초과 — 슬롯 %s 건너뜀: %s", slot, run.note)
+        return f"편집 파이프라인: 슬롯 {slot} {run.note}"
+
     data = editor_classify.build_input(now)
     if not data["items"]:
         run.status, run.finished_at, run.note = EditorRun.Status.FINISHED, now, "미처리 수집물 없음"
@@ -254,6 +260,11 @@ def run_editor(now: datetime) -> str:
 
     main = outcomes[0]
     run.cost_usd = sum((o.cost_usd for o in outcomes), Decimal(0))
+    limited = next((o for o in outcomes if o.limit_status is not None), None)
+    if limited is not None:
+        editor_budget.mark_limit_rejected(run, limited.limit_status, now)
+        logger.warning("Console 지출 한도 거절 — 슬롯 %s: %s", slot, run.note)
+        return f"편집 파이프라인: 슬롯 {slot} {run.note}"
     run.status = (
         EditorRun.Status.FINISHED
         if main.status == EditorCall.Status.SUCCEEDED
@@ -267,13 +278,3 @@ def run_editor(now: datetime) -> str:
     return (
         f"편집 파이프라인: 슬롯 {slot} {run.get_status_display()} — {run.note} (US${run.cost_usd})"
     )
-
-
-def month_cost(now: datetime) -> Decimal:
-    """이번 달(KST 달력 월) 편집 호출 추정 비용 합계."""
-    local = timezone.localtime(now)
-    start = local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    total = EditorCall.objects.filter(created_at__gte=start).aggregate(total=Sum("cost_usd"))[
-        "total"
-    ]
-    return total if total is not None else Decimal(0)

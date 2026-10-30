@@ -1,6 +1,7 @@
 """Django settings. Every deploy-specific value comes from the environment (see /.env.example)."""
 
 import os
+from decimal import Decimal
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -134,6 +135,9 @@ EDITOR_MODEL_CLASSIFY = env("EDITOR_MODEL_CLASSIFY", "claude-sonnet-5-5")
 EDITOR_EFFORT_CLASSIFY = env("EDITOR_EFFORT_CLASSIFY", "medium")
 # 그림자 비교용 두 번째 분류 모델(예 claude-haiku-5-5). 비우면 끔.
 EDITOR_MODEL_CLASSIFY_COMPARE = env("EDITOR_MODEL_CLASSIFY_COMPARE")
+# 월 예산 상한(US$, #124). Console 워크스페이스 지출 한도가 월 $20이라 그보다 낮게 둔다 — 넘으면
+# 앱이 먼저 실행을 건너뛰고 경보한다. 다음 단계 예상액까지 더해 본다(services/editor_budget.py).
+EDITOR_MONTHLY_BUDGET_USD = Decimal(env("EDITOR_MONTHLY_BUDGET_USD", "18"))
 EDITOR_MAX_ITEMS = int(env("EDITOR_MAX_ITEMS", "60"))
 EDITOR_MAX_WRITES = int(env("EDITOR_MAX_WRITES", "30"))
 EDITOR_MAX_FEATURED = int(env("EDITOR_MAX_FEATURED", "6"))

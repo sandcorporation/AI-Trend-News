@@ -37,8 +37,22 @@ class LlmRequest(TypedDict):
     thinking: NotRequired[ThinkingConfigParam]
 
 
+# Console 워크스페이스 지출 한도에 닿으면 요청이 4xx로 거절된다(설계 §6, #124). 인증 실패(401)·없는
+# 경로(404)·속도 제한(429)은 한도가 아니므로 뺀다.
+SPEND_LIMIT_STATUSES = frozenset({400, 402, 403})
+
+
 class LlmError(Exception):
     """API 호출 실패(429·5xx·연결 실패 등, SDK 재시도 뒤). 메시지에 키·본문을 넣지 않는다."""
+
+    def __init__(self, message: str = "", *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+    @property
+    def spend_limit_rejected(self) -> bool:
+        """Console 지출 한도 거절로 보이는 HTTP 4xx인가."""
+        return self.status_code in SPEND_LIMIT_STATUSES
 
 
 class LlmNotConfigured(LlmError):
@@ -59,7 +73,10 @@ class AnthropicClient:
         try:
             return self._client.messages.create(**request)
         except anthropic.APIStatusError as error:
-            raise LlmError(f"API 오류 {error.status_code}: {type(error).__name__}") from None
+            raise LlmError(
+                f"API 오류 {error.status_code}: {type(error).__name__}",
+                status_code=error.status_code,
+            ) from None
         except anthropic.APIError as error:
             raise LlmError(f"API 연결 실패: {type(error).__name__}") from None
 
