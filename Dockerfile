@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # One image: the Vite build is baked in and collected into Django's static files (served by whitenoise).
-# Built natively on oracle (arm64) by Jenkins; also builds on x86 for local checks.
+# Built off-host as linux/arm64 by Jenkins (macos, else sub; scripts/ci/build-image.sh), oracle only pulls; also builds on x86 for local checks.
 
 FROM node:24-alpine AS frontend
 RUN npm install -g pnpm@11.25.0
