@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Sandcorp news curation site (Django + django-ninja)"
 requires-python = ">=3.14"
 dependencies = [
+    "anthropic>=2.3.0",
     "beautifulsoup4>=4.15.0",
     "django>=6.1.2",
     "django-ninja>=1.7.1",

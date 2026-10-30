@@ -38,6 +38,8 @@ ENV PATH=/opt/venv/bin:$PATH \
 WORKDIR /app/backend
 COPY --from=deps /opt/venv /opt/venv
 COPY backend/ ./
+# 편집자 파이프라인이 단계 프롬프트를 automation/editor.md·stages/에서 조립한다(ADR 0006).
+COPY automation/ /app/automation/
 COPY --from=frontend /app/frontend/dist /app/frontend/dist
 RUN DJANGO_SECRET_KEY=collectstatic-only DJANGO_ADMIN_PATH=collectstatic-only python manage.py collectstatic --noinput \
  && useradd --uid 1000 --no-create-home app

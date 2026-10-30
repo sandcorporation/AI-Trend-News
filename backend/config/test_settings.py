@@ -19,3 +19,9 @@ METRICS_SNIPPET_URL = ""
 
 # 시험에서만 싼 비밀번호 해시(PBKDF2는 계정 하나 만들 때마다 CPU 0.5초+). 운영 설정은 기본값 그대로.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+# 편집자 파이프라인: 시험은 언제나 가짜 LLM(autouse fake_llm)만. 셸에 키가 있어도 덮는다.
+SANDCORP_NEWS_CLAUDE_KEY = ""
+EDITOR_PIPELINE_MODE = "off"
+EDITOR_MODEL_CLASSIFY_COMPARE = ""
+LLM_FORBID_REAL = True

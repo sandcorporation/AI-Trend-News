@@ -15,6 +15,7 @@ import pytest
 from django.test import override_settings
 from sandcorp_authkit.testing import FakeJwks, FakeTokenEndpoint, FixedClock
 
+from adapters.anthropic import FakeLlm, set_llm
 from adapters.clock import set_clock
 from adapters.discord import FakeNotifier, set_notifier
 from adapters.fetch import set_fetcher
@@ -136,6 +137,15 @@ def fake_discord() -> Iterator[FakeNotifier]:
     previous = set_notifier(notifier)
     yield notifier
     set_notifier(previous)
+
+
+@pytest.fixture(autouse=True)
+def fake_llm() -> Iterator[FakeLlm]:
+    """LLM은 실제 API로 나가지 않는다. 응답은 `.queue(...)`로 넣고 보낸 요청은 `.requests`."""
+    llm = FakeLlm()
+    previous = set_llm(llm)
+    yield llm
+    set_llm(previous)
 
 
 @pytest.fixture(autouse=True)
