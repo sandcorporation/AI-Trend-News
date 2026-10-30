@@ -18,13 +18,22 @@ from functools import partial
 from anthropic.types import Message
 from django.conf import settings
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from adapters.anthropic import LlmClient, LlmError, LlmRequest, get_llm
+from adapters.clock import get_clock, sleep
 from adapters.fetch import get_fetcher
-from articles.models import Article
+from articles.models import Article, Category
 from editor.models import EditorCall, EditorRun
-from services import editor_budget, editor_classify, editor_prompts, editor_write, llm_pricing
+from services import (
+    editor_batch,
+    editor_budget,
+    editor_classify,
+    editor_prompts,
+    editor_write,
+    llm_pricing,
+)
 from services.editor_classify import JSON, ClassifyInput, Decision, InvalidOutput
 from services.editor_prompts import parse_effort
 
@@ -254,6 +263,7 @@ class WriteStage:
     failed: int = 0
     unpublished: list[str] = field(default_factory=list)  # 「제목 — 까닭」
     stopped: bool = False  # 예산·지출 한도로 실행을 닫았다
+    queued: bool = False  # 배치 경로: 호출을 만들어 두었다(제출·회수는 `editor_batch`)
 
 
 def _write_one(
@@ -308,6 +318,10 @@ def write_stage(
     if not editor_budget.gate_stage(run, EditorCall.Stage.WRITE_NEW, len(new) + len(updates), now):
         result.stopped = True
         return result
+    if settings.EDITOR_USE_BATCH:
+        result.calls = editor_batch.enqueue_writes(run, decision)
+        result.queued = True
+        return result
     reader = editor_write.RunReader(get_fetcher())
     names = {c["slug"]: c["name"] for c in data["categories"]}
 
@@ -357,7 +371,13 @@ def write_stage(
     return result
 
 
-def _run_note(outcome: Outcome, data: ClassifyInput, writes: WriteStage, failed_calls: int) -> str:
+def _run_note(
+    outcome: Outcome,
+    categories: list[tuple[str, str]],
+    article_category: dict[int, str],
+    writes: WriteStage,
+    failed_calls: int,
+) -> str:
     """실행 종료 메모(서버가 만든다): 분류·작성 건수, 비게시·보류 까닭, 안 쓴 분야, 실패 호출."""
     parts = [_classify_note(outcome)]
     decision = outcome.decision
@@ -371,9 +391,8 @@ def _run_note(outcome: Outcome, data: ClassifyInput, writes: WriteStage, failed_
     if hold_reasons:
         parts.append("보류 까닭: " + ", ".join(f"{r} {n}" for r, n in hold_reasons.most_common(3)))
     used = {a["category"] for a in decision["new_articles"]}
-    article_category = {a["id"]: a["category"] for a in data["recent_articles"]}
     used |= {article_category[u["article_id"]] for u in decision["updates"]}
-    unused = [c["name"] for c in data["categories"] if c["slug"] not in used]
+    unused = [name for slug, name in categories if slug not in used]
     if unused:
         parts.append("안 쓴 분야: " + ", ".join(unused))
     if failed_calls:
@@ -381,11 +400,105 @@ def _run_note(outcome: Outcome, data: ClassifyInput, writes: WriteStage, failed_
     return " / ".join(parts)
 
 
+def finish_batch_run(run: EditorRun, now: datetime) -> str:
+    """배치 호출이 모두 끝난 실행을 닫는다. 메모는 분류 호출 출력과 작성 호출에서 서버가 만든다."""
+    classify_call = run.calls.filter(key=f"r{run.pk}-classify").first()
+    decision: Decision | None = None
+    problems: list[str] | None = None
+    if classify_call is not None and isinstance(classify_call.output, dict):
+        raw = classify_call.output.get("decision")
+        if isinstance(raw, dict):
+            decision = json.loads(json.dumps(raw))  # JSON 칸의 dict를 Decision으로
+        raw_problems = classify_call.output.get("problems")
+        problems = list(raw_problems) if isinstance(raw_problems, list) else None
+    main = Outcome(status=EditorCall.Status.SUCCEEDED, decision=decision, problems=problems)
+    writes = WriteStage(queued=True)
+    unpublished: list[str] = []
+    failed_writes = 0
+    for call in run.calls.filter(stage__in=editor_batch.WRITE_STAGES).order_by("id"):
+        writes.calls += 1
+        if call.status != EditorCall.Status.SUCCEEDED or not isinstance(call.output, dict):
+            failed_writes += 1
+            continue
+        article = call.output.get("article")
+        if isinstance(article, dict) and not article.get("published"):
+            reason = ""
+            if decision is not None:
+                reason = next(
+                    (
+                        a["reason"]
+                        for a in decision["new_articles"]
+                        if a["item_ids"] == call.item_ids and not a["published"]
+                    ),
+                    "",
+                )
+            why = article.get("unpublish_reason") or reason or "까닭 없음"
+            unpublished.append(f"{article.get('title')} — {why}")
+    writes.failed, writes.unpublished = failed_writes, unpublished
+    categories = list(Category.objects.order_by("order", "id").values_list("slug", "name"))
+    update_ids = [u["article_id"] for u in decision["updates"]] if decision else []
+    article_category = dict(
+        Article.objects.filter(pk__in=update_ids).values_list("pk", "category__slug")
+    )
+    failed_calls = run.calls.filter(
+        status__in=[EditorCall.Status.FAILED, EditorCall.Status.EXPIRED]
+    ).count()
+    run.cost_usd = run.calls.aggregate(total=Sum("cost_usd"))["total"] or Decimal(0)
+    run.status = EditorRun.Status.FINISHED if decision is not None else EditorRun.Status.FAILED
+    run.finished_at = now
+    run.note = _run_note(main, categories, article_category, writes, failed_calls)
+    compare = run.calls.filter(key=f"r{run.pk}-classify-compare").first()
+    if compare is not None:
+        compare_decision = (
+            compare.output.get("decision") if isinstance(compare.output, dict) else None
+        )
+        compare_outcome = Outcome(
+            status=compare.status,
+            decision=json.loads(json.dumps(compare_decision)) if compare_decision else None,
+            error=compare.error,
+        )
+        run.note += (
+            f" / 비교 {compare.model}: {_classify_note(compare_outcome).removeprefix('그림자 ')}"
+        )
+    run.save()
+    return f"슬롯 {run.slot} 배치 회수 끝 — {run.note} (US${run.cost_usd})"
+
+
+def _advance_pending(now: datetime) -> list[str]:
+    """열려 있는 배치 실행을 한 걸음 민다(끝난 배치 회수·대기 호출 제출). 끝낸 실행의 한 줄들."""
+    runs = editor_batch.pending_runs()
+    if not runs:
+        return []
+    llm = get_llm()
+    notes: list[str] = []
+    for run in runs:
+        if editor_batch.advance(run, llm, now) and run.status == EditorRun.Status.RUNNING:
+            notes.append(finish_batch_run(run, now))
+    return notes
+
+
+def _settle(now: datetime) -> list[str]:
+    """이번 주기 안에서 `EDITOR_BATCH_WAIT_SECONDS`까지 30초 간격으로 배치를 본다. 시간 안에 안
+    끝나면 그대로 둔다 — 다음 매시 주기의 `_advance_pending`이 이어 간다."""
+    notes = _advance_pending(now)
+    deadline = now + timedelta(seconds=settings.EDITOR_BATCH_WAIT_SECONDS)
+    steps = settings.EDITOR_BATCH_WAIT_SECONDS // editor_batch.POLL_SECONDS
+    for _ in range(steps):
+        if (
+            not editor_batch.pending_runs()
+            or get_clock().now() + timedelta(seconds=editor_batch.POLL_SECONDS) > deadline
+        ):
+            break
+        sleep(editor_batch.POLL_SECONDS)
+        notes += _advance_pending(get_clock().now())
+    return notes
+
+
 def run_editor(now: datetime) -> str:
     """한 주기. 무엇을 했는지 한 줄로 돌려준다(관리 명령이 출력한다).
 
-    키 없음·꺼짐·편집 시각 아님·이미 연 슬롯이면 아무것도 쓰지 않는다. 가격표에 없는 모델이면
-    실행을 열지 않고 `llm_pricing.UnknownModel`을 던진다.
+    키 없음·꺼짐이면 아무것도 하지 않는다. 먼저 이어 갈 배치 실행을 한 걸음 밀고(설계 §4-1),
+    편집 시각 슬롯이면 새 실행을 열고(2), 진행 중인 배치를 기다린다(3).
     """
     mode = settings.EDITOR_PIPELINE_MODE
     if mode == "off":
@@ -396,6 +509,13 @@ def run_editor(now: datetime) -> str:
     if not settings.SANDCORP_NEWS_CLAUDE_KEY:
         logger.warning("SANDCORP_NEWS_CLAUDE_KEY 없음 — 편집 파이프라인을 건너뜀")
         return "편집 파이프라인: 키 없음 — 건너뜀"
+    notes = _advance_pending(now)
+    message = _open_slot(now)
+    notes += _settle(now)
+    return message + "".join(f" / {note}" for note in notes)
+
+
+def _open_slot(now: datetime) -> str:
     slot = due_slot(now)
     if slot is None:
         return "편집 파이프라인: 편집 시각 아님"
@@ -453,11 +573,23 @@ def run_editor(now: datetime) -> str:
         if writes.stopped:
             logger.warning("편집 파이프라인 작성 단계 중단 — 슬롯 %s: %s", slot, run.note)
             return f"편집 파이프라인: 슬롯 {slot} {run.note} (US${run.cost_usd})"
+        if writes.queued:  # 실행은 열어 둔다 — 제출·회수는 `_settle`·다음 주기
+            run.save()
+            return (
+                f"편집 파이프라인: 슬롯 {slot} 분류 끝, 작성 {writes.calls}건 배치 제출 예정 "
+                f"(US${run.cost_usd})"
+            )
 
     run.status = EditorRun.Status.FINISHED if main.decision is not None else EditorRun.Status.FAILED
     run.finished_at = now
     failed_calls = run.calls.filter(status=EditorCall.Status.FAILED).count()
-    run.note = _run_note(main, data, writes, failed_calls)
+    run.note = _run_note(
+        main,
+        [(c["slug"], c["name"]) for c in data["categories"]],
+        {a["id"]: a["category"] for a in data["recent_articles"]},
+        writes,
+        failed_calls,
+    )
     if len(outcomes) > 1:
         run.note += f" / 비교 {models[1]}: {_classify_note(outcomes[1]).removeprefix('그림자 ')}"
     run.save()

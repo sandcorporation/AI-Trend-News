@@ -45,7 +45,11 @@ from services.retention import prune_items
 pytestmark = pytest.mark.django_db
 
 KST = timezone.get_fixed_timezone(9 * 60)
-SHADOW = {"EDITOR_PIPELINE_MODE": "shadow", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"}
+SHADOW = {
+    "EDITOR_PIPELINE_MODE": "shadow",
+    "SANDCORP_NEWS_CLAUDE_KEY": "test-key",
+    "EDITOR_USE_BATCH": False,  # 동기 경로(#125). 배치는 test_editor_batch.py
+}
 
 
 @pytest.fixture

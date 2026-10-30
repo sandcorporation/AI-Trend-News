@@ -9,9 +9,9 @@
 
 import hashlib
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import NotRequired, Protocol, TypedDict
+from typing import Literal, NotRequired, Protocol, TypedDict, cast
 
 import anthropic
 from anthropic.types import (
@@ -23,6 +23,7 @@ from anthropic.types import (
     ThinkingConfigParam,
     Usage,
 )
+from anthropic.types.messages.batch_create_params import Request as BatchCreateParamsRequest
 from django.conf import settings
 
 
@@ -35,6 +36,27 @@ class LlmRequest(TypedDict):
     messages: list[MessageParam]
     output_config: NotRequired[OutputConfigParam]
     thinking: NotRequired[ThinkingConfigParam]
+
+
+class BatchRequest(TypedDict):
+    """배치 요청 하나. `custom_id`는 `EditorCall.key` — 결과는 순서 없이 와서 이것으로 맞춘다."""
+
+    custom_id: str
+    params: LlmRequest
+
+
+BatchState = Literal["in_progress", "canceling", "ended"]
+BatchOutcome = Literal["succeeded", "errored", "canceled", "expired"]
+
+
+@dataclass(frozen=True)
+class BatchResult:
+    """배치 결과 한 줄. `succeeded`면 `message`가 있고, 아니면 `error`에 까닭(키·본문 없음)."""
+
+    custom_id: str
+    outcome: BatchOutcome
+    message: Message | None = None
+    error: str = ""
 
 
 # Console 워크스페이스 지출 한도에 닿으면 요청이 4xx로 거절된다(설계 §6, #124). 인증 실패(401)·없는
@@ -62,6 +84,12 @@ class LlmNotConfigured(LlmError):
 class LlmClient(Protocol):
     def create(self, request: LlmRequest) -> Message: ...
 
+    def submit_batch(self, requests: list[BatchRequest]) -> str: ...
+
+    def batch_status(self, batch_id: str) -> BatchState: ...
+
+    def batch_results(self, batch_id: str) -> Iterator[BatchResult]: ...
+
 
 class AnthropicClient:
     """실제 구현. SDK 기본 재시도(2회)를 그대로 쓴다."""
@@ -72,6 +100,50 @@ class AnthropicClient:
     def create(self, request: LlmRequest) -> Message:
         try:
             return self._client.messages.create(**request)
+        except anthropic.APIStatusError as error:
+            raise LlmError(
+                f"API 오류 {error.status_code}: {type(error).__name__}",
+                status_code=error.status_code,
+            ) from None
+        except anthropic.APIError as error:
+            raise LlmError(f"API 연결 실패: {type(error).__name__}") from None
+
+    def submit_batch(self, requests: list[BatchRequest]) -> str:
+        try:
+            batch = self._client.messages.batches.create(
+                requests=cast("list[BatchCreateParamsRequest]", requests)
+            )
+        except anthropic.APIStatusError as error:
+            raise LlmError(
+                f"API 오류 {error.status_code}: {type(error).__name__}",
+                status_code=error.status_code,
+            ) from None
+        except anthropic.APIError as error:
+            raise LlmError(f"API 연결 실패: {type(error).__name__}") from None
+        return batch.id
+
+    def batch_status(self, batch_id: str) -> BatchState:
+        try:
+            return self._client.messages.batches.retrieve(batch_id).processing_status
+        except anthropic.APIStatusError as error:
+            raise LlmError(
+                f"API 오류 {error.status_code}: {type(error).__name__}",
+                status_code=error.status_code,
+            ) from None
+        except anthropic.APIError as error:
+            raise LlmError(f"API 연결 실패: {type(error).__name__}") from None
+
+    def batch_results(self, batch_id: str) -> Iterator[BatchResult]:
+        try:
+            for entry in self._client.messages.batches.results(batch_id):
+                result = entry.result
+                if result.type == "succeeded":
+                    yield BatchResult(entry.custom_id, "succeeded", message=result.message)
+                elif result.type == "errored":
+                    kind = getattr(result.error.error, "type", "error")
+                    yield BatchResult(entry.custom_id, "errored", error=f"배치 오류: {kind}")
+                else:
+                    yield BatchResult(entry.custom_id, result.type)
         except anthropic.APIStatusError as error:
             raise LlmError(
                 f"API 오류 {error.status_code}: {type(error).__name__}",
@@ -94,7 +166,17 @@ class Truncated:
     """`stop_reason: max_tokens` — JSON이 중간에 잘린 응답."""
 
 
-Reply = dict[str, object] | Refusal | Truncated | LlmError
+@dataclass(frozen=True)
+class BatchErrored:
+    """배치 결과 `errored`(요청 단위 오류) — 동기 경로에서는 `LlmError`처럼 실패."""
+
+
+@dataclass(frozen=True)
+class BatchExpired:
+    """배치 결과 `expired`(24시간 안에 처리되지 못한 요청)."""
+
+
+Reply = dict[str, object] | Refusal | Truncated | LlmError | BatchErrored | BatchExpired
 
 # 실제 서비스의 최소 캐시 길이(토큰). 접두어가 이보다 짧으면 캐시가 써지지도 읽히지도 않는다.
 MIN_CACHE_TOKENS = 512
@@ -113,12 +195,21 @@ class FakeLlm:
     - 시스템 블록에 `cache_control`이 붙어 있고 길이가 최소 이상일 때만 캐시 토큰이 생긴다 —
       같은 모델·같은 접두어의 첫 요청은 `cache_creation_input_tokens`, 다음부터 `cache_read`.
     - `requests`에 보낸 요청을 남긴다.
+    - 배치: `submit_batch`가 요청마다 응답 큐를 하나씩 쓰고, `batch_status`는
+      `batch_polls_until_ended`번 `in_progress` 뒤 `ended`(None이면 끝나지 않음)를,
+      `batch_results`는 **거꾸로 섞은 순서**로
+      돌려준다(`custom_id`로 맞추는지 본다). `batch_requests`에 제출 묶음을 남긴다.
     """
 
     def __init__(self) -> None:
         self.replies: list[Reply] = []
         self.requests: list[LlmRequest] = []
         self._cached: set[tuple[str, str]] = set()
+        self.batch_requests: list[list[BatchRequest]] = []
+        self.batch_polls_until_ended: int | None = 1
+        self.submit_error: LlmError | None = None
+        self._batches: dict[str, list[BatchResult]] = {}
+        self._polls: dict[str, int] = {}
 
     def queue(self, *replies: Reply) -> None:
         self.replies.extend(replies)
@@ -130,6 +221,13 @@ class FakeLlm:
         reply = self.replies.pop(0)
         if isinstance(reply, LlmError):
             raise reply
+        if isinstance(reply, BatchErrored | BatchExpired):
+            raise AssertionError("FakeLlm: 배치 전용 응답을 동기 호출에 썼다")
+        return self._respond(request, reply)
+
+    def _respond(
+        self, request: LlmRequest, reply: dict[str, object] | Refusal | Truncated
+    ) -> Message:
         usage = self._usage(request)
         if isinstance(reply, Refusal):
             return self._message(request, "", "refusal", usage)
@@ -140,6 +238,46 @@ class FakeLlm:
         text = json.dumps(reply, ensure_ascii=False) if has_format else "네, 분류해 보겠습니다."
         usage.output_tokens = _tokens(text)
         return self._message(request, text, "end_turn", usage)
+
+    def submit_batch(self, requests: list[BatchRequest]) -> str:
+        if self.submit_error is not None:
+            raise self.submit_error
+        self.batch_requests.append(requests)
+        batch_id = f"msgbatch_fake{len(self.batch_requests)}"
+        results: list[BatchResult] = []
+        for entry in requests:
+            self.requests.append(entry["params"])
+            if not self.replies:
+                raise AssertionError("FakeLlm: 준비된 응답이 없다 — 시험에서 fake_llm.queue(...)")
+            reply = self.replies.pop(0)
+            if isinstance(reply, BatchErrored):
+                results.append(BatchResult(entry["custom_id"], "errored", error="배치 오류: fake"))
+            elif isinstance(reply, BatchExpired):
+                results.append(BatchResult(entry["custom_id"], "expired"))
+            elif isinstance(reply, LlmError):
+                results.append(BatchResult(entry["custom_id"], "errored", error=str(reply)))
+            else:
+                message = self._respond(entry["params"], reply)
+                results.append(BatchResult(entry["custom_id"], "succeeded", message=message))
+        self._batches[batch_id] = results
+        self._polls[batch_id] = 0
+        return batch_id
+
+    def batch_status(self, batch_id: str) -> BatchState:
+        if batch_id not in self._batches:
+            raise LlmError("없는 배치", status_code=404)
+        self._polls[batch_id] += 1
+        until = self.batch_polls_until_ended
+        if until is not None and self._polls[batch_id] > until:
+            return "ended"
+        return "in_progress"
+
+    def batch_results(self, batch_id: str) -> Iterator[BatchResult]:
+        if self.batch_polls_until_ended is None or self._polls.get(batch_id, 0) <= (
+            self.batch_polls_until_ended
+        ):
+            raise LlmError("배치가 아직 끝나지 않았다", status_code=409)
+        yield from reversed(self._batches[batch_id])
 
     def _usage(self, request: LlmRequest) -> Usage:
         cached_prefix = ""

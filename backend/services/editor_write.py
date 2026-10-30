@@ -422,3 +422,100 @@ def check(parsed: object, prepared: Prepared) -> Checked:
     if prepared["data"]["kind"] == "new":
         return check_new(parsed, prepared)
     return check_update(parsed, prepared)
+
+
+# --- 배치: 결과를 받을 때 입력을 다시 만들지 않으려고 검사에 필요한 칸만 남긴다 ---
+
+
+class Plan(TypedDict):
+    """`EditorCall.input["plan"]`: 분류 결정에서 온 작성 계획 + 검사에 쓰는 이미지. 원문은 없다."""
+
+    kind: Literal["new", "update"]
+    category: str
+    item_ids: list[int]
+    published: bool
+    featured: bool
+    reason: str
+    article_id: int | None
+    image_url: str
+
+
+def new_plan(entry: NewArticle) -> Plan:
+    return {
+        "kind": "new",
+        "category": entry["category"],
+        "item_ids": entry["item_ids"],
+        "published": entry["published"],
+        "featured": entry["featured"],
+        "reason": entry["reason"],
+        "article_id": None,
+        "image_url": "",
+    }
+
+
+def update_plan(entry: Update) -> Plan:
+    return {
+        "kind": "update",
+        "category": "",
+        "item_ids": entry["item_ids"],
+        "published": False,
+        "featured": False,
+        "reason": entry["reason"],
+        "article_id": entry["article_id"],
+        "image_url": "",
+    }
+
+
+def prepare_plan(plan: Plan, category_names: dict[str, str], reader: RunReader) -> Prepared:
+    """계획으로 입력을 (원문 포함) 새로 만든다 — 제출·재제출 때."""
+    if plan["kind"] == "new":
+        return prepare_new(
+            {
+                "item_ids": plan["item_ids"],
+                "category": plan["category"],
+                "published": plan["published"],
+                "featured": plan["featured"],
+                "reason": plan["reason"],
+            },
+            category_names,
+            reader,
+        )
+    assert plan["article_id"] is not None
+    return prepare_update(
+        {"article_id": plan["article_id"], "item_ids": plan["item_ids"], "reason": plan["reason"]},
+        reader,
+    )
+
+
+def checkable(plan: Plan) -> Prepared:
+    """`check`가 읽는 칸(수집물 id·분류 결정·기사 id·이미지)만 채운 입력. 결과를 받을 때 쓴다."""
+    stubs: list[WriteItem] = [
+        {
+            "id": i,
+            "source": "",
+            "url": "",
+            "published_at": None,
+            "title": "",
+            "excerpt": "",
+            "text": "",
+            "reason": "",
+        }
+        for i in plan["item_ids"]
+    ]
+    article: ExistingArticle | None = None
+    if plan["article_id"] is not None:
+        article = {"id": plan["article_id"], "title": "", "summary": "", "tags": []}
+    return {
+        "data": {
+            "kind": plan["kind"],
+            "category": {"slug": plan["category"], "name": plan["category"]},
+            "decided": (
+                {"published": plan["published"], "featured": plan["featured"]}
+                if plan["kind"] == "new"
+                else None
+            ),
+            "items": stubs,
+            "article": article,
+        },
+        "image_url": plan["image_url"],
+    }

@@ -98,6 +98,9 @@ class EditorCall(models.Model):
     effort = models.CharField("effort", max_length=10, blank=True)
     via_batch = models.BooleanField("배치", default=False)
     batch_id = models.CharField("배치 id", max_length=100, blank=True)
+    submitted_at = models.DateTimeField(
+        "배치 제출 시각", null=True, blank=True, help_text="24시간 넘으면 만료로 끝낸다"
+    )
     prompt_version = models.CharField("프롬프트 판", max_length=12, blank=True)
     status = models.CharField("상태", max_length=20, choices=Status.choices, default=Status.QUEUED)
     attempt = models.PositiveSmallIntegerField("재요청", default=0)
@@ -139,6 +142,7 @@ class Alert(models.Model):
         SOURCE_FAILING = "source_failing", "소스 연속 실패"
         PREDICTIONS_DUE = "predictions_due", "전망 평가 대기"
         EDITOR_BUDGET = "editor_budget", "편집 예산 초과"
+        EDITOR_BATCH_STALE = "editor_batch_stale", "편집 배치 지연"
 
     kind = models.CharField("종류", max_length=30, choices=Kind.choices)
     target = models.CharField(
