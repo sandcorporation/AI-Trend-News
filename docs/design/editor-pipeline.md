@@ -240,12 +240,13 @@ run_scheduler (매시 25분)
 | `SANDCORP_NEWS_CLAUDE_KEY` | (빈 값) | Anthropic API 키(대표 지정 이름). settings가 이 환경 변수를 읽고 어댑터가 `anthropic.Anthropic(api_key=settings.SANDCORP_NEWS_CLAUDE_KEY)`로 넘긴다. SDK가 스스로 읽는 `ANTHROPIC_API_KEY`에는 기대지 않는다. 운영 `.env` 주입은 전환 시점에 조율자가 한다. 비어 있으면 `run_editor`는 아무것도 하지 않고 기록만 한다. |
 | `EDITOR_PIPELINE_MODE` | `off` | `off` / `shadow` / `live` |
 | `EDITOR_RUN_HOURS` | `6,12,18` | KST 시 |
-| `EDITOR_MODEL_CLASSIFY` / `_WRITE` / `_COMMENTARY` | `claude-sonnet-5-5` 셋 다 | §7 비용표의 조합 A |
+| `EDITOR_MODEL_CLASSIFY` / `_WRITE` / `_COMMENTARY` | `claude-sonnet-5-5` / `claude-sonnet-5-5` / `claude-opus-5-5` | §7 조합 A에서 분석만 Opus(대표 결정 2026-10-30, #127) |
 | `EDITOR_EFFORT_CLASSIFY` / `_WRITE` / `_COMMENTARY` | `medium` / `low` / `high` | 분류는 묶음 판단, 작성은 짧은 정형 글, 분석은 추론 비중이 크다. 그림자 기간에 조정한다. |
 | `EDITOR_USE_BATCH` | `true` | 2·3단계 배치 |
 | `EDITOR_BATCH_WAIT_SECONDS` | `900` | 한 주기에서 배치를 기다리는 최대 시간 |
 | `EDITOR_MONTHLY_BUDGET_USD` | `18` | 대표 결정(2026-10-30, #124): Console 지출 한도가 월 $20이라 그보다 낮게 둔다. 추정($35~72/월)보다 낮아 한도에 닿으면 남은 기간은 건너뜀이 정상이다 |
 | `EDITOR_MAX_ITEMS` / `_WRITES` / `_FEATURED` | `60` / `30` / `6` | §2 |
+| `EDITOR_MAX_COMMENTARY` | `4` | 슬롯당 3단계 호출 상한(#127). Opus 단가가 높아 추천 상한(6)보다 낮게 둔다. 넘는 대상은 `skipped` 호출로 남는다. `0`이면 3단계를 끈다 |
 
 설정의 모델 이름이 가격표에 없으면 `run_editor`가 시작하지 않고 오류를 남긴다(비용이 조용히 0으로 기록되는 것을 막는다).
 
@@ -355,7 +356,7 @@ run_scheduler (매시 25분)
 - 그림자 실행은 「편집자 미실행」 경보 계산에서 뺀다(`last_finished_run`이 `mode != shadow`만 본다). 루틴이 멈췄는데 그림자가 가려 주면 안 된다.
 - **비교 화면**(#125 구현, `services/editor_compare.py`): admin 「편집자 실행」 상세에 「그림자 비교」. 수집물마다 파이프라인 판단(버림·갱신 대상·새 기사 묶음·보류) 옆에 실제 결과(그 수집물의 지금 상태와 묶인 기사)를 나란히, 갈라진 줄만 거르는 필터, 새 기사는 파이프라인 제목·요약과 루틴 기사 제목·요약, 분석은 두 글을 나란히. 집계: 판단 일치율, 파이프라인만 만든 기사 수, 루틴만 만든 기사 수, 실행 비용.
   - 실제 결과는 수집물의 지금 상태로 정한다: 묶인 기사가 실행 시작 뒤에 생겼으면 「새 기사」, 그 전부터 있었으면 「갱신」, 버림은 「버림」, 미처리는 「보류」. 일치는 갈래가 같고 갱신이면 대상 기사도 같을 때(새 기사의 묶음 경계는 따지지 않고 제목·요약 대조로 사람이 본다). 프루닝의 24시간 자동 버림도 「버림」으로 보이므로 오래된 실행일수록 보류↔버림 갈림이 늘 수 있다.
-  - #125는 2단계를 동기로 불렀고, #126부터 기본은 배치(`EDITOR_USE_BATCH=false`면 동기). 분석 나란히 보기는 3단계(티켓 5)에서 더한다.
+  - #125는 2단계를 동기로 불렀고, #126부터 기본은 배치(`EDITOR_USE_BATCH=false`면 동기). 분석 나란히 보기는 #127에서 더했다(「분석 대조」: 칸별 파이프라인 ↔ 같은 기사의 루틴 분석·카카오 포스트).
 
 ### 전환 절차
 

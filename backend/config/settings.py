@@ -135,6 +135,9 @@ EDITOR_MODEL_CLASSIFY = env("EDITOR_MODEL_CLASSIFY", "claude-sonnet-5-5")
 EDITOR_EFFORT_CLASSIFY = env("EDITOR_EFFORT_CLASSIFY", "medium")
 EDITOR_MODEL_WRITE = env("EDITOR_MODEL_WRITE", "claude-sonnet-5-5")
 EDITOR_EFFORT_WRITE = env("EDITOR_EFFORT_WRITE", "low")
+# 3단계 분석·포스트(#127). 대표 결정(2026-10-30): 분석 모델 Opus 5.5.
+EDITOR_MODEL_COMMENTARY = env("EDITOR_MODEL_COMMENTARY", "claude-opus-5-5")
+EDITOR_EFFORT_COMMENTARY = env("EDITOR_EFFORT_COMMENTARY", "high")
 # 그림자 비교용 두 번째 분류 모델(예 claude-haiku-5-5). 비우면 끔.
 EDITOR_MODEL_CLASSIFY_COMPARE = env("EDITOR_MODEL_CLASSIFY_COMPARE")
 # 월 예산 상한(US$, #124). Console 워크스페이스 지출 한도가 월 $20이라 그보다 낮게 둔다 — 넘으면
@@ -145,6 +148,7 @@ EDITOR_BATCH_WAIT_SECONDS = int(env("EDITOR_BATCH_WAIT_SECONDS", "900"))
 EDITOR_MAX_ITEMS = int(env("EDITOR_MAX_ITEMS", "60"))
 EDITOR_MAX_WRITES = int(env("EDITOR_MAX_WRITES", "30"))
 EDITOR_MAX_FEATURED = int(env("EDITOR_MAX_FEATURED", "6"))
+EDITOR_MAX_COMMENTARY = int(env("EDITOR_MAX_COMMENTARY", "4"))  # 슬롯당 3단계 호출 상한
 
 # Fetch fallback (#70): URL template with {url}; used once when the direct GET looks bot-blocked.
 FETCH_FALLBACK_URL = env("FETCH_FALLBACK_URL", "")

@@ -31,6 +31,7 @@ from services.editor_classify import (
 from services.reading import MAX_BYTES, MIN_TEXT_LENGTH, extract_text
 
 WRITE_TEXT_CHARS = 4000
+READ_TEXT_CHARS = 8000  # 캐시에 두는 원문 길이(3단계 분석이 8,000자까지 쓴다)
 TEXTS_PER_ARTICLE = 3
 FETCHES_PER_RUN = 60
 EXCERPT_CHARS = 600
@@ -61,14 +62,15 @@ class RunReader:
         self.fetches = 0
         self._cache: dict[str, Fetched] = {}
 
-    def read(self, url: str) -> Fetched:
-        if url in self._cache:
-            return self._cache[url]
-        if self.fetches >= self.limit:
-            return {"text": "", "reason": f"실행당 페치 상한 {self.limit}회 — 발췌로 대신"}
-        self.fetches += 1
-        self._cache[url] = result = self._fetch(url)
-        return result
+    def read(self, url: str, chars: int = WRITE_TEXT_CHARS) -> Fetched:
+        """원문 앞 `chars`자(최대 `READ_TEXT_CHARS`). 같은 URL은 길이가 달라도 다시 받지 않는다."""
+        if url not in self._cache:
+            if self.fetches >= self.limit:
+                return {"text": "", "reason": f"실행당 페치 상한 {self.limit}회 — 발췌로 대신"}
+            self.fetches += 1
+            self._cache[url] = self._fetch(url)
+        cached = self._cache[url]
+        return {"text": cached["text"][:chars], "reason": cached["reason"]}
 
     def _fetch(self, url: str) -> Fetched:
         try:
@@ -81,7 +83,7 @@ class RunReader:
             return {"text": "", "reason": f"본문을 해석하지 못함: {type(error).__name__}"}
         if len(text) < MIN_TEXT_LENGTH:
             return {"text": "", "reason": "본문을 찾지 못함"}
-        return {"text": text[:WRITE_TEXT_CHARS], "reason": ""}
+        return {"text": text[:READ_TEXT_CHARS], "reason": ""}
 
 
 # --- 입력 ---

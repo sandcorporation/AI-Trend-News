@@ -91,6 +91,41 @@ def _clean_watchpoints(watchpoints: list[str]) -> list[str]:
     return [_clean("지켜볼 신호", w, MAX_WATCHPOINT_LENGTH) for w in watchpoints]
 
 
+class CommentaryFields(TypedDict):
+    background: str
+    significance: str
+    outlook_bull: str
+    outlook_bear: str
+    opinion: str
+    predictions: list[PredictionData]
+    watchpoints: list[str]
+
+
+def clean_fields(
+    *,
+    background: str,
+    significance: str,
+    outlook_bull: str,
+    outlook_bear: str,
+    opinion: str,
+    predictions: list[PredictionIn],
+    watchpoints: list[str] | None = None,
+) -> CommentaryFields:
+    """저장 없이 길이·개수만 검사하고 다듬은 값을 돌려준다. 어기면 `InvalidCommentary`.
+
+    `upsert_commentary`와 편집 파이프라인 3단계(`services/editor_commentary.py`)가 함께 쓴다.
+    """
+    return {
+        "background": _clean("배경", background, MAX_TEXT_LENGTH),
+        "significance": _clean("의미", significance, MAX_TEXT_LENGTH),
+        "outlook_bull": _clean("낙관 관점", outlook_bull, MAX_TEXT_LENGTH),
+        "outlook_bear": _clean("회의 관점", outlook_bear, MAX_TEXT_LENGTH),
+        "opinion": _clean("의견", opinion, MAX_OPINION_LENGTH),
+        "predictions": _clean_predictions(predictions),
+        "watchpoints": _clean_watchpoints(watchpoints or []),
+    }
+
+
 @transaction.atomic
 def upsert_commentary(
     actor: Actor,
@@ -111,15 +146,15 @@ def upsert_commentary(
             f"추천이면서 게시된 기사에만 분석을 쓸 수 있습니다: {article_id} "
             f"(게시 {article.published}, 추천 {article.featured})"
         )
-    fields = {
-        "background": _clean("배경", background, MAX_TEXT_LENGTH),
-        "significance": _clean("의미", significance, MAX_TEXT_LENGTH),
-        "outlook_bull": _clean("낙관 관점", outlook_bull, MAX_TEXT_LENGTH),
-        "outlook_bear": _clean("회의 관점", outlook_bear, MAX_TEXT_LENGTH),
-        "opinion": _clean("의견", opinion, MAX_OPINION_LENGTH),
-        "predictions": _clean_predictions(predictions),
-        "watchpoints": _clean_watchpoints(watchpoints or []),
-    }
+    fields = clean_fields(
+        background=background,
+        significance=significance,
+        outlook_bull=outlook_bull,
+        outlook_bear=outlook_bear,
+        opinion=opinion,
+        predictions=predictions,
+        watchpoints=watchpoints,
+    )
     existing = Commentary.objects.select_for_update().filter(article=article).first()
     if existing is None:
         created = Commentary.objects.create(article=article, **fields)

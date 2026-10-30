@@ -2,8 +2,10 @@
 
 그림자 모드: 편집 시각 슬롯이면 `EditorRun`(mode=shadow)을 열고 1단계 분류를 동기로 한 번
 부르고(비교 모델이 설정돼 있으면 같은 입력으로 한 번 더, #123), 분류가 정한 새 기사·갱신마다
-2단계 작성을 동기로 한 번씩 부른다(#125, 앞에 예산 확인 `gate_stage`). 결과·토큰·비용은
-`EditorCall`에만 남기고 끝낸다 — 수집물·기사는 하나도 바꾸지 않는다. 실행 메모는 서버가 만든다.
+2단계 작성을 부르고(#125, 기본은 배치 #126, 앞에 예산 확인 `gate_stage`), 작성이 모두 끝나면
+추천·게시 기사마다 3단계 분석·포스트를 부른다(#127, `commentary_stage`/`editor_batch`). 결과·토큰·
+비용은 `EditorCall`에만 남긴다 — 수집물·기사·분석·포스트는 하나도 바꾸지 않는다. 실행 메모는 서버가
+만든다.
 """
 
 import json
@@ -30,6 +32,7 @@ from services import (
     editor_batch,
     editor_budget,
     editor_classify,
+    editor_commentary,
     editor_prompts,
     editor_write,
     llm_pricing,
@@ -200,7 +203,7 @@ def _record(
 ) -> EditorCall:
     prompt_stage: editor_prompts.Stage = (
         "classify" if stage == EditorCall.Stage.CLASSIFY else "write"
-    )
+    )  # 3단계는 `editor_commentary.enqueue`가 호출 행을 만든다
     return EditorCall.objects.create(
         run=run,
         stage=stage,
@@ -305,7 +308,12 @@ def _write_one(
 
 
 def write_stage(
-    run: EditorRun, llm: LlmClient, decision: Decision, data: ClassifyInput, now: datetime
+    run: EditorRun,
+    llm: LlmClient,
+    decision: Decision,
+    data: ClassifyInput,
+    now: datetime,
+    reader: editor_write.RunReader | None = None,
 ) -> WriteStage:
     """분류의 새 기사·갱신마다 작성 호출 한 번(동기). 앞에서 예산을 확인한다(#124 `gate_stage`).
 
@@ -322,7 +330,7 @@ def write_stage(
         result.calls = editor_batch.enqueue_writes(run, decision)
         result.queued = True
         return result
-    reader = editor_write.RunReader(get_fetcher())
+    reader = reader or editor_write.RunReader(get_fetcher())
     names = {c["slug"]: c["name"] for c in data["categories"]}
 
     jobs: list[tuple[str, str, Callable[[], editor_write.Prepared], list[int], int | None]] = []
@@ -371,7 +379,73 @@ def write_stage(
     return result
 
 
+# --- 3단계 분석·포스트 ---
+
+
+def commentary(
+    llm: LlmClient,
+    data: editor_commentary.CommentaryInput,
+    plan: editor_commentary.Plan,
+    model: str,
+    effort: str,
+) -> Outcome:
+    """분석 호출 하나(재요청 규칙은 `call_json`). `editor_probe`도 부른다."""
+
+    def accept(parsed: object) -> tuple[JSON, list[str]]:
+        return editor_commentary.check(parsed, plan), []
+
+    return call_json(
+        llm,
+        model,
+        lambda note: editor_commentary.request(data, model, effort, retry_note=note),
+        accept,
+    )
+
+
+def commentary_stage(
+    run: EditorRun, llm: LlmClient, now: datetime, reader: editor_write.RunReader | None = None
+) -> bool:
+    """동기 경로: 작성이 끝난 실행에서 분석 대상마다 한 번씩 부른다. 예산·지출 한도로 멈추면 False.
+
+    배치 경로는 `editor_batch.advance`가 작성 호출이 모두 끝난 뒤 같은 `enqueue`로 만든다.
+    """
+    calls = editor_commentary.enqueue(run, now, via_batch=False)
+    if calls is None:
+        return False
+    reader = reader or editor_write.RunReader(get_fetcher())  # 작성이 받은 원문을 다시 받지 않게
+    for call in calls:
+        plan = editor_commentary.plan_of(call)
+        data = editor_commentary.prepare(plan, reader, now)
+        outcome = commentary(llm, data, plan, call.model, call.effort)
+        call.status, call.attempt = outcome.status, outcome.attempt
+        call.input = {**editor_commentary.input_summary(data), "plan": dict(plan)}
+        call.output, call.stop_reason, call.error = (
+            outcome.output,
+            outcome.stop_reason,
+            outcome.error,
+        )
+        call.input_tokens = outcome.input_tokens
+        call.output_tokens = outcome.output_tokens
+        call.cache_creation_input_tokens = outcome.cache_creation_input_tokens
+        call.cache_read_input_tokens = outcome.cache_read_input_tokens
+        call.cost_usd, call.finished_at = outcome.cost_usd, now
+        call.save()
+        run.cost_usd += outcome.cost_usd
+        if outcome.limit_status is not None:
+            run.calls.filter(
+                stage=EditorCall.Stage.COMMENTARY, status=EditorCall.Status.QUEUED
+            ).update(
+                status=EditorCall.Status.FAILED,
+                error="지출 한도 거절로 부르지 않음",
+                finished_at=now,
+            )
+            editor_budget.mark_limit_rejected(run, outcome.limit_status, now)
+            return False
+    return True
+
+
 def _run_note(
+    run: EditorRun,
     outcome: Outcome,
     categories: list[tuple[str, str]],
     article_category: dict[int, str],
@@ -395,6 +469,9 @@ def _run_note(
     unused = [name for slug, name in categories if slug not in used]
     if unused:
         parts.append("안 쓴 분야: " + ", ".join(unused))
+    commentary_note = editor_commentary.note(run)
+    if commentary_note:
+        parts.append(commentary_note)
     if failed_calls:
         parts.append(f"실패 호출 {failed_calls}")
     return " / ".join(parts)
@@ -446,7 +523,7 @@ def finish_batch_run(run: EditorRun, now: datetime) -> str:
     run.cost_usd = run.calls.aggregate(total=Sum("cost_usd"))["total"] or Decimal(0)
     run.status = EditorRun.Status.FINISHED if decision is not None else EditorRun.Status.FAILED
     run.finished_at = now
-    run.note = _run_note(main, categories, article_category, writes, failed_calls)
+    run.note = _run_note(run, main, categories, article_category, writes, failed_calls)
     compare = run.calls.filter(key=f"r{run.pk}-classify-compare").first()
     if compare is not None:
         compare_decision = (
@@ -526,10 +603,11 @@ def _open_slot(now: datetime) -> str:
     models = [settings.EDITOR_MODEL_CLASSIFY]
     if settings.EDITOR_MODEL_CLASSIFY_COMPARE:
         models.append(settings.EDITOR_MODEL_CLASSIFY_COMPARE)
-    for model in [*models, settings.EDITOR_MODEL_WRITE]:
+    for model in [*models, settings.EDITOR_MODEL_WRITE, settings.EDITOR_MODEL_COMMENTARY]:
         llm_pricing.check_model(model)
     parse_effort(effort)
     parse_effort(settings.EDITOR_EFFORT_WRITE)
+    parse_effort(settings.EDITOR_EFFORT_COMMENTARY)
 
     try:
         with transaction.atomic():
@@ -569,7 +647,8 @@ def _open_slot(now: datetime) -> str:
 
     writes = WriteStage()
     if main.decision is not None:
-        writes = write_stage(run, llm, main.decision, data, now)
+        reader = editor_write.RunReader(get_fetcher())  # 실행 하나의 원문 캐시·페치 상한
+        writes = write_stage(run, llm, main.decision, data, now, reader)
         if writes.stopped:
             logger.warning("편집 파이프라인 작성 단계 중단 — 슬롯 %s: %s", slot, run.note)
             return f"편집 파이프라인: 슬롯 {slot} {run.note} (US${run.cost_usd})"
@@ -579,11 +658,15 @@ def _open_slot(now: datetime) -> str:
                 f"편집 파이프라인: 슬롯 {slot} 분류 끝, 작성 {writes.calls}건 배치 제출 예정 "
                 f"(US${run.cost_usd})"
             )
+        if not commentary_stage(run, llm, now, reader):
+            logger.warning("편집 파이프라인 분석 단계 중단 — 슬롯 %s: %s", slot, run.note)
+            return f"편집 파이프라인: 슬롯 {slot} {run.note} (US${run.cost_usd})"
 
     run.status = EditorRun.Status.FINISHED if main.decision is not None else EditorRun.Status.FAILED
     run.finished_at = now
     failed_calls = run.calls.filter(status=EditorCall.Status.FAILED).count()
     run.note = _run_note(
+        run,
         main,
         [(c["slug"], c["name"]) for c in data["categories"]],
         {a["id"]: a["category"] for a in data["recent_articles"]},

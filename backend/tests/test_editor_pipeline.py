@@ -49,6 +49,7 @@ SHADOW = {
     "EDITOR_PIPELINE_MODE": "shadow",
     "SANDCORP_NEWS_CLAUDE_KEY": "test-key",
     "EDITOR_USE_BATCH": False,  # 동기 경로(#125). 배치는 test_editor_batch.py
+    "EDITOR_MAX_COMMENTARY": 0,  # 3단계는 끈다(분석·포스트는 test_editor_commentary.py)
 }
 
 

@@ -47,6 +47,11 @@ def article_url(slug: str) -> str:
     return f"{settings.SITE_URL}/a/{slug}"
 
 
+def with_article_link(text: str, slug: str) -> str:
+    """문구 끝 줄에 기사 링크를 붙인다(편집 파이프라인 3단계: 모델은 링크 없는 문장만 쓴다)."""
+    return f"{text.strip()}\n{article_url(slug)}"
+
+
 @transaction.atomic
 def upsert_post_draft(actor: Actor, article_id: int, channel: str, text: str) -> Post:
     """기사·채널당 초안 하나를 만들거나 갱신한다. 추천이면서 게시된 기사만, 올림이면 수정 불가."""

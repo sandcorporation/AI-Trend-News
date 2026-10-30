@@ -34,7 +34,11 @@ from tests.test_editor_pipeline import (
 pytestmark = pytest.mark.django_db
 
 KST = timezone.get_fixed_timezone(9 * 60)
-BATCH = {"EDITOR_PIPELINE_MODE": "shadow", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"}  # 배치가 기본
+BATCH = {  # 배치가 기본. 3단계는 끈다(분석·포스트는 test_editor_commentary.py)
+    "EDITOR_PIPELINE_MODE": "shadow",
+    "SANDCORP_NEWS_CLAUDE_KEY": "test-key",
+    "EDITOR_MAX_COMMENTARY": 0,
+}
 
 
 @pytest.fixture
