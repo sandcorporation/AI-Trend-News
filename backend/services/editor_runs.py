@@ -5,11 +5,19 @@
 """
 
 from django.db import transaction
+from django.db.models import QuerySet
 from django.utils import timezone
 
 from editor.models import ABANDON_AFTER, EditorRun
 
-__all__ = ["ABANDON_AFTER", "EditorRunError", "finish_run", "last_finished_run", "start_run"]
+__all__ = [
+    "ABANDON_AFTER",
+    "EditorRunError",
+    "counted_runs",
+    "finish_run",
+    "last_finished_run",
+    "start_run",
+]
 
 
 class EditorRunError(Exception):
@@ -36,9 +44,15 @@ def finish_run(
         raise EditorRunError("건수는 0 이상이어야 합니다.")
     run.finished_at = timezone.now()
     run.created, run.updated, run.discarded, run.note = created, updated, discarded, note
+    run.status = EditorRun.Status.FINISHED
     run.save()
     return run
 
 
+def counted_runs() -> QuerySet[EditorRun]:
+    """미실행 경보가 세는 실행: 그림자 실행은 뺀다(루틴이 멈춘 것을 그림자가 가리면 안 된다)."""
+    return EditorRun.objects.exclude(mode=EditorRun.Mode.SHADOW)
+
+
 def last_finished_run() -> EditorRun | None:
-    return EditorRun.objects.filter(finished_at__isnull=False).order_by("-finished_at").first()
+    return counted_runs().filter(finished_at__isnull=False).order_by("-finished_at").first()

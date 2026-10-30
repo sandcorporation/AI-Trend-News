@@ -125,6 +125,19 @@ COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
 # 편집자 클라우드 예약의 하루 실행 횟수(공개 집계 /api/public/stats가 그대로 낸다).
 EDITOR_RUNS_PER_DAY = 3
 
+# 편집자 파이프라인(ADR 0006, docs/design/editor-pipeline.md §6). 키는 대표 지정 이름으로만 읽는다
+# (SDK가 스스로 읽는 ANTHROPIC_API_KEY에 기대지 않는다). 비면 run_editor는 기록만 하고 건너뛴다.
+SANDCORP_NEWS_CLAUDE_KEY = env("SANDCORP_NEWS_CLAUDE_KEY")
+EDITOR_PIPELINE_MODE = env("EDITOR_PIPELINE_MODE", "off")  # off / shadow / live
+EDITOR_RUN_HOURS = tuple(int(h) for h in env("EDITOR_RUN_HOURS", "6,12,18").split(",") if h.strip())
+EDITOR_MODEL_CLASSIFY = env("EDITOR_MODEL_CLASSIFY", "claude-sonnet-5-5")
+EDITOR_EFFORT_CLASSIFY = env("EDITOR_EFFORT_CLASSIFY", "medium")
+# 그림자 비교용 두 번째 분류 모델(예 claude-haiku-5-5). 비우면 끔.
+EDITOR_MODEL_CLASSIFY_COMPARE = env("EDITOR_MODEL_CLASSIFY_COMPARE")
+EDITOR_MAX_ITEMS = int(env("EDITOR_MAX_ITEMS", "60"))
+EDITOR_MAX_WRITES = int(env("EDITOR_MAX_WRITES", "30"))
+EDITOR_MAX_FEATURED = int(env("EDITOR_MAX_FEATURED", "6"))
+
 # Fetch fallback (#70): URL template with {url}; used once when the direct GET looks bot-blocked.
 FETCH_FALLBACK_URL = env("FETCH_FALLBACK_URL", "")
 

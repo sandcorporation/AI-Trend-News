@@ -283,7 +283,13 @@ def test_run_cycle_continues_after_a_failing_command() -> None:
 
 
 def test_scheduler_commands_list_is_collect_prune_alerts_then_resend() -> None:
-    assert COMMANDS == ("collect", "prune_items", "check_alerts", "resend_inquiries")
+    assert COMMANDS == (
+        "collect",
+        "prune_items",
+        "check_alerts",
+        "resend_inquiries",
+        "run_editor",
+    )
 
 
 def _feed(entries: list[tuple[str, datetime | None]]) -> bytes:

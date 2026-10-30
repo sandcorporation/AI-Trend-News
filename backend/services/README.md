@@ -6,4 +6,4 @@ ninja 관리자 API(`core/api.py`와 이후 앱의 api), MCP 도구, Django admi
 
 - 외부 의존(소스 HTTP 페치, portfolio 문의 API, Discord 웹훅, sandcorp-auth JWKS)은 함수 인자나 `adapters/`의 등록 지점을 통해 받는다.
 - 모델은 Django 앱(예: 수집 앱)에 두고, 모델을 읽고 쓰는 규칙은 여기 모듈에 둔다.
-- 서버에는 LLM 호출 코드가 없다(ADR 0002). 번역·요약은 편집자가 MCP로 넣는다.
+- LLM 호출은 `adapters/anthropic.py`만 한다(ADR 0006). 편집자 파이프라인은 `editor_pipeline.py`(슬롯·실행), `editor_classify.py`(분류 입력·스키마·검증), `editor_prompts.py`(editor.md 절 조립), `llm_pricing.py`(단가·비용). 루틴 편집자(ADR 0002)는 그림자 기간 동안 MCP로 계속 넣는다.

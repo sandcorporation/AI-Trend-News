@@ -11,7 +11,13 @@ from django.core.management import call_command
 logger = logging.getLogger("scheduler")
 
 # 실행 순서. 한 곳에서만 고친다.
-COMMANDS: tuple[str, ...] = ("collect", "prune_items", "check_alerts", "resend_inquiries")
+COMMANDS: tuple[str, ...] = (
+    "collect",
+    "prune_items",
+    "check_alerts",
+    "resend_inquiries",
+    "run_editor",
+)
 
 CommandCaller = Callable[[str], object]
 

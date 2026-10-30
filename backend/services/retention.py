@@ -1,4 +1,5 @@
-"""정리 규칙. 수집물은 `Item`만 지운다(`SeenUrl`은 지우면 재수집된다). 조회 집계도 지운다."""
+"""정리 규칙. 수집물은 `Item`만 지운다(`SeenUrl`은 지우면 재수집된다). 조회 집계도 지우고,
+오래된 편집 호출(`EditorCall`)의 입출력 JSON을 비운다."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from django.utils import timezone
 
 from articles.models import ArticleView
 from collection.models import Item
+from editor.models import EditorCall
 
 RETENTION = timedelta(days=30)
 
@@ -19,6 +21,7 @@ class PruneResult:
     discarded: int  # 24시간 지나 자동으로 버림 처리한 미처리 수집물
     kept: int
     views_deleted: int = 0  # 30일 넘은 기사 조회 집계
+    calls_cleared: int = 0  # 30일 넘어 입출력 JSON을 비운 편집 호출(토큰·비용은 남김)
 
 
 def prune_items(now: Callable[[], datetime] = timezone.now) -> PruneResult:
@@ -39,9 +42,15 @@ def prune_items(now: Callable[[], datetime] = timezone.now) -> PruneResult:
     views_deleted, _ = ArticleView.objects.filter(
         date__lt=timezone.localtime(current).date() - RETENTION
     ).delete()
+    calls_cleared = (
+        EditorCall.objects.filter(created_at__lt=cutoff)
+        .exclude(input={}, output__isnull=True)
+        .update(input={}, output=None)
+    )
     return PruneResult(
         deleted=deleted,
         discarded=discarded,
         kept=Item.objects.count(),
         views_deleted=views_deleted,
+        calls_cleared=calls_cleared,
     )

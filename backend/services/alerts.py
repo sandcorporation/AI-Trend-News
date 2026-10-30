@@ -13,7 +13,7 @@ from adapters.discord import Notifier
 from collection.models import Source
 from editor.models import ABANDON_AFTER, Alert, EditorRun
 from services import predictions
-from services.editor_runs import last_finished_run
+from services.editor_runs import counted_runs, last_finished_run
 
 logger = logging.getLogger("alerts")
 
@@ -33,7 +33,7 @@ def _editor_condition(now: datetime) -> Condition | None:
     last = last_finished_run()
     abandoned = [
         run
-        for run in EditorRun.objects.filter(finished_at__isnull=True)
+        for run in counted_runs().filter(finished_at__isnull=True)
         if (last is None or run.started_at > last.finished_at)  # type: ignore[operator]
         and run.state(now) == EditorRun.State.ABANDONED
     ]
