@@ -11,6 +11,7 @@ from django.utils import timezone
 from articles.models import ArticleView
 from collection.models import Item
 from editor.models import EditorCall
+from services.editor_reserve import reserved_item_ids
 
 RETENTION = timedelta(days=30)
 
@@ -27,13 +28,18 @@ class PruneResult:
 def prune_items(now: Callable[[], datetime] = timezone.now) -> PruneResult:
     """오래 쌓인 미처리를 버림 처리하고(PENDING_MAX_AGE_HOURS, 삭제 아님), 30일 지난 것을 지운다.
 
-    묶인 수집물은 어느 쪽도 건드리지 않는다.
+    묶인 수집물은 어느 쪽도 건드리지 않는다. 게시 모드 파이프라인이 예약한 수집물은
+    자동 버림에서 뺀다.
     """
     current = now()
-    discarded = Item.objects.filter(
-        status=Item.Status.PENDING,
-        collected_at__lt=current - timedelta(hours=settings.PENDING_MAX_AGE_HOURS),
-    ).update(status=Item.Status.DISCARDED)
+    discarded = (
+        Item.objects.filter(
+            status=Item.Status.PENDING,
+            collected_at__lt=current - timedelta(hours=settings.PENDING_MAX_AGE_HOURS),
+        )
+        .exclude(pk__in=list(reserved_item_ids(current)))  # 게시 모드 예약 중(#128)
+        .update(status=Item.Status.DISCARDED)
+    )
     cutoff = current - RETENTION
     stale = Item.objects.filter(
         status__in=[Item.Status.PENDING, Item.Status.DISCARDED], collected_at__lt=cutoff

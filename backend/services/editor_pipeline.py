@@ -6,6 +6,9 @@
 추천·게시 기사마다 3단계 분석·포스트를 부른다(#127, `commentary_stage`/`editor_batch`). 결과·토큰·
 비용은 `EditorCall`에만 남긴다 — 수집물·기사·분석·포스트는 하나도 바꾸지 않는다. 실행 메모는 서버가
 만든다.
+
+게시 모드(#128): 같은 흐름으로 `EditorRun`(mode=live)을 열고, 호출이 성공하면 `editor_save`가 서비스
+함수로 저장한다(분류 버림·기사 생성/갱신·분석·포스트 초안). 저장 여부는 실행의 모드가 정한다.
 """
 
 import json
@@ -34,6 +37,7 @@ from services import (
     editor_classify,
     editor_commentary,
     editor_prompts,
+    editor_save,
     editor_write,
     llm_pricing,
 )
@@ -42,6 +46,8 @@ from services.editor_prompts import parse_effort
 
 logger = logging.getLogger("editor")
 
+DONE = (EditorCall.Status.SUCCEEDED, EditorCall.Status.SAVED)  # 그림자는 성공, 게시는 저장됨
+MODES = {"shadow": EditorRun.Mode.SHADOW, "live": EditorRun.Mode.LIVE}
 CATCH_UP = timedelta(hours=3)  # 슬롯 주기를 놓쳤을 때 따라잡는 한계
 CLASSIFY_MAX_TOKENS = 16_000  # thinking 포함. SDK의 비스트리밍 상한(약 21K) 안
 
@@ -228,16 +234,17 @@ def _record(
     )
 
 
-def _classify_note(outcome: Outcome) -> str:
+def _classify_note(outcome: Outcome, *, live: bool = False) -> str:
+    label = "분류" if live else "그림자 분류"
     if outcome.decision is None:
-        return f"그림자 분류 실패: {outcome.error}"
+        return f"{label} 실패: {outcome.error}"
     d = outcome.decision
     counts = (
         f"새 기사 {len(d['new_articles'])} · 갱신 {len(d['updates'])} · "
         f"버림 {len(d['discards'])} · 보류 {len(d['holds'])}"
     )
     fixed = f" / 검증 고침 {len(outcome.problems or [])}건" if outcome.problems else ""
-    return f"그림자 분류: {counts}{fixed}"
+    return f"{label}: {counts}{fixed}"
 
 
 # --- 2단계 작성 ---
@@ -279,20 +286,20 @@ def _write_one(
     item_ids: list[int],
     article_id: int | None,
     now: datetime,
-) -> Outcome:
+) -> tuple[Outcome, EditorCall]:
     model, effort = settings.EDITOR_MODEL_WRITE, settings.EDITOR_EFFORT_WRITE
     try:
         prepared = prepare()
     except Article.DoesNotExist:
         outcome = Outcome(status=EditorCall.Status.FAILED, error="갱신 대상 기사가 없다")
-        _record(
+        call = _record(
             run, key=key, stage=stage, model=model, effort=effort, item_ids=item_ids,
             summary={}, outcome=outcome, now=now,
         )  # fmt: skip
-        return outcome
+        return outcome, call
 
     outcome = write(llm, prepared, model, effort)
-    _record(
+    call = _record(
         run,
         key=key,
         stage=stage,
@@ -304,7 +311,8 @@ def _write_one(
         now=now,
         article_id=article_id,
     )
-    return outcome
+    editor_save.save(call, now)  # 게시 실행만 저장한다(그림자는 아무것도 안 함)
+    return outcome, call
 
 
 def write_stage(
@@ -356,7 +364,7 @@ def write_stage(
         )
 
     for stage, key, prepare, item_ids, article_id in jobs:
-        outcome = _write_one(
+        outcome, call = _write_one(
             run, llm, stage=stage, key=key, prepare=prepare, item_ids=item_ids,
             article_id=article_id, now=now,
         )  # fmt: skip
@@ -369,6 +377,8 @@ def write_stage(
         if outcome.status != EditorCall.Status.SUCCEEDED or outcome.output is None:
             result.failed += 1
             continue
+        if call.status == EditorCall.Status.FAILED:  # 게시 실행의 저장 실패
+            result.failed += 1
         article = outcome.output.get("article")
         if isinstance(article, dict) and not article.get("published"):
             classify_reason = next(
@@ -430,6 +440,7 @@ def commentary_stage(
         call.cache_read_input_tokens = outcome.cache_read_input_tokens
         call.cost_usd, call.finished_at = outcome.cost_usd, now
         call.save()
+        editor_save.save(call, now)  # 게시 실행만 저장한다
         run.cost_usd += outcome.cost_usd
         if outcome.limit_status is not None:
             run.calls.filter(
@@ -453,10 +464,14 @@ def _run_note(
     failed_calls: int,
 ) -> str:
     """실행 종료 메모(서버가 만든다): 분류·작성 건수, 비게시·보류 까닭, 안 쓴 분야, 실패 호출."""
-    parts = [_classify_note(outcome)]
+    live = editor_save.is_live(run)
+    parts = [_classify_note(outcome, live=live)]
     decision = outcome.decision
     if decision is None:
         return parts[0]
+    if live:
+        editor_save.tally(run)
+        parts.append(editor_save.note(run))
     if writes.calls:
         parts.append(f"작성 {writes.calls}건(실패 {writes.failed})")
     if writes.unpublished:
@@ -494,8 +509,10 @@ def finish_batch_run(run: EditorRun, now: datetime) -> str:
     failed_writes = 0
     for call in run.calls.filter(stage__in=editor_batch.WRITE_STAGES).order_by("id"):
         writes.calls += 1
-        if call.status != EditorCall.Status.SUCCEEDED or not isinstance(call.output, dict):
+        if call.status in (EditorCall.Status.FAILED, EditorCall.Status.EXPIRED):
             failed_writes += 1
+            continue
+        if call.status not in DONE or not isinstance(call.output, dict):
             continue
         article = call.output.get("article")
         if isinstance(article, dict) and not article.get("published"):
@@ -534,9 +551,8 @@ def finish_batch_run(run: EditorRun, now: datetime) -> str:
             decision=json.loads(json.dumps(compare_decision)) if compare_decision else None,
             error=compare.error,
         )
-        run.note += (
-            f" / 비교 {compare.model}: {_classify_note(compare_outcome).removeprefix('그림자 ')}"
-        )
+        compare_note = _classify_note(compare_outcome).removeprefix("그림자 ")
+        run.note += f" / 비교 {compare.model}: {compare_note}"
     run.save()
     return f"슬롯 {run.slot} 배치 회수 끝 — {run.note} (US${run.cost_usd})"
 
@@ -580,19 +596,19 @@ def run_editor(now: datetime) -> str:
     mode = settings.EDITOR_PIPELINE_MODE
     if mode == "off":
         return "편집 파이프라인: 꺼짐(EDITOR_PIPELINE_MODE=off)"
-    if mode != "shadow":
-        logger.warning("EDITOR_PIPELINE_MODE=%s는 아직 지원하지 않는다 — 건너뜀", mode)
-        return f"편집 파이프라인: {mode} 모드는 아직 없음 — 건너뜀"
+    if mode not in MODES:  # 오타 등 모르는 값은 꺼짐과 같이 아무것도 하지 않는다
+        logger.warning("EDITOR_PIPELINE_MODE=%r는 모르는 값 — 꺼짐처럼 건너뜀", mode)
+        return f"편집 파이프라인: 모르는 모드 {mode!r} — 꺼짐처럼 건너뜀"
     if not settings.SANDCORP_NEWS_CLAUDE_KEY:
         logger.warning("SANDCORP_NEWS_CLAUDE_KEY 없음 — 편집 파이프라인을 건너뜀")
         return "편집 파이프라인: 키 없음 — 건너뜀"
     notes = _advance_pending(now)
-    message = _open_slot(now)
+    message = _open_slot(now, MODES[mode])
     notes += _settle(now)
     return message + "".join(f" / {note}" for note in notes)
 
 
-def _open_slot(now: datetime) -> str:
+def _open_slot(now: datetime, mode: EditorRun.Mode) -> str:
     slot = due_slot(now)
     if slot is None:
         return "편집 파이프라인: 편집 시각 아님"
@@ -611,7 +627,7 @@ def _open_slot(now: datetime) -> str:
 
     try:
         with transaction.atomic():
-            run = EditorRun.objects.create(mode=EditorRun.Mode.SHADOW, slot=slot)
+            run = EditorRun.objects.create(mode=mode, slot=slot)
     except IntegrityError:
         return f"편집 파이프라인: 슬롯 {slot}은 이미 열림"
 
@@ -647,6 +663,7 @@ def _open_slot(now: datetime) -> str:
 
     writes = WriteStage()
     if main.decision is not None:
+        run.discarded = editor_save.discard(run, main.decision)  # 게시 실행만(그림자는 0)
         reader = editor_write.RunReader(get_fetcher())  # 실행 하나의 원문 캐시·페치 상한
         writes = write_stage(run, llm, main.decision, data, now, reader)
         if writes.stopped:

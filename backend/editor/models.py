@@ -143,6 +143,7 @@ class Alert(models.Model):
         PREDICTIONS_DUE = "predictions_due", "전망 평가 대기"
         EDITOR_BUDGET = "editor_budget", "편집 예산 초과"
         EDITOR_BATCH_STALE = "editor_batch_stale", "편집 배치 지연"
+        EDITOR_PIPELINE_FAILED = "editor_pipeline_failed", "편집 파이프라인 실패"
 
     kind = models.CharField("종류", max_length=30, choices=Kind.choices)
     target = models.CharField(

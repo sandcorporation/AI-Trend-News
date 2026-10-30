@@ -115,6 +115,35 @@ def _batch_stale_condition(now: datetime) -> Condition | None:
     )
 
 
+PIPELINE_FAILED_SLOTS = 2  # 1단계가 이만큼 연속 슬롯에서 실패하면 켠다(설계 §5)
+
+
+def _pipeline_failed_condition() -> Condition | None:
+    """최근 끝난 파이프라인 실행(그림자·게시) 2슬롯이 모두 실패면 켠다. 다음 성공에 복구 한 번.
+
+    예산 건너뜀·진행 중 실행은 세지 않는다(예산은 따로 「편집 예산 초과」 경보).
+    """
+    recent = list(
+        EditorRun.objects.filter(
+            slot__isnull=False,
+            mode__in=[EditorRun.Mode.SHADOW, EditorRun.Mode.LIVE],
+            status__in=[EditorRun.Status.FINISHED, EditorRun.Status.FAILED],
+        ).order_by("-slot")[:PIPELINE_FAILED_SLOTS]
+    )
+    if len(recent) < PIPELINE_FAILED_SLOTS or any(
+        r.status != EditorRun.Status.FAILED for r in recent
+    ):
+        return None
+    last = recent[0]
+    return Condition(
+        Kind.EDITOR_PIPELINE_FAILED,
+        "",
+        f"[경보] 편집 파이프라인 실패: 분류 단계가 {PIPELINE_FAILED_SLOTS}슬롯 연속 실패했습니다"
+        f"(마지막 {last.slot}, {last.get_mode_display()}: {last.note[:200]}). 수집물은 미처리로 "
+        "남아 있습니다.",
+    )
+
+
 def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     """점검하고 보낸 메시지들을 돌려준다."""
     conditions: dict[tuple[str, str], Condition] = {}
@@ -130,6 +159,9 @@ def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     stale = _batch_stale_condition(now)
     if stale:
         conditions[(stale.kind, stale.target)] = stale
+    pipeline = _pipeline_failed_condition()
+    if pipeline:
+        conditions[(pipeline.kind, pipeline.target)] = pipeline
     for condition in _source_conditions():
         conditions[(condition.kind, condition.target)] = condition
 
@@ -169,4 +201,6 @@ def _recovery_message(alert: Alert) -> str:
         return f"[복구] 편집 예산 경보를 해제합니다({alert.target} 월 한도 기간 종료)."
     if alert.kind == Kind.EDITOR_BATCH_STALE:
         return "[복구] 편집 배치 지연 경보를 해제합니다(최근 24시간 만료 호출 없음)."
+    if alert.kind == Kind.EDITOR_PIPELINE_FAILED:
+        return "[복구] 편집 파이프라인 분류가 다시 성공했습니다."
     return "[복구] 편집자가 다시 실행을 마쳤습니다."

@@ -2,7 +2,7 @@
 
 대상(`targets`)은 같은 실행의 2단계 작성 결과에서 고른다.
 - 새 기사: 작성 출력의 최종 `published`·`featured`가 모두 참인 가상 기사(그림자에서는
-  아직 id가 없다).
+  아직 id가 없다). 게시 모드(#128)는 저장된 기사(`EditorCall.article`)의 지금 상태로 고른다.
 - 갱신: 대상 기사가 지금 추천·게시이고 `Commentary` 행이 아예 없는 기사. 분석이 있으면(숨긴
   분석 포함) 부르지 않는다 — 숨긴 분석은 편집자가 덮어쓰지 못하고(`CommentaryHidden`), 있는 분석은
   다시 쓰지 않는 것이 지금 규칙이다.
@@ -79,6 +79,31 @@ def targets(run: EditorRun) -> list[Plan]:
     found: list[Plan] = []
     for call in calls:
         if call.stage != EditorCall.Stage.WRITE_NEW:
+            continue
+        if call.article_id is not None:  # 게시 모드(#128): 저장된 기사의 지금 상태로 고른다
+            saved = (
+                Article.objects.select_related("category")
+                .filter(pk=call.article_id, published=True, featured=True)
+                .exclude(pk__in=Commentary.objects.values("article_id"))
+                .first()
+            )
+            if saved is not None:
+                found.append(
+                    {
+                        "kind": "new",
+                        "write_key": call.key,
+                        "article_id": saved.pk,
+                        "category": saved.category.slug,
+                        "title": saved.title,
+                        "summary": saved.summary,
+                        "slug": saved.slug,
+                        "item_ids": list(
+                            ArticleItem.objects.filter(article=saved)
+                            .order_by("id")
+                            .values_list("item_id", flat=True)
+                        ),
+                    }
+                )
             continue
         article = _object(_object(call.output).get("article"))
         if article.get("published") is True and article.get("featured") is True:

@@ -290,10 +290,14 @@ def test_same_slot_runs_once_and_catches_up_within_three_hours(
     [
         ({"EDITOR_PIPELINE_MODE": "off", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"}, "꺼짐"),
         ({"EDITOR_PIPELINE_MODE": "shadow", "SANDCORP_NEWS_CLAUDE_KEY": ""}, "키 없음"),
-        ({"EDITOR_PIPELINE_MODE": "live", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"}, "아직 없음"),
+        ({"EDITOR_PIPELINE_MODE": "LIVE", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"}, "모르는 모드"),
+        (
+            {"EDITOR_PIPELINE_MODE": "publish", "SANDCORP_NEWS_CLAUDE_KEY": "test-key"},
+            "모르는 모드",
+        ),
     ],
 )
-def test_off_missing_key_or_live_skip_quietly(
+def test_off_missing_key_or_unknown_mode_skip_quietly(
     overrides: dict[str, str], expected: str, clock: FixedClock, fake_llm: FakeLlm
 ) -> None:
     """운영에는 키가 없다 — 스케줄러 주기에서 아무것도 쓰지 않고 실패하지도 않는다."""
