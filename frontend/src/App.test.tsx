@@ -44,6 +44,8 @@ const site = {
   sandcorp_label: "Sandcorp",
   header_url: "/go/sandcorp?from=header",
   footer_url: "/go/sandcorp?from=footer",
+  made_by_label: "Made by Sandcorp",
+  made_by_url: "https://sandcorp.co.kr/?utm_source=foresight&utm_medium=footer",
   contact_label: "문의",
   contact_url: "/contact",
 };
@@ -115,6 +117,16 @@ test("메인은 추천 영역·분야 탭·기사 목록·페이지 이동을 �
     "/go/sandcorp?from=header",
     "/go/sandcorp?from=footer",
   ]);
+});
+
+test("footer에 추적 없는 Made by Sandcorp 직접 링크를 그린다", () => {
+  render(<App data={homeData()} />);
+  const link = screen.getByRole("link", { name: "Made by Sandcorp" });
+  expect(link).toHaveAttribute(
+    "href",
+    "https://sandcorp.co.kr/?utm_source=foresight&utm_medium=footer",
+  );
+  expect(link).not.toHaveAttribute("rel");
 });
 
 function q(root: ParentNode, selector: string): Element {

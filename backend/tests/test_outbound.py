@@ -132,7 +132,8 @@ def test_header_and_footer_links_are_inflow_links(client: Client) -> None:
 
     assert 'href="/go/sandcorp?from=header"' in html
     assert 'href="/go/sandcorp?from=footer"' in html
-    assert "https://sandcorp.co.kr" not in html
+    # 추적 링크는 그대로, 직접 백링크(#140)는 푸터 한 곳에만
+    assert html.count("https://sandcorp.co.kr/?utm_source=foresight&amp;utm_medium=footer") >= 1
 
 
 def test_admin_summary_counts_by_period_location_and_article(client: Client) -> None:

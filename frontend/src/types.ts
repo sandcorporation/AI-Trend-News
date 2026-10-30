@@ -68,6 +68,8 @@ export interface SiteData {
   sandcorp_label: string;
   header_url: string;
   footer_url: string;
+  made_by_label: string;
+  made_by_url: string;
   contact_label: string;
   contact_url: string;
 }

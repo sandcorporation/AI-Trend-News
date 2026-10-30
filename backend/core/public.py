@@ -53,6 +53,9 @@ PAGE_SIZE = 12
 FEATURED_COUNT = 6
 # Sandcorp links always go through the tracked inflow link (services/outbound.py); label lives here.
 SANDCORP_LABEL = "Sandcorp"
+MADE_BY_LABEL = "Made by Sandcorp"
+# 백링크: 추적 302가 아닌 직접 링크
+MADE_BY_URL = "https://sandcorp.co.kr/?utm_source=foresight&utm_medium=footer"
 CTA_TEXT = "뉴스 수집·요약·게시를 자동화한 이 사이트처럼, 반복 업무를 자동화하고 싶으신가요?"
 CTA_PORTFOLIO_LABEL = "Sandcorp 포트폴리오 보기"
 CTA_CONTACT_LABEL = "문의하기"
@@ -187,6 +190,8 @@ class SiteData(TypedDict):
     sandcorp_label: str
     header_url: str
     footer_url: str
+    made_by_label: str
+    made_by_url: str
     contact_label: str
     contact_url: str
 
@@ -314,6 +319,8 @@ def _site(current: str | None = None, categories: Iterable[Category] | None = No
         "sandcorp_label": SANDCORP_LABEL,
         "header_url": outbound.go_path("header"),
         "footer_url": outbound.go_path("footer"),
+        "made_by_label": MADE_BY_LABEL,
+        "made_by_url": MADE_BY_URL,
         "contact_label": FOOTER_CONTACT_LABEL,
         "contact_url": CONTACT_PATH,
     }
