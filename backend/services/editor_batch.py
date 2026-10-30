@@ -8,6 +8,7 @@
 (= `EditorCall.key`)로 맞춰 검사하고 `succeeded`로 끝낸다. `run_editor`가 매 주기 앞머리에서
 `advance`를 부르고, 같은 주기 안에서 30초 간격으로 기다리며 부르기도 한다(`pending_runs`가 이어 갈
 실행을 찾는다). 그림자 모드에서는 저장할 기사가 없으므로 「저장」은 `succeeded`로 기록하는 것이다.
+게시 모드(#128)는 같은 트랜잭션에서 `editor_save.save`가 서비스 함수로 저장하고 `saved`로 끝낸다.
 
 안전 장치:
 - 결과 한 건 = 트랜잭션 하나, `select_for_update(skip_locked=True)`로 `submitted` 행만 잡는다 —
@@ -34,7 +35,14 @@ from adapters.anthropic import BatchRequest, BatchResult, LlmClient, LlmError
 from adapters.fetch import get_fetcher
 from articles.models import Article, Category
 from editor.models import EditorCall, EditorRun
-from services import editor_budget, editor_commentary, editor_prompts, editor_write, llm_pricing
+from services import (
+    editor_budget,
+    editor_commentary,
+    editor_prompts,
+    editor_save,
+    editor_write,
+    llm_pricing,
+)
 from services.editor_classify import Decision, InvalidOutput
 
 logger = logging.getLogger("editor")
@@ -205,6 +213,7 @@ def _apply(batch_id: str, result: BatchResult, now: datetime) -> None:
             call.batch_id = ""
             call.submitted_at = None
         call.save()
+        editor_save.save(call, now)  # 게시 실행이면 같은 트랜잭션에서 저장하고 `saved`로
 
 
 class _Problem:

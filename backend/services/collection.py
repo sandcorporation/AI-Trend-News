@@ -1,5 +1,6 @@
 """소스 수집 규칙: 켜진 소스를 순회하고 소스별로 독립 실패하며 결과를 소스에 기록한다."""
 
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -104,9 +105,16 @@ class PendingPage:
     page_size: int
 
 
-def list_pending_items(page: int = 1, page_size: int = 50) -> PendingPage:
-    """미처리 수집물을 최신순(수집 시각 내림차순) 한 쪽. 편집자가 MCP로 읽는다."""
+def list_pending_items(
+    page: int = 1, page_size: int = 50, *, exclude_ids: Collection[int] = ()
+) -> PendingPage:
+    """미처리 수집물을 최신순(수집 시각 내림차순) 한 쪽. 편집자가 MCP로 읽는다.
+
+    `exclude_ids`는 게시 모드 파이프라인이 예약해 둔 수집물(#128)을 빼는 데 쓴다.
+    """
     qs = Item.objects.filter(status=Item.Status.PENDING).select_related("source")
+    if exclude_ids:
+        qs = qs.exclude(pk__in=list(exclude_ids))
     start = (page - 1) * page_size
     items = list(qs.order_by("-collected_at", "-id")[start : start + page_size])
     return PendingPage(items=items, total=qs.count(), page=page, page_size=page_size)

@@ -13,7 +13,7 @@ from typing import TypedDict
 from django.conf import settings
 from django.utils import timezone
 
-from services import articles, collection
+from services import articles, collection, editor_reserve
 
 EXCERPT_CHARS = 300
 REASON_CHARS = 80
@@ -59,7 +59,8 @@ def _clip(text: str, limit: int) -> str:
 
 def build_input(now: datetime, *, max_items: int | None = None) -> ClassifyInput:
     limit = settings.EDITOR_MAX_ITEMS if max_items is None else max_items
-    pending = collection.list_pending_items(page=1, page_size=limit).items
+    reserved = editor_reserve.reserved_item_ids(now)  # 게시 모드 진행 중 실행이 잡은 수집물(§5)
+    pending = collection.list_pending_items(page=1, page_size=limit, exclude_ids=reserved).items
     return {
         "today": timezone.localtime(now).date().isoformat(),
         "categories": [{"slug": c.slug, "name": c.name} for c in articles.list_categories()],
