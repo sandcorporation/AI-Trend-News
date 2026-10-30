@@ -6,6 +6,7 @@
 """
 
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypedDict
@@ -216,6 +217,18 @@ class Validated:
     problems: list[str]
 
 
+def _note(model_note: str, kept_new: list[NewArticle]) -> str:
+    """모델이 쓴 note에서 추천 언급을 걷어내고, 검증을 거친 실제 추천 수를 서버가 덧붙인다.
+
+    note의 「추천 N건」은 모델의 자유 서술이라 필드(`featured`)와 어긋날 수 있다(#137).
+    """
+    parts = re.split(r"(?<=[.。!?])\s+|\n+", model_note)
+    kept = " ".join(p.strip() for p in parts if p.strip() and "추천" not in p)
+    featured = sum(1 for a in kept_new if a["featured"])
+    suffix = f"추천 {featured}건"
+    return f"{kept[: NOTE_CHARS - len(suffix) - 1]} {suffix}".strip()
+
+
 def validate(output: object, data: ClassifyInput) -> Validated:
     if not isinstance(output, dict):
         raise InvalidOutput("최상위가 객체가 아니다")
@@ -300,7 +313,7 @@ def validate(output: object, data: ClassifyInput) -> Validated:
             "updates": kept_updates,
             "discards": discards,
             "holds": holds,
-            "note": _str(output.get("note", ""), NOTE_CHARS),
+            "note": _note(_str(output.get("note", ""), 1000), kept_new),
         },
         problems=check.problems,
     )
