@@ -14,6 +14,16 @@ from django.conf import settings
 
 Stage = Literal["classify", "write", "commentary"]
 
+Effort = Literal["low", "medium", "high", "xhigh", "max"]
+EFFORTS: tuple[Effort, ...] = ("low", "medium", "high", "xhigh", "max")
+
+
+def parse_effort(value: str) -> Effort:
+    if value not in EFFORTS:
+        raise ValueError(f"알 수 없는 effort: {value} (가능: {', '.join(EFFORTS)})")
+    return value
+
+
 # 모든 단계 앞에 붙는 절. 서두는 첫 문단만 쓴다(둘째 문단은 MCP 루틴 전용).
 COMMON_SECTIONS: tuple[str, ...] = ("용어", "하지 말 것")
 

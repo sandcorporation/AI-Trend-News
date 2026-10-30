@@ -1,0 +1,88 @@
+{% extends "admin/base_site.html" %}
+{% load admin_urls %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">홈</a>
+  › <a href="{% url 'admin:editor_editorrun_changelist' %}">편집자 실행</a>
+  › <a href="{% url 'admin:editor_editorrun_change' run.pk %}">실행 {{ run.pk }}</a>
+  › 그림자 비교
+</div>
+{% endblock %}
+{% block content %}
+<style>
+  .shadow-compare table { width: 100%; }
+  .shadow-compare td, .shadow-compare th { vertical-align: top; }
+  .shadow-compare .wrap { overflow-x: auto; }
+  .shadow-compare tr.diff td { background: var(--message-warning-bg); }
+  .shadow-compare .stats { display: flex; flex-wrap: wrap; gap: .5rem 2rem; padding: .5rem 1rem; }
+  .shadow-compare .muted { color: var(--body-quiet-color); }
+  .shadow-compare td { overflow-wrap: anywhere; }
+  @media (max-width: 767px) {
+    .shadow-compare thead { display: none; }
+    .shadow-compare tr, .shadow-compare td { display: block; width: auto; }
+    .shadow-compare tr { border-bottom: 1px solid var(--hairline-color); padding: .25rem 0; }
+    .shadow-compare td { border: 0; padding: .15rem .5rem; }
+    .shadow-compare td[data-label]::before { content: attr(data-label) " "; font-weight: 600; }
+  }
+</style>
+<div class="shadow-compare">
+  <div class="module stats" id="shadow-stats">
+    <div>판단 일치율: <strong data-stat="match-rate">{% if comparison.match_rate is None %}—{% else %}{{ comparison.match_rate }}%{% endif %}</strong>
+      <span class="muted">({{ comparison.matched }}/{{ comparison.rows|length }})</span></div>
+    <div>파이프라인만 만든 기사: <strong data-stat="pipeline-only">{{ comparison.pipeline_only }}</strong></div>
+    <div>루틴만 만든 기사: <strong data-stat="routine-only">{{ comparison.routine_only|length }}</strong></div>
+    <div>실행 비용: <strong data-stat="cost">US${{ comparison.cost_usd }}</strong> <span class="muted">(호출 {{ comparison.calls }})</span></div>
+  </div>
+  <p class="muted">실제 결과는 수집물의 지금 상태다: 묶인 기사가 실행 시작 뒤에 생겼으면 새 기사, 그 전부터 있었으면 갱신, 미처리는 보류로 본다. 실행 메모: {{ run.note }}</p>
+
+  <h2>수집물별 판단</h2>
+  <p>
+    {% if diff_only %}<a href="?">전체 보기</a> · <strong>갈라진 줄만</strong>
+    {% else %}<strong>전체</strong> · <a href="?diff=1">갈라진 줄만 보기</a>{% endif %}
+  </p>
+  <div class="wrap">
+  <table id="shadow-rows">
+    <thead><tr><th>수집물</th><th>파이프라인</th><th>까닭·대상</th><th>실제</th><th>묶인 기사</th><th>일치</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr class="{% if not row.match %}diff{% endif %}" data-item="{{ row.item_id }}">
+        <td>{{ row.item_id }} · {{ row.title }}</td>
+        <td data-label="파이프라인:">{{ row.pipeline_label }}</td>
+        <td data-label="까닭:">{{ row.pipeline_reason }}{% if row.pipeline_target %}<br><span class="muted">→ {{ row.pipeline_target }}</span>{% endif %}</td>
+        <td data-label="실제:">{{ row.actual_label }}</td>
+        <td data-label="묶인 기사:">{% if row.actual_article %}<a href="{% url 'admin:articles_article_change' row.actual_article.id %}">{{ row.actual_article.title }}</a>{% else %}—{% endif %}</td>
+        <td data-label="일치:">{% if row.match %}✓{% else %}✗{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">{% if diff_only %}갈라진 줄이 없다.{% else %}비교할 분류 결과가 없다.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <h2>새 기사 대조</h2>
+  <div class="wrap">
+  <table id="shadow-pairs">
+    <thead><tr><th>#</th><th>파이프라인 제목·요약</th><th>루틴 기사 제목·요약</th></tr></thead>
+    <tbody>
+    {% for pair in comparison.pairs %}
+      <tr>
+        <td>{{ pair.number }}<br><span class="muted">{{ pair.category }}{% if not pair.published %} · 비게시{% elif pair.featured %} · 추천{% endif %}{% if pair.status %} · {{ pair.status }}{% endif %}</span></td>
+        <td data-label="파이프라인:"><strong>{{ pair.title|default:"(작성 결과 없음)" }}</strong><br>{{ pair.summary }}</td>
+        <td data-label="루틴:">{% for ref in pair.routine %}<strong><a href="{% url 'admin:articles_article_change' ref.id %}">{{ ref.title }}</a></strong><br>{{ ref.summary }}<br>{% empty %}<span class="muted">루틴 새 기사 없음</span>{% endfor %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="3">파이프라인 새 기사가 없다.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if comparison.routine_only %}
+  <h2>루틴만 만든 기사</h2>
+  <ul id="shadow-routine-only">
+    {% for ref in comparison.routine_only %}<li><a href="{% url 'admin:articles_article_change' ref.id %}">{{ ref.title }}</a></li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>
+{% endblock %}
