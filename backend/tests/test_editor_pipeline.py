@@ -508,6 +508,28 @@ def test_validate_featured_requires_published_and_is_capped() -> None:
     assert [a["featured"] for a in result.decision["new_articles"]] == [False, True, True, False]
 
 
+def test_validate_note_recommendation_count_matches_featured() -> None:
+    """모델이 note에 「추천 1건」이라 적어도 실제 featured와 어긋나지 않는다(#137)."""
+    result = validate(
+        output(
+            new_articles=[new([1], featured=False), new([2], featured=True)],
+            note="비게시 없음. 추천 3건으로 골랐다. 이번에 안 쓴 분야: it",
+        ),
+        data_with([1, 2]),
+    )
+    decision = result.decision
+    featured = sum(1 for a in decision["new_articles"] if a["featured"])
+    assert featured == 1
+    assert decision["note"].endswith("추천 1건")
+    assert "3건" not in decision["note"]
+    assert "비게시 없음." in decision["note"]
+
+
+def test_validate_note_without_featured_says_zero() -> None:
+    result = validate(output(new_articles=[new([1])], note="추천 1건"), data_with([1]))
+    assert result.decision["note"] == "추천 0건"
+
+
 @override_settings(EDITOR_MAX_WRITES=2)
 def test_validate_write_cap_holds_overflow() -> None:
     result = validate(
