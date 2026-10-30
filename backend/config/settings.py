@@ -140,6 +140,8 @@ EDITOR_MODEL_CLASSIFY_COMPARE = env("EDITOR_MODEL_CLASSIFY_COMPARE")
 # 월 예산 상한(US$, #124). Console 워크스페이스 지출 한도가 월 $20이라 그보다 낮게 둔다 — 넘으면
 # 앱이 먼저 실행을 건너뛰고 경보한다. 다음 단계 예상액까지 더해 본다(services/editor_budget.py).
 EDITOR_MONTHLY_BUDGET_USD = Decimal(env("EDITOR_MONTHLY_BUDGET_USD", "18"))
+EDITOR_USE_BATCH = env("EDITOR_USE_BATCH", "true").lower() not in ("false", "0", "no", "off", "")
+EDITOR_BATCH_WAIT_SECONDS = int(env("EDITOR_BATCH_WAIT_SECONDS", "900"))
 EDITOR_MAX_ITEMS = int(env("EDITOR_MAX_ITEMS", "60"))
 EDITOR_MAX_WRITES = int(env("EDITOR_MAX_WRITES", "30"))
 EDITOR_MAX_FEATURED = int(env("EDITOR_MAX_FEATURED", "6"))

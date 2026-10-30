@@ -13,7 +13,7 @@ from django.conf import settings
 
 from adapters.discord import Notifier
 from collection.models import Source
-from editor.models import ABANDON_AFTER, Alert, EditorRun
+from editor.models import ABANDON_AFTER, Alert, EditorCall, EditorRun
 from services import editor_budget, predictions
 from services.editor_runs import counted_runs, last_finished_run
 
@@ -94,6 +94,27 @@ def _budget_condition(now: datetime) -> Condition | None:
     )
 
 
+BATCH_STALE_WINDOW = timedelta(hours=24)  # 만료 처리 뒤 이만큼 경보를 켜 둔다
+
+
+def _batch_stale_condition(now: datetime) -> Condition | None:
+    """24시간 넘어 만료로 끝낸 배치 호출이 최근 하루 안에 있으면 켠다(풀리면 복구 한 번)."""
+    expired = EditorCall.objects.filter(
+        via_batch=True,
+        status=EditorCall.Status.EXPIRED,
+        finished_at__gte=now - BATCH_STALE_WINDOW,
+    ).count()
+    if not expired:
+        return None
+    return Condition(
+        Kind.EDITOR_BATCH_STALE,
+        "",
+        f"[경보] 편집 배치 지연: 배치 호출 {expired}건이 24시간 넘게 끝나지 않아 "
+        "만료로 끝냈습니다. 해당 수집물은 미처리로 남아 다음 슬롯이 다시 봅니다"
+        "(EDITOR_USE_BATCH=false로 동기 전환 가능).",
+    )
+
+
 def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     """점검하고 보낸 메시지들을 돌려준다."""
     conditions: dict[tuple[str, str], Condition] = {}
@@ -106,6 +127,9 @@ def check_alerts(notifier: Notifier, now: datetime) -> list[str]:
     budget = _budget_condition(now)
     if budget:
         conditions[(budget.kind, budget.target)] = budget
+    stale = _batch_stale_condition(now)
+    if stale:
+        conditions[(stale.kind, stale.target)] = stale
     for condition in _source_conditions():
         conditions[(condition.kind, condition.target)] = condition
 
@@ -143,4 +167,6 @@ def _recovery_message(alert: Alert) -> str:
         return "[복구] 평가 대기 중인 전망 예측이 없습니다."
     if alert.kind == Kind.EDITOR_BUDGET:
         return f"[복구] 편집 예산 경보를 해제합니다({alert.target} 월 한도 기간 종료)."
+    if alert.kind == Kind.EDITOR_BATCH_STALE:
+        return "[복구] 편집 배치 지연 경보를 해제합니다(최근 24시간 만료 호출 없음)."
     return "[복구] 편집자가 다시 실행을 마쳤습니다."

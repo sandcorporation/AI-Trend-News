@@ -30,6 +30,7 @@ class EditorCallInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타
     can_delete = False
     fields = (
         ("stage", "model", "effort", "status", "attempt"),
+        ("via_batch", "batch_id", "submitted_at"),
         ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"),
         ("cost_usd", "stop_reason", "prompt_version", "key"),
         "error",
@@ -42,6 +43,9 @@ class EditorCallInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타
         "effort",
         "status",
         "attempt",
+        "via_batch",
+        "batch_id",
+        "submitted_at",
         "input_tokens",
         "output_tokens",
         "cache_creation_input_tokens",

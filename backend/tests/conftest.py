@@ -16,7 +16,7 @@ from django.test import override_settings
 from sandcorp_authkit.testing import FakeJwks, FakeTokenEndpoint, FixedClock
 
 from adapters.anthropic import FakeLlm, set_llm
-from adapters.clock import set_clock
+from adapters.clock import get_clock, set_clock, set_sleeper
 from adapters.discord import FakeNotifier, set_notifier
 from adapters.fetch import set_fetcher
 from adapters.portfolio import FakeGateway, set_gateway
@@ -146,6 +146,22 @@ def fake_llm() -> Iterator[FakeLlm]:
     previous = set_llm(llm)
     yield llm
     set_llm(previous)
+
+
+@pytest.fixture(autouse=True)
+def fake_sleep() -> Iterator[list[float]]:
+    """기다림은 실제로 자지 않는다. 시계가 고정 시계면 그만큼 넘기고, 기다린 초를 기록한다."""
+    slept: list[float] = []
+
+    def sleeper(seconds: float) -> None:
+        slept.append(seconds)
+        clock = get_clock()
+        if isinstance(clock, FixedClock):
+            clock.advance(seconds)
+
+    previous = set_sleeper(sleeper)
+    yield slept
+    set_sleeper(previous)
 
 
 @pytest.fixture(autouse=True)
