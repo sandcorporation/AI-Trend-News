@@ -114,21 +114,18 @@ img {
   padding: 0 var(--gutter);
 }
 
-.masthead-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem 2rem;
-  padding: 1.5rem 0 1rem;
-  border-bottom: 1px solid var(--color-line-strong);
-}
-
 .masthead-brand {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 0.25rem 0.9rem;
+  min-width: 0;
+}
+
+/* 좁은 화면: 로고 줄 56px를 지키려고 설명 글을 숨긴다(sandcorp-design 머리띠 규칙) */
+@media (max-width: 767px) {
+  .masthead-desc {
+    display: none;
+  }
 }
 
 .brand {
@@ -141,15 +138,6 @@ img {
 
 .masthead-meta a {
   color: var(--color-ink);
-}
-
-.site-nav {
-  display: flex;
-  gap: 1.75rem;
-  padding: 0.9rem 0;
-  overflow-x: auto;
-  white-space: nowrap;
-  scrollbar-width: none;
 }
 
 .site-nav a,

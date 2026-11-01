@@ -12,14 +12,14 @@ export function Layout({
   return (
     <div className="site">
       <header className="masthead">
-        <div className="masthead-row">
+        <div className="sc-masthead-row">
           <p className="masthead-brand">
             <a className="brand" href="/">
               {site.name}
             </a>{" "}
-            <span className="label">포사이트 · AI·IT 뉴스와 전망</span>
+            <span className="label masthead-desc">포사이트 · AI·IT 뉴스와 전망</span>
           </p>
-          <p className="masthead-meta label">
+          <p className="sc-masthead-meta masthead-meta label">
             <span>{site.today_label}</span> · <span>하루 3회 07·13·19 KST</span>{" "}
             ·{" "}
             <a className="header-link" href={site.header_url}>
@@ -27,7 +27,7 @@ export function Layout({
             </a>
           </p>
         </div>
-        <nav className="site-nav" aria-label="사이트">
+        <nav className="sc-nav site-nav" aria-label="사이트">
           {site.nav.map((n) => (
             <a
               key={n.url}
