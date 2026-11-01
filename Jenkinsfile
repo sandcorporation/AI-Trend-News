@@ -82,7 +82,7 @@ pipeline {
               )
             } catch (err) {
               if (env.MAC_ACQUIRED == 'true') { throw err }
-              echo "macos를 못 잡아 sub에서 굽는다: ${err.getMessage()}"
+              echo "macos를 못 잡아 home에서 굽는다: ${err.getMessage()}"
               node('laurio-staging') { buildImage('home') }
             }
           }
