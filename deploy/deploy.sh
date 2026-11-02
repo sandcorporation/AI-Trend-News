@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Called by Jenkins on the oracle agent from the job workspace, which holds ./.env (not in the repo).
-#   1) get the image: NEWS_IMAGE set (Jenkins: ghcr.io/sandcorporation/sandcorp-news:<sha>, built off-host, #142)
+# 로컬 운영 compose 확인용(`make prod-local`). Jenkins 운영 배포는 이 파일을 쓰지 않는다 —
+# jenkins-shared 라이브러리 sandcorpDeploy의 resources/sandcorp/deploy.sh가 같은 순서로 돌고 헬스 실패 시 자동 롤백한다
+# (값은 Jenkinsfile). 순서를 바꾸면 두 곳을 같이 본다. Run from a directory that holds ./.env (not in the repo).
+#   1) get the image: NEWS_IMAGE set (ghcr.io/sandcorporation/sandcorp-news:<sha>, built off-host, #142)
 #      -> docker pull only, never build on oracle; NEWS_IMAGE unset (make prod-local) -> build locally
 #   2) wait until the database (OCI MySQL HeatWave, outside compose) answers
 #   3) migrate in a one-off container  4) replace web and scheduler
