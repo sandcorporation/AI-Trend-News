@@ -54,10 +54,16 @@ SHADOW = {
 
 
 @pytest.fixture
-def clock() -> Iterator[FixedClock]:
-    """2026-10-30 06:25 KST(편집 시각 06시 슬롯의 첫 주기)."""
+def clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[FixedClock]:
+    """2026-10-30 06:25 KST(편집 시각 06시 슬롯의 첫 주기).
+
+    DB 시각(auto_now_add 등 `timezone.now()`)도 이 시계를 따르게 한다. 월 합계·경보는
+    시험 시계로 달을 가르는데 행 시각이 실제 시각이면, 실제 달이 시험 시계의 다음 달일 때
+    (2026-11) 엉뚱한 달에 잡힌다.
+    """
     fixed = FixedClock(datetime(2026, 10, 30, 6, 25, tzinfo=KST).astimezone(UTC))
     previous = set_clock(fixed)
+    monkeypatch.setattr(timezone, "now", fixed.now)
     yield fixed
     set_clock(previous)
 

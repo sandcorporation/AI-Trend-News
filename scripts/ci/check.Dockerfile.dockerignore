@@ -1,0 +1,14 @@
+# scripts/ci/check.Dockerfile 전용(BuildKit은 <Dockerfile>.dockerignore를 먼저 본다). 시험이 automation/·frontend/src를 읽으므로
+# 운영 이미지의 .dockerignore와 달리 docs/도 넣는다(빼는 것은 생성물·비밀뿐).
+.git
+.env
+.env.*
+!.env.example
+**/node_modules
+**/.venv
+**/__pycache__
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+frontend/dist
+backend/staticfiles

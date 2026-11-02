@@ -1,0 +1,11 @@
+// PR 검사 — 멀티브랜치 잡 sandcorp-news-pr가 PR마다 부른다. 파이프라인은 공용 라이브러리 sandcorp의 sandcorpPrCheck.
+// 빌드 노드(macos, 못 잡으면 home)에서 PR 머지 결과로 파괴적 migrate 검사 → scripts/ci/check.sh(= make check).
+// 결과는 PR head 커밋 상태(continuous-integration/jenkins/pr-merge)로 올라오고, 작업자는 wait-ci.py 통과 뒤 병합한다.
+// 파괴적 migrate 규칙·통과 표시(expand/contract)는 jenkins-shared README 「파괴적 migrate 검사」.
+@Library('sandcorp') _
+
+sandcorpPrCheck(
+  name: 'Foresight',
+  check: 'bash scripts/ci/check.sh',    // 배포 잡의 check와 같은 것
+  buildSsh: true,                       // sandcorp-authkit(비공개 git 의존성)
+)
