@@ -18,7 +18,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 
 - 스펙은 #1, 티켓은 그 하위 이슈(#2~#14)다. 막힘 관계는 GitHub 이슈 의존성으로 걸려 있다.
 - 이슈마다 워크트리 `~/workspace/AI-Trend-News-wt/<브랜치>`에서 작업하고 `origin/main`으로 PR을 연다.
-- PR을 열면 Jenkins `sandcorp-news-pr`(멀티브랜치, `Jenkinsfile.pr` → 공용 라이브러리 `sandcorpPrCheck`)가 빌드 노드에서 PR 머지 결과로 파괴적 migrate 검사와 `scripts/ci/check.sh`(= `make check`)를 돌려 PR head 커밋 상태 `continuous-integration/jenkins/pr-merge`로 올린다. 작업자는 로컬 `make check` 뒤 PR을 열고 `wait-ci.py <PR>`가 SUCCESS일 때만 squash 병합한다(main 직접 push 금지, 보호 규칙이 없어 이 규칙과 배포 전 검사가 강제다). 지우기·이름 바꾸기·null 불가 전환 migration은 expand/contract 두 배포로 나누고 contract 쪽 파일에 `# sandcorp: destructive-ok — <이유>`(jenkins-shared README 「파괴적 migrate 검사」).
+- PR을 열면 Jenkins `sandcorp-news-pr`(멀티브랜치, `Jenkinsfile.pr` → 공용 라이브러리 `sandcorpPrCheck`)가 빌드 노드에서 PR 머지 결과로 파괴적 migrate 검사와 `scripts/ci/check.sh`(= `make check`)를 돌려 PR head 커밋 상태 `continuous-integration/jenkins/pr-merge`로 올린다. 시험이 실패하면 그 시험만 좁혀(`-k`, 파일 지정, vitest 파일 지정) 다시 돌린다. 시험 묶음 전체(`make check`·`make test` 전체·`scripts/ci/check.sh`)는 로컬에서 돌리지 않는다. 로컬에서는 바꾼 부분과 관련된 시험·lint·typecheck만 돌리고, PR을 열어 `wait-ci.py <PR>`로 PR 검사 잡 결과를 기다린다. CI가 실패하면 실패한 시험만 로컬에서 좁혀 고친 뒤 다시 push한다(작업자가 시험 하나 실패에 전체 묶음을 다시 돌려 시간을 썼다, 2026-11-02 대표 지적). 작업자는 `wait-ci.py <PR>`가 SUCCESS일 때만 squash 병합한다(main 직접 push 금지, 보호 규칙이 없어 이 규칙과 배포 전 검사가 강제다). 지우기·이름 바꾸기·null 불가 전환 migration은 expand/contract 두 배포로 나누고 contract 쪽 파일에 `# sandcorp: destructive-ok — <이유>`(jenkins-shared README 「파괴적 migrate 검사」).
 - 배포와 서버 설정(env 파일, NPMplus, DNS, OCI)은 조율자가 다룬다. 작업자는 원격 호스트에 쓰지 않는다.
 - 스택과 명령은 `~/workspace/portfolio`와 같은 형태를 따른다. `backend/`(uv, Python 3.14, Django, django-ninja), `frontend/`(Vite, pnpm), `make test` / `make lint` / `make typecheck` / `make check`.
 - 용어는 `GLOSSARY.md`, 결정은 `docs/adr/`를 따른다. 인증은 sandcorp-auth(auth.sandcorp.co.kr)의 리소스 서버로 동작한다.
@@ -31,7 +31,7 @@ Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents
 - 시험 위치: `backend/tests/`(pytest-django, 설정 `config.test_settings`). 공용 픽스처·가짜 어댑터는 `backend/tests/conftest.py`, 고정 파일(RSS/HTML 샘플, Vite manifest)은 `backend/tests/fixtures/`. 프론트는 `frontend/src/**/*.test.tsx`(vitest, jsdom).
 - 린트: `make lint` (ruff format --check, ruff check, eslint). 고치기: `cd backend && uv run ruff format . && uv run ruff check --fix .`
 - 타입: `make typecheck` (mypy strict + django-stubs, `tsc --noEmit`).
-- 전부: `make check`.
+- 전부(로컬에서 돌리지 않는다 — PR 검사 잡이 돌리는 것): `make check`.
 - HTML 소스: `Source.html_rules`(JSON; 키 item·link·title·published, 선택 excerpt·image — 선택자는 CSS, published는 `datetime` 속성 우선). 검증은 `services/html_rules.py`. 어댑터 인터페이스는 `collect(url, fetcher, rules)`. 발췌는 HTML을 벗긴 평문(RSS는 `plain_text`: 태그 제거·엔티티 해제·공백 한 칸).
 - 수집: `cd backend && uv run python manage.py collect` — 켜진 소스를 모두 수집한다(소스별 독립 실패, 결과는 소스에 기록). 앱은 `backend/collection/`, 규칙은 `services/collection.py`·`services/urls.py`, 페치·소스 어댑터는 `adapters/fetch.py`·`adapters/sources.py`. 발행 시각이 수집 시각보다 `COLLECT_MAX_AGE_DAYS`(settings, 기본 3일, 환경 변수로 덮음) 넘게 오래된 글은 `Item` 없이 `SeenUrl`에만 남기고(경계 정확히 N일·발행 시각 없음은 수집) 결과 문구 뒤에 「/ 오래돼 건너뜀 N건」을 붙인다.
 - 대표 이미지(#44): `Item.image_url`은 RSS enclosure(image/*) → media:content → media:thumbnail → 본문 첫 `<img>` 순(HTML 소스는 규칙 `image`, `content`/`src` 속성)으로 어댑터가 뽑고, 비면 새 `Item`이 될 글만 원문을 한 번 더 받아 og:image(없으면 twitter:image)를 읽는다(`services/collection.py`, 소스당 실행마다 최대 30건·앞 1MB만, 실패는 조용히 빈 값, 본문 미저장). 결과 문구 끝에 「/ 이미지 N건」. 외부 URL 핫링크(다운로드·리사이즈 없음). 편집자 `list_pending_items`가 `image_url`을 주고 기사 `image_url`로 넘긴다.
