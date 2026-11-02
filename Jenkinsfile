@@ -1,7 +1,7 @@
 // main 배포 — 파이프라인은 Jenkins 공용 라이브러리 sandcorp(sandcorporation/jenkins-shared)의 sandcorpDeploy에 있다.
 // 여기에는 이 저장소가 넘기는 값만 둔다. 동작(작업 브랜치 push 무시·이미 배포한 sha 건너뜀·배포 전 검사·mac 우선 빌드·
 // oracle pull 배포·헬스 실패 시 자동 롤백·디스코드 알림)과 인자 목록은 jenkins-shared README, 이 저장소 사정은 docs/ops/offhost-build.md.
-@Library('sandcorp@js-7') _
+@Library('sandcorp') _
 
 sandcorpDeploy(
   name: 'Foresight',
