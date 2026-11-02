@@ -5,6 +5,7 @@
 @Library('sandcorp@js-11') _
 
 sandcorpPrCheck(
+  prefer: 'macos',   // 시험: 같은 트리를 mac 에서 재 시간 비교(jenkins-shared #11)
   name: 'Foresight',
   check: 'bash scripts/ci/check.sh',    // 배포 잡의 check와 같은 것
   buildSsh: true,                       // sandcorp-authkit(비공개 git 의존성)
