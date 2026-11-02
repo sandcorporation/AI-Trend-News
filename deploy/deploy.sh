@@ -24,7 +24,7 @@ fi
 
 wait_healthy() {
   local svc=$1
-  for i in $(seq 1 60); do
+  for i in $(seq 1 90); do
     local id status
     id=$(compose ps -q "$svc")
     status=$(docker inspect -f '{{.State.Health.Status}}' "$id" 2>/dev/null || echo starting)
