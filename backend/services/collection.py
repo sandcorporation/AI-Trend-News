@@ -11,6 +11,7 @@ from django.utils import timezone
 from adapters.fetch import Fetcher, FetchError, get_fetcher
 from adapters.sources import ADAPTERS, find_og_image
 from collection.models import Item, SeenUrl, Source
+from services import collect_ai_filter
 from services.filter_rules import filter_reason, validate_filter_rules
 from services.urls import normalize_url, url_hash
 
@@ -42,6 +43,7 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
     filtered = 0
     og_fetches = 0
     with_image = 0
+    fresh: list[Item] = []  # 규칙을 통과한 새 수집물 — AI 판별(#160) 대상
     cutoff = timezone.now() - timedelta(days=settings.COLLECT_MAX_AGE_DAYS)
     try:
         adapter = ADAPTERS.get(source.adapter_name)
@@ -79,22 +81,27 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                     image_url = _og_image(fetcher, raw.url)
                 if image_url:
                     with_image += 1
-                Item.objects.create(
-                    source=source,
-                    url=raw.url,
-                    normalized_url=normalized,
-                    title=raw.title[:500],
-                    excerpt=raw.excerpt,
-                    published_at=raw.published_at,
-                    image_url=image_url,
+                fresh.append(
+                    Item.objects.create(
+                        source=source,
+                        url=raw.url,
+                        normalized_url=normalized,
+                        title=raw.title[:500],
+                        excerpt=raw.excerpt,
+                        published_at=raw.published_at,
+                        image_url=image_url,
+                    )
                 )
                 created += 1
+        ai = collect_ai_filter.apply(source, fresh)  # 예외 없음(fail-open)
+        created -= ai.removed
         ok, message = True, f"성공: 새 수집물 {created}건 / 항목 {len(raw_items)}건"
         if too_old:
             message += f" / 오래돼 건너뜀 {too_old}건"
         if filtered:
             message += f" / 걸러냄 {filtered}건"
         message += f" / 이미지 {with_image}건"
+        message += ai.message()
     except Exception as exc:  # 소스별 독립 실패: 어떤 오류든 이 소스의 실패로 기록한다
         ok, message = False, f"실패: {type(exc).__name__}: {exc}"
     source.last_collected_at = timezone.now()

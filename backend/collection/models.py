@@ -85,6 +85,24 @@ class Item(models.Model):
         "거른 사유", max_length=200, blank=True, default="", db_default=""
     )
 
+    class AiVerdict(models.TextChoices):
+        NONE = "", "판별 안 함"
+        IN = "in", "주제 안"
+        OUT = "out", "주제 밖"
+        ERROR = "error", "판별 실패"
+
+    ai_verdict = models.CharField(
+        "AI 판별",
+        max_length=5,
+        choices=AiVerdict.choices,
+        blank=True,
+        default="",
+        db_default="",
+    )
+    ai_reason = models.CharField(
+        "AI 판별 사유", max_length=200, blank=True, default="", db_default=""
+    )
+
     class Meta:
         verbose_name = "수집물"
         verbose_name_plural = "수집물"
@@ -109,3 +127,33 @@ class SeenUrl(models.Model):
 
     def __str__(self) -> str:
         return self.url_hash
+
+
+class FilterCall(models.Model):
+    """수집 AI 판별(#160) 요청 하나의 비용 기록. 비용은 편집 월 예산 합계에 더한다."""
+
+    class Status(models.TextChoices):
+        SUCCEEDED = "succeeded", "성공"
+        FAILED = "failed", "실패"
+
+    created_at = models.DateTimeField("시각", auto_now_add=True, db_index=True)
+    source = models.ForeignKey(
+        Source, on_delete=models.SET_NULL, null=True, blank=True, related_name="filter_calls"
+    )
+    mode = models.CharField("모드", max_length=10)
+    model = models.CharField("모델", max_length=60)
+    status = models.CharField("상태", max_length=10, choices=Status.choices)
+    items = models.PositiveIntegerField("판별 대상 수", default=0)
+    out_count = models.PositiveIntegerField("밖 판정 수", default=0)
+    input_tokens = models.PositiveIntegerField("입력 토큰", default=0)
+    output_tokens = models.PositiveIntegerField("출력 토큰", default=0)
+    cost_usd = models.DecimalField("추정 비용(US$)", max_digits=10, decimal_places=6, default=0)
+    error = models.CharField("오류", max_length=200, blank=True, default="")
+
+    class Meta:
+        verbose_name = "수집 AI 판별 호출"
+        verbose_name_plural = "수집 AI 판별 호출"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.created_at:%Y-%m-%d %H:%M} {self.model} {self.items}건"
