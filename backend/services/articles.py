@@ -283,7 +283,7 @@ def _bind(article: Article, item_ids: Iterable[int]) -> None:
                 f"수집물 {item_id}은(는) 이미 기사 {other.pk}"
                 f"(「{other.title}」, {other.slug})에 묶여 있습니다."
             )
-        if items[item_id].status == Item.Status.DISCARDED:
+        if items[item_id].status in (Item.Status.DISCARDED, Item.Status.FILTERED):
             raise ItemNotPending(f"수집물 {item_id}은(는) 버려진 수집물이라 묶을 수 없습니다.")
     for item in items.values():
         ArticleItem.objects.create(article=article, item=item)

@@ -361,3 +361,133 @@ def test_rss_excerpt_is_stripped_to_plain_text(fake_fetcher: FakeFetcher) -> Non
     fake_fetcher.responses["https://e.com/feed"] = feed.encode()
     items = RssAdapter().collect("https://e.com/feed", fake_fetcher, {})
     assert [i.excerpt for i in items] == ["", "A & B C D E"]
+
+
+# --- 거르기 규칙(#158) ---
+
+
+def _rules_feed(entries: list[tuple[str, str, str]]) -> bytes:
+    parts = "".join(
+        f"<item><title>{t}</title><link>{u}</link><description>{d}</description></item>"
+        for t, u, d in entries
+    )
+    head = '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>'
+    return f"{head}{parts}</channel></rss>".encode()
+
+
+def test_filter_rules_each_key_and_combination(fake_fetcher: FakeFetcher) -> None:
+    source = make_source(
+        filter_rules={
+            "exclude_url": ["/cars/"],
+            "exclude_title": ["Disrupt"],
+            "include_any": ["AI", "칩"],
+        }
+    )
+    fake_fetcher.responses[source.url] = _rules_feed(
+        [
+            ("AI news", "https://t.example.com/ai/1", "x"),
+            ("AI car", "https://t.example.com/cars/2", "x"),
+            ("AI Disrupt 2026", "https://t.example.com/ai/3", "x"),
+            ("Cooking", "https://t.example.com/food/4", "recipe"),
+            ("Neutral", "https://t.example.com/food/5", "새 칩 발표"),
+        ]
+    )
+    collect_all()
+    by_title = {i.title: i for i in Item.objects.all()}
+    assert by_title["AI news"].status == Item.Status.PENDING
+    assert by_title["Neutral"].status == Item.Status.PENDING  # 발췌에 「칩」
+    assert by_title["AI car"].filter_reason == "exclude_url:/cars/"
+    assert by_title["AI Disrupt 2026"].filter_reason == "exclude_title:Disrupt"
+    assert by_title["Cooking"].filter_reason == "include_any 없음"
+    assert by_title["Cooking"].status == Item.Status.FILTERED
+    source.refresh_from_db()
+    assert source.last_result.endswith("/ 걸러냄 3건 / 이미지 0건")
+    # 다시 수집해도 중복·재걸러냄 없음
+    collect_all()
+    assert Item.objects.count() == 5
+    source.refresh_from_db()
+    assert "걸러냄" not in source.last_result
+
+
+def test_filter_rules_are_case_sensitive_and_empty_rules_pass_all(
+    fake_fetcher: FakeFetcher,
+) -> None:
+    source = make_source(filter_rules={"include_any": ["AI"]})
+    fake_fetcher.responses[source.url] = _rules_feed([("ai lower", "https://t.example.com/1", "")])
+    collect_all()
+    assert Item.objects.get().status == Item.Status.FILTERED
+    plain = make_source(name="P", url="https://feeds.example.com/p.xml")
+    fake_fetcher.responses[plain.url] = _rules_feed([("x", "https://t.example.com/9", "")])
+    collect_all()
+    assert Item.objects.get(title="x").status == Item.Status.PENDING
+
+
+def test_include_any_looks_only_at_first_300_excerpt_chars(fake_fetcher: FakeFetcher) -> None:
+    source = make_source(filter_rules={"include_any": ["AI"]})
+    fake_fetcher.responses[source.url] = _rules_feed(
+        [("none", "https://t.example.com/1", "가" * 300 + "AI")]
+    )
+    collect_all()
+    assert Item.objects.get().status == Item.Status.FILTERED
+
+
+def test_filtered_items_skip_og_fetch(fake_fetcher: FakeFetcher) -> None:
+    source = make_source(filter_rules={"exclude_url": ["/cars/"]})
+    fake_fetcher.responses[source.url] = _rules_feed([("c", "https://t.example.com/cars/1", "")])
+    collect_all()
+    assert fake_fetcher.requested == [source.url]
+
+
+def test_filter_rules_validation() -> None:
+    from django.core.exceptions import ValidationError
+
+    for bad in (
+        {"nope": ["a"]},
+        {"include_any": "AI"},
+        {"include_any": [1]},
+        {"exclude_url": [""]},
+    ):
+        with pytest.raises(ValidationError):
+            make_source(filter_rules=bad).clean()
+    s = make_source(name="ok", filter_rules={"include_any": ["AI"], "exclude_url": []})
+    s.clean()
+    assert s.filter_rules == {"include_any": ["AI"]}
+
+
+def test_admin_revives_filtered_items(admin_client: Client) -> None:
+    source = make_source()
+    item = Item.objects.create(
+        source=source,
+        url="https://t.example.com/1",
+        normalized_url="https://t.example.com/1",
+        title="t",
+        status=Item.Status.FILTERED,
+        filter_reason="include_any 없음",
+    )
+    r = admin_client.post(
+        reverse("admin:collection_item_changelist"),
+        {"action": "revive_filtered", "_selected_action": [item.pk]},
+    )
+    assert r.status_code == 302
+    item.refresh_from_db()
+    assert (item.status, item.filter_reason) == (Item.Status.PENDING, "")
+    assert admin_client.get(reverse("admin:collection_source_changelist")).status_code == 200
+    assert (
+        admin_client.get(
+            reverse("admin:collection_item_changelist") + "?status=filtered"
+        ).status_code
+        == 200
+    )
+
+
+def test_prune_deletes_filtered_after_30_days_and_pending_listing_excludes_them() -> None:
+    from services.collection import list_pending_items
+
+    now = timezone.now()
+    old = _item("https://x.example.com/old", Item.Status.FILTERED, 31, now)
+    recent = _item("https://x.example.com/recent", Item.Status.FILTERED, 2, now)
+    prune_items(lambda: now)
+    assert not Item.objects.filter(pk=old.pk).exists()
+    recent.refresh_from_db()
+    assert recent.status == Item.Status.FILTERED  # 24시간 자동 버림 대상 아님
+    assert list_pending_items().total == 0

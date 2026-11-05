@@ -42,7 +42,8 @@ def prune_items(now: Callable[[], datetime] = timezone.now) -> PruneResult:
     )
     cutoff = current - RETENTION
     stale = Item.objects.filter(
-        status__in=[Item.Status.PENDING, Item.Status.DISCARDED], collected_at__lt=cutoff
+        status__in=[Item.Status.PENDING, Item.Status.DISCARDED, Item.Status.FILTERED],
+        collected_at__lt=cutoff,
     )
     deleted, _ = stale.delete()
     views_deleted, _ = ArticleView.objects.filter(
