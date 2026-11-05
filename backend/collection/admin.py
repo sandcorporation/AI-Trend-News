@@ -5,7 +5,7 @@ from django.db.models import Count, Q, QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
-from collection.models import Item, Source
+from collection.models import FilterCall, Item, Source
 
 
 @admin.register(Source)
@@ -60,9 +60,11 @@ class ItemAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제
         "collected_at",
         "status",
         "filter_reason",
+        "ai_verdict",
+        "ai_reason",
         "has_image",
     )
-    list_filter = ("status", "source")
+    list_filter = ("status", "ai_verdict", "source")
     search_fields = ("title", "url")
     actions = ["revive_filtered"]
 
@@ -83,4 +85,31 @@ class ItemAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제
         return False
 
     def has_change_permission(self, request: HttpRequest, obj: Item | None = None) -> bool:
+        return False
+
+
+@admin.register(FilterCall)
+class FilterCallAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """수집 AI 판별(#160) 호출 기록. 비용은 편집 월 예산 합계에 들어간다."""
+
+    list_display = (
+        "created_at",
+        "source",
+        "mode",
+        "model",
+        "status",
+        "items",
+        "out_count",
+        "input_tokens",
+        "output_tokens",
+        "cost_usd",
+        "error",
+    )
+    list_filter = ("status", "mode", "model")
+    date_hierarchy = "created_at"
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
+
+    def has_change_permission(self, request: HttpRequest, obj: FilterCall | None = None) -> bool:
         return False

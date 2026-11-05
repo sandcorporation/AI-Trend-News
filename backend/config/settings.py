@@ -123,6 +123,13 @@ AUTH_CLIENT_SECRET = env("AUTH_CLIENT_SECRET")
 # Collection (#28): items published more than this many days before collection are not stored as
 # Item (only SeenUrl), so a first run on a feed with years of archive does not flood the queue.
 COLLECT_MAX_AGE_DAYS = int(env("COLLECT_MAX_AGE_DAYS", "3"))
+# 수집 AI 판별(#160): 규칙을 통과한 새 수집물을 Haiku로 주제 안/밖 판별.
+# off / shadow(기록만) / on(거름).
+# 키는 SANDCORP_NEWS_CLAUDE_KEY(아래)를 함께 쓴다. 실패는 모두 통과(fail-open).
+COLLECT_AI_FILTER_MODE = env("COLLECT_AI_FILTER_MODE", "shadow")
+COLLECT_AI_FILTER_MODEL = env("COLLECT_AI_FILTER_MODEL", "claude-haiku-5-5")
+COLLECT_AI_FILTER_BATCH = int(env("COLLECT_AI_FILTER_BATCH", "40"))
+COLLECT_AI_FILTER_TIMEOUT = float(env("COLLECT_AI_FILTER_TIMEOUT", "30"))
 # 편집자 클라우드 예약의 하루 실행 횟수(공개 집계 /api/public/stats가 그대로 낸다).
 EDITOR_RUNS_PER_DAY = 3
 

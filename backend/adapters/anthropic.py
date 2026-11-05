@@ -94,8 +94,10 @@ class LlmClient(Protocol):
 class AnthropicClient:
     """실제 구현. SDK 기본 재시도(2회)를 그대로 쓴다."""
 
-    def __init__(self, api_key: str, timeout: float = 600.0) -> None:
-        self._client = anthropic.Anthropic(api_key=api_key, timeout=timeout)
+    def __init__(self, api_key: str, timeout: float = 600.0, max_retries: int = 2) -> None:
+        self._client = anthropic.Anthropic(
+            api_key=api_key, timeout=timeout, max_retries=max_retries
+        )
 
     def create(self, request: LlmRequest) -> Message:
         try:
@@ -334,7 +336,9 @@ def _message_text(message: MessageParam) -> str:
 _llm: LlmClient | None = None
 
 
-def get_llm() -> LlmClient:
+def get_llm(*, timeout: float | None = None, max_retries: int | None = None) -> LlmClient:
+    """등록된 클라이언트(시험은 가짜) 또는 실제 클라이언트. `timeout`·`max_retries`는 요청당
+    시간 한도(초)와 SDK 재시도 횟수 — 수집 AI 판별(#160)이 30초·1회로 좁힌다. 가짜에는 무관하다."""
     if _llm is not None:
         return _llm
     if getattr(settings, "LLM_FORBID_REAL", False):
@@ -342,7 +346,11 @@ def get_llm() -> LlmClient:
     key = settings.SANDCORP_NEWS_CLAUDE_KEY
     if not key:
         raise LlmNotConfigured("SANDCORP_NEWS_CLAUDE_KEY가 비어 있다")
-    return AnthropicClient(key)
+    return AnthropicClient(
+        key,
+        timeout=600.0 if timeout is None else timeout,
+        max_retries=2 if max_retries is None else max_retries,
+    )
 
 
 def set_llm(client: LlmClient | None) -> LlmClient | None:

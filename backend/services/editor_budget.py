@@ -5,6 +5,8 @@
 (`gate_stage`, 티켓 3·5가 부른다) 셋이다. 건너뛰면 `EditorRun.status=skipped_budget`이 되고
 경보(`Alert.Kind.EDITOR_BUDGET`)는 `check_alerts`가 같은 달 한 번만 보낸다.
 Console이 지출 한도로 요청을 거절(HTTP 4xx)할 때도 같은 상태·경보로 처리한다(`mark_limit_rejected`).
+수집 AI 판별(#160)의 `FilterCall.cost_usd`도 이번 달 합계에 더하고, 넘으면 판별을 건너뛴다
+(`check_collect_filter`, 수집은 통과).
 """
 
 from dataclasses import dataclass
@@ -15,6 +17,7 @@ from django.conf import settings
 from django.db.models import Avg, Sum
 from django.utils import timezone
 
+from collection.models import FilterCall
 from editor.models import EditorCall, EditorRun
 
 # 기록이 없을 때 쓰는 호출당 예상액(US$, 설계 §7 표 ÷ 호출 수). 1·2단계는 Sonnet, 3단계는 Opus
@@ -25,6 +28,8 @@ DEFAULT_CALL_COST: dict[str, Decimal] = {
     EditorCall.Stage.WRITE_UPDATE: Decimal("0.0135"),
     EditorCall.Stage.COMMENTARY: Decimal("0.093"),
 }
+# 수집 AI 판별 요청 하나(Haiku 5.5, 40건 묶음)의 기록 없을 때 예상액.
+DEFAULT_FILTER_CALL_COST = Decimal("0.002")
 AVERAGE_WINDOW = timedelta(days=7)
 RESUME_NOTE = "월 한도 도달, 다음 달 1일 재개"
 
@@ -39,11 +44,13 @@ def month_key(now: datetime) -> str:
 
 
 def month_cost(now: datetime) -> Decimal:
-    """이번 달(KST 달력 월) 편집 호출 추정 비용 합계."""
-    value = EditorCall.objects.filter(created_at__gte=month_start(now)).aggregate(
-        total=Sum("cost_usd")
-    )["total"]
-    return value if value is not None else Decimal(0)
+    """이번 달(KST 달력 월) 편집 호출 + 수집 AI 판별 호출 추정 비용 합계."""
+    since = month_start(now)
+    total = Decimal(0)
+    for model in (EditorCall, FilterCall):
+        value = model.objects.filter(created_at__gte=since).aggregate(total=Sum("cost_usd"))
+        total += value["total"] or Decimal(0)
+    return total
 
 
 def call_estimate(stage: str, now: datetime) -> Decimal:
@@ -72,6 +79,18 @@ class BudgetCheck:
 def check(stage: str, calls: int, now: datetime) -> BudgetCheck:
     total = month_cost(now)
     estimate = call_estimate(stage, now) * calls
+    budget = Decimal(settings.EDITOR_MONTHLY_BUDGET_USD)
+    return BudgetCheck(total + estimate <= budget, total, estimate, budget)
+
+
+def check_collect_filter(calls: int, now: datetime) -> BudgetCheck:
+    """수집 AI 판별 `calls`번의 예산 확인(최근 7일 평균, 없으면 표 값)."""
+    average = FilterCall.objects.filter(
+        created_at__gte=now - AVERAGE_WINDOW, cost_usd__gt=0
+    ).aggregate(avg=Avg("cost_usd"))["avg"]
+    per_call = Decimal(average) if average is not None else DEFAULT_FILTER_CALL_COST
+    total = month_cost(now)
+    estimate = per_call * calls
     budget = Decimal(settings.EDITOR_MONTHLY_BUDGET_USD)
     return BudgetCheck(total + estimate <= budget, total, estimate, budget)
 
