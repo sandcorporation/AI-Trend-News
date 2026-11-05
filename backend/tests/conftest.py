@@ -22,6 +22,7 @@ from adapters.fetch import set_fetcher
 from adapters.portfolio import FakeGateway, set_gateway
 from core import auth_adapter
 from core.vite import _read_manifest
+from services import runtime_settings
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -175,6 +176,26 @@ def fake_portfolio() -> Iterator[FakeGateway]:
     ):
         yield gateway
     set_gateway(previous)
+
+
+_DB_FIXTURES = {
+    "db",
+    "transactional_db",
+    "django_db_reset_sequences",
+    "django_db_serialized_rollback",
+}
+
+
+@pytest.fixture(autouse=True)
+def runtime_settings_cache(request: pytest.FixtureRequest) -> Iterator[None]:
+    """운영 설정 캐시(#164)는 시험마다 새로. DB를 쓰지 않는 시험은 DB 없이 settings 값만 읽는다."""
+    uses_db = request.node.get_closest_marker("django_db") is not None or bool(
+        _DB_FIXTURES & set(request.fixturenames)
+    )
+    cache = runtime_settings.SettingsCache() if uses_db else runtime_settings.StaticCache()
+    previous = runtime_settings.set_cache(cache)
+    yield
+    runtime_settings.set_cache(previous)
 
 
 # --- 시험 하나당 본문 CPU 한도 (이슈 #102, 스킬 test-speed-budget) ---

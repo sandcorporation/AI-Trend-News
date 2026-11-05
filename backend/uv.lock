@@ -630,6 +630,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "beautifulsoup4" },
+    { name = "cryptography" },
     { name = "django" },
     { name = "django-ninja" },
     { name = "feedparser" },
@@ -654,6 +655,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=2.3.0" },
     { name = "beautifulsoup4", specifier = ">=4.15.0" },
+    { name = "cryptography", specifier = ">=50.0.2" },
     { name = "django", specifier = ">=6.1.2" },
     { name = "django-ninja", specifier = ">=1.7.1" },
     { name = "feedparser", specifier = ">=6.0.14" },

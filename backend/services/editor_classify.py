@@ -11,10 +11,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TypedDict
 
-from django.conf import settings
 from django.utils import timezone
 
-from services import articles, collection, editor_reserve
+from services import articles, collection, editor_reserve, runtime_settings
 
 EXCERPT_CHARS = 300
 REASON_CHARS = 80
@@ -59,7 +58,7 @@ def _clip(text: str, limit: int) -> str:
 
 
 def build_input(now: datetime, *, max_items: int | None = None) -> ClassifyInput:
-    limit = settings.EDITOR_MAX_ITEMS if max_items is None else max_items
+    limit = runtime_settings.EDITOR_MAX_ITEMS.get() if max_items is None else max_items
     reserved = editor_reserve.reserved_item_ids(now)  # 게시 모드 진행 중 실행이 잡은 수집물(§5)
     pending = collection.list_pending_items(page=1, page_size=limit, exclude_ids=reserved).items
     return {
@@ -281,7 +280,7 @@ def validate(output: object, data: ClassifyInput) -> Validated:
     discards = item_reasons("discards", "버림")
     holds = item_reasons("holds", "보류") + holds
 
-    limit = settings.EDITOR_MAX_WRITES
+    limit = runtime_settings.EDITOR_MAX_WRITES.get()
     kept_new = new_articles[:limit]
     kept_updates = updates[: max(0, limit - len(kept_new))]
     overflow_ids = [i for a in new_articles[len(kept_new) :] for i in a["item_ids"]]
@@ -290,7 +289,7 @@ def validate(output: object, data: ClassifyInput) -> Validated:
     if overflow_ids:
         check.problems.append(f"쓰기 상한 {limit}건 초과 — 넘친 것은 보류")
 
-    featured_left = settings.EDITOR_MAX_FEATURED
+    featured_left = runtime_settings.EDITOR_MAX_FEATURED.get()
     for article in kept_new:
         if not article["featured"]:
             continue
@@ -298,7 +297,9 @@ def validate(output: object, data: ClassifyInput) -> Validated:
             featured_left -= 1
         else:
             article["featured"] = False
-            check.problems.append(f"추천 상한 {settings.EDITOR_MAX_FEATURED}개 초과 — 추천을 끔")
+            check.problems.append(
+                f"추천 상한 {runtime_settings.EDITOR_MAX_FEATURED.get()}개 초과 — 추천을 끔"
+            )
 
     for item in data["items"]:
         if item["id"] not in check.seen:

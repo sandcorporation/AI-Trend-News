@@ -335,3 +335,16 @@ def test_default_model_and_mode_unchanged() -> None:
 
     assert base.COLLECT_AI_FILTER_MODEL == "claude-haiku-5-5"
     assert base.COLLECT_AI_FILTER_MODE == "shadow"
+
+
+def test_db_mode_takes_effect_on_next_collect_without_restart(
+    fake_fetcher: FakeFetcher, fake_llm: FakeLlm
+) -> None:
+    """운영 설정(#164): .env는 on이어도 admin(DB)에서 off로 바꾸면 다음 수집이 바로 따른다."""
+    from services import runtime_settings
+
+    runtime_settings.save("COLLECT_AI_FILTER_MODE", "off", actor="owner")
+    _source(fake_fetcher, [("a", "")])
+    collect_all()
+    assert fake_llm.requests == []
+    assert FilterCall.objects.count() == 0

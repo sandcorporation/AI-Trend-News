@@ -27,7 +27,6 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 from anthropic.types import Message
-from django.conf import settings
 from django.db import transaction
 from django.db.models import Sum
 
@@ -42,6 +41,7 @@ from services import (
     editor_save,
     editor_write,
     llm_pricing,
+    runtime_settings,
 )
 from services.editor_classify import Decision, InvalidOutput
 
@@ -64,7 +64,10 @@ WRITE_STAGES = (EditorCall.Stage.WRITE_NEW, EditorCall.Stage.WRITE_UPDATE)
 
 def enqueue_writes(run: EditorRun, decision: Decision) -> int:
     """분류의 새 기사·갱신마다 `queued` 호출을 만든다(원문 페치는 제출 때). 만든 건수."""
-    model, effort = settings.EDITOR_MODEL_WRITE, settings.EDITOR_EFFORT_WRITE
+    model, effort = (
+        runtime_settings.EDITOR_MODEL_WRITE.get(),
+        runtime_settings.EDITOR_EFFORT_WRITE.get(),
+    )
     version = editor_prompts.prompt_version(editor_prompts.system_prompt("write"))
     count = 0
     jobs: list[tuple[str, str, editor_write.Plan, int | None]] = []

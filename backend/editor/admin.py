@@ -1,6 +1,5 @@
 import json
 
-from django.conf import settings
 from django.contrib import admin
 from django.db.models import Model
 from django.http import Http404, HttpRequest
@@ -11,6 +10,7 @@ from django.utils import timezone
 from django.utils.html import format_html
 
 from editor.models import Alert, EditorCall, EditorRun
+from services import runtime_settings
 from services.editor_budget import month_cost
 from services.editor_compare import compare
 
@@ -126,7 +126,7 @@ class EditorRunAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
             **(extra_context or {}),
             "month_label": f"{timezone.localtime(now):%Y-%m}",
             "month_cost": month_cost(now),
-            "month_budget": settings.EDITOR_MONTHLY_BUDGET_USD,
+            "month_budget": runtime_settings.EDITOR_MONTHLY_BUDGET_USD.get(),
         }
         return super().changelist_view(request, context)  # type: ignore[return-value]
 

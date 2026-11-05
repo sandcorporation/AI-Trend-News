@@ -18,13 +18,11 @@ import json
 from datetime import datetime, timedelta
 from typing import Literal, TypedDict
 
-from django.conf import settings
-
 from adapters.anthropic import LlmRequest
 from articles.models import Article, ArticleItem, Category, Commentary
 from collection.models import Item
 from editor.models import EditorCall, EditorRun
-from services import editor_budget, editor_prompts
+from services import editor_budget, editor_prompts, runtime_settings
 from services.commentary import HORIZONS, InvalidCommentary, PredictionIn, clean_fields
 from services.editor_classify import JSON, CategoryInput, InvalidOutput
 from services.editor_write import EXCERPT_CHARS, RunReader, sentence_count
@@ -403,7 +401,7 @@ def check(parsed: object, plan: Plan) -> JSON:
 
 def cap(found: list[Plan]) -> tuple[list[Plan], list[Plan]]:
     """(부를 대상, 상한으로 건너뛸 대상). 상한은 `EDITOR_MAX_COMMENTARY`."""
-    limit = max(0, settings.EDITOR_MAX_COMMENTARY)
+    limit = max(0, runtime_settings.EDITOR_MAX_COMMENTARY.get())
     return found[:limit], found[limit:]
 
 
@@ -415,14 +413,19 @@ def enqueue(run: EditorRun, now: datetime, *, via_batch: bool) -> list[EditorCal
 
     예산을 넘으면 실행을 건너뜀으로 닫고(`gate_stage`) None. 대상이 없으면 빈 목록.
     """
-    if settings.EDITOR_MAX_COMMENTARY <= 0:  # 0이면 3단계를 끈다(호출 행도 만들지 않는다)
+    if (
+        runtime_settings.EDITOR_MAX_COMMENTARY.get() <= 0
+    ):  # 0이면 3단계를 끈다(호출 행도 만들지 않는다)
         return []
     go, over = cap(targets(run))
     if not go and not over:
         return []
     if go and not editor_budget.gate_stage(run, EditorCall.Stage.COMMENTARY, len(go), now):
         return None
-    model, effort = settings.EDITOR_MODEL_COMMENTARY, settings.EDITOR_EFFORT_COMMENTARY
+    model, effort = (
+        runtime_settings.EDITOR_MODEL_COMMENTARY.get(),
+        runtime_settings.EDITOR_EFFORT_COMMENTARY.get(),
+    )
     version = editor_prompts.prompt_version(editor_prompts.system_prompt("commentary"))
     created: list[EditorCall] = []
     for n, plan in enumerate(go + over, start=1):
@@ -438,7 +441,9 @@ def enqueue(run: EditorRun, now: datetime, *, via_batch: bool) -> list[EditorCal
                 "prompt_version": version,
                 "status": EditorCall.Status.SKIPPED if skipped else EditorCall.Status.QUEUED,
                 "error": (
-                    f"슬롯당 분석 상한 {settings.EDITOR_MAX_COMMENTARY}건 초과" if skipped else ""
+                    f"슬롯당 분석 상한 {runtime_settings.EDITOR_MAX_COMMENTARY.get()}건 초과"
+                    if skipped
+                    else ""
                 ),
                 "finished_at": now if skipped else None,
                 "item_ids": plan["item_ids"],

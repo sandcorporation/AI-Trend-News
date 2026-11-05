@@ -5,8 +5,6 @@ import urllib.error
 import urllib.request
 from typing import Protocol
 
-from django.conf import settings
-
 logger = logging.getLogger(__name__)
 
 USER_AGENT = "Foresight-Crawler/1.0 (+https://news.sandcorp.co.kr)"
@@ -64,7 +62,9 @@ class HttpFetcher:
         except OSError as exc:  # URLError·시간 초과는 모두 OSError
             raise FetchError(f"{type(exc).__name__}: {exc}") from exc
 
-        template: str = getattr(settings, "FETCH_FALLBACK_URL", "")
+        from services import runtime_settings  # 순환 import 피함(services → adapters)
+
+        template = runtime_settings.FETCH_FALLBACK_URL.get()
         if not template:
             raise FetchError(f"직접 {direct}")
         try:
