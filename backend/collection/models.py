@@ -27,6 +27,7 @@ class Source(models.Model):
     filter_rules = models.JSONField(
         "거르기 규칙",
         default=dict,
+        db_default={},
         blank=True,
         help_text="키(모두 선택, 문자열 목록, 대소문자 구분 부분 문자열): exclude_url, "
         "exclude_title, include_any(제목+발췌 앞 300자에 하나도 없으면 거름).",
@@ -80,7 +81,9 @@ class Item(models.Model):
         "상태", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True
     )
 
-    filter_reason = models.CharField("거른 사유", max_length=200, blank=True)
+    filter_reason = models.CharField(
+        "거른 사유", max_length=200, blank=True, default="", db_default=""
+    )
 
     class Meta:
         verbose_name = "수집물"
