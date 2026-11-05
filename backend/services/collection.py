@@ -11,6 +11,7 @@ from django.utils import timezone
 from adapters.fetch import Fetcher, FetchError, get_fetcher
 from adapters.sources import ADAPTERS, find_og_image
 from collection.models import Item, SeenUrl, Source
+from services.filter_rules import filter_reason, validate_filter_rules
 from services.urls import normalize_url, url_hash
 
 OG_FETCH_LIMIT = 30  # 소스당 한 수집 실행에서 og:image 보강으로 받는 원문 수
@@ -38,6 +39,7 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
     fetcher = fetcher or get_fetcher()
     created = 0
     too_old = 0
+    filtered = 0
     og_fetches = 0
     with_image = 0
     cutoff = timezone.now() - timedelta(days=settings.COLLECT_MAX_AGE_DAYS)
@@ -46,6 +48,7 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
         if adapter is None:
             raise FetchError(f"알 수 없는 어댑터: {source.adapter_name}")
         raw_items = adapter.collect(source.url, fetcher, source.html_rules)
+        rules = validate_filter_rules(source.filter_rules)
         for raw in raw_items:
             normalized = normalize_url(raw.url)
             with transaction.atomic():
@@ -54,6 +57,21 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
                     continue
                 if raw.published_at is not None and raw.published_at < cutoff:
                     too_old += 1  # 오래된 글은 다시 수집하지 않게 SeenUrl 만 남긴다
+                    continue
+                reason = filter_reason(rules, raw.url, raw.title, raw.excerpt)
+                if reason:  # 걸러낸 글은 Item 으로 남기고(되살리기용) 이미지 보강은 하지 않는다
+                    Item.objects.create(
+                        source=source,
+                        url=raw.url,
+                        normalized_url=normalized,
+                        title=raw.title[:500],
+                        excerpt=raw.excerpt,
+                        published_at=raw.published_at,
+                        image_url=raw.image_url,
+                        status=Item.Status.FILTERED,
+                        filter_reason=reason,
+                    )
+                    filtered += 1
                     continue
                 image_url = raw.image_url
                 if not image_url and og_fetches < OG_FETCH_LIMIT:
@@ -74,6 +92,8 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
         ok, message = True, f"성공: 새 수집물 {created}건 / 항목 {len(raw_items)}건"
         if too_old:
             message += f" / 오래돼 건너뜀 {too_old}건"
+        if filtered:
+            message += f" / 걸러냄 {filtered}건"
         message += f" / 이미지 {with_image}건"
     except Exception as exc:  # 소스별 독립 실패: 어떤 오류든 이 소스의 실패로 기록한다
         ok, message = False, f"실패: {type(exc).__name__}: {exc}"

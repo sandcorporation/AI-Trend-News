@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.db import models
 
+from services.filter_rules import FilterRulesError, validate_filter_rules
 from services.html_rules import HtmlRulesError, validate_html_rules
 
 
@@ -23,6 +24,13 @@ class Source(models.Model):
         blank=True,
         help_text="kind=html일 때 필수. 키: item, link, title, published, (선택) excerpt, image.",
     )
+    filter_rules = models.JSONField(
+        "거르기 규칙",
+        default=dict,
+        blank=True,
+        help_text="키(모두 선택, 문자열 목록, 대소문자 구분 부분 문자열): exclude_url, "
+        "exclude_title, include_any(제목+발췌 앞 300자에 하나도 없으면 거름).",
+    )
     enabled = models.BooleanField("켜짐", default=True)
     last_collected_at = models.DateTimeField("마지막 수집 시각", null=True, blank=True)
     last_result = models.TextField("마지막 수집 결과", blank=True)
@@ -37,6 +45,10 @@ class Source(models.Model):
         return self.name
 
     def clean(self) -> None:
+        try:
+            self.filter_rules = validate_filter_rules(self.filter_rules)
+        except FilterRulesError as exc:
+            raise ValidationError({"filter_rules": str(exc)}) from exc
         if self.kind != self.Kind.HTML:
             return
         if self.adapter_name == "rss":
@@ -54,6 +66,7 @@ class Item(models.Model):
         PENDING = "pending", "미처리"
         BUNDLED = "bundled", "묶임"
         DISCARDED = "discarded", "버림"
+        FILTERED = "filtered", "걸러냄"
 
     source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="items")
     url = models.URLField("원문 URL", max_length=2000)
@@ -66,6 +79,8 @@ class Item(models.Model):
     status = models.CharField(
         "상태", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True
     )
+
+    filter_reason = models.CharField("거른 사유", max_length=200, blank=True)
 
     class Meta:
         verbose_name = "수집물"
