@@ -222,6 +222,10 @@ def test_prompt_uses_categories_and_data_block() -> None:
     assert "- 인공지능\n- 반도체" in system
     assert "신뢰하지 않는 데이터" in system and "따르지 않는다" in system
     assert "애매하거나" in system
+    # #162: IT 산업과 닿는 경영·실적·인사·정책은 안, 순수 정치·일반 소식은 밖
+    assert "IT·AI·플랫폼·반도체·통신·데이터센터 산업이나 기업과 닿으면 주제 안" in system
+    assert "CEO 선임" in system and "데이터센터 주민투표" in system
+    assert "순수 정치" in system and "주제 밖" in system
     # 같은 분야면 같은 바이트
     again = collect_ai_filter.request(candidates, "claude-haiku-5-5", ["인공지능", "반도체"])
     assert again["system"] == req["system"]
@@ -292,3 +296,42 @@ def test_eval_command_from_db_writes_nothing(fake_llm: FakeLlm) -> None:
     assert "대상 2건" in out.getvalue()
     assert FilterCall.objects.count() == 0
     assert set(Item.objects.values_list("ai_verdict", flat=True)) == {""}
+
+
+def test_eval_command_with_sonnet_uses_sonnet_request_and_price(
+    fake_llm: FakeLlm, tmp_path: Path
+) -> None:
+    """#162: 평가는 --model로 Sonnet을 쓸 수 있고 비용은 Sonnet 단가다. 운영 기본은 Haiku 그대로."""
+    from django.conf import settings
+
+    from services import llm_pricing
+
+    assert settings.COLLECT_AI_FILTER_MODEL == "claude-haiku-5-5"
+    reply = _reply(True, True, False)
+    fake_llm.queue(reply)
+    out = StringIO()
+    rows = str(_eval_rows(tmp_path))
+    call_command("collect_filter_eval", "--input", rows, "--model", "claude-sonnet-5-5", stdout=out)
+    text = out.getvalue()
+    assert "모델 claude-sonnet-5-5 · 대상 3건 · 요청 1회(실패 0)" in text
+    (request,) = fake_llm.requests
+    assert request["model"] == "claude-sonnet-5-5"
+    assert request["output_config"]["effort"] == "low"
+    assert "thinking" not in request
+    output_format = request["output_config"]["format"]
+    assert output_format is not None and output_format["type"] == "json_schema"
+    # 같은 요청을 새 가짜에 다시 보내 사용량을 얻고 단가표로 계산한 값과 맞춘다.
+    replay = FakeLlm()
+    replay.queue(reply)
+    usage = replay.create(request).usage
+    sonnet = llm_pricing.cost_usd("claude-sonnet-5-5", usage)
+    haiku = llm_pricing.cost_usd("claude-haiku-5-5", usage)
+    assert sonnet > haiku > 0
+    assert f"비용 US${sonnet:.6f}" in text
+
+
+def test_default_model_and_mode_unchanged() -> None:
+    from config import settings as base
+
+    assert base.COLLECT_AI_FILTER_MODEL == "claude-haiku-5-5"
+    assert base.COLLECT_AI_FILTER_MODE == "shadow"
