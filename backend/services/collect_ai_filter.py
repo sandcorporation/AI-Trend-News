@@ -18,13 +18,12 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from adapters.anthropic import LlmClient, LlmError, LlmRequest, get_llm
 from collection.models import FilterCall, Item, Source
-from services import editor_budget, llm_pricing
+from services import editor_budget, llm_pricing, runtime_settings
 from services.articles import list_categories
 
 logger = logging.getLogger(__name__)
@@ -271,10 +270,10 @@ class Summary:
 
 def apply(source: Source, items: Sequence[Item]) -> Summary:
     """수집 실행 안에서 새 수집물을 판정하고 기록한다(on이면 밖을 거른다). 예외를 던지지 않는다."""
-    mode = settings.COLLECT_AI_FILTER_MODE
+    mode = runtime_settings.COLLECT_AI_FILTER_MODE.get()
     if mode not in ("shadow", "on") or not items:
         return Summary()
-    if not settings.SANDCORP_NEWS_CLAUDE_KEY:
+    if not runtime_settings.SANDCORP_NEWS_CLAUDE_KEY.get():
         return Summary()  # 키 없음: 부르지 않고 통과
     try:
         return _apply(source, items, mode)
@@ -284,13 +283,13 @@ def apply(source: Source, items: Sequence[Item]) -> Summary:
 
 
 def _apply(source: Source, items: Sequence[Item], mode: str) -> Summary:
-    model = settings.COLLECT_AI_FILTER_MODEL
+    model = runtime_settings.COLLECT_AI_FILTER_MODEL.get()
     llm_pricing.check_model(model)
-    size = max(1, settings.COLLECT_AI_FILTER_BATCH)
+    size = max(1, runtime_settings.COLLECT_AI_FILTER_BATCH.get())
     batches = -(-len(items) // size)
     if not editor_budget.check_collect_filter(batches, timezone.now()).allowed:
         return Summary(mode=mode, skipped_budget=True)
-    llm = get_llm(timeout=settings.COLLECT_AI_FILTER_TIMEOUT, max_retries=MAX_RETRIES)
+    llm = get_llm(timeout=runtime_settings.COLLECT_AI_FILTER_TIMEOUT.get(), max_retries=MAX_RETRIES)
     candidates = [Candidate(source.name, i.title, i.excerpt) for i in items]
     result = judge(llm, candidates, model=model, categories=category_names(), batch_size=size)
     removed = 0

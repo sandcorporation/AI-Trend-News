@@ -1,0 +1,85 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+  <a href="{% url 'admin:index' %}">홈</a> › 운영 설정
+</div>
+{% endblock %}
+{% block content %}
+<style>
+  .rs table { width: 100%; }
+  .rs td, .rs th { vertical-align: top; }
+  .rs td { overflow-wrap: anywhere; }
+  .rs .muted { color: var(--body-quiet-color); font-size: .85em; }
+  .rs form { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: 0; }
+  .rs input[type=text], .rs input[type=password], .rs select { min-width: 12rem; max-width: 100%; }
+  .rs .badge { display: inline-block; padding: 0 .4rem; border: 1px solid var(--hairline-color); border-radius: 3px; font-size: .8em; }
+  .rs .warn { background: var(--message-warning-bg); padding: .5rem 1rem; margin-bottom: 1rem; }
+  @media (max-width: 767px) {
+    .rs thead { display: none; }
+    .rs tr, .rs td { display: block; width: auto; }
+    .rs tr { border-bottom: 1px solid var(--hairline-color); padding: .25rem 0; }
+    .rs td { border: 0; padding: .15rem .5rem; }
+  }
+</style>
+<div class="rs" id="runtime-settings">
+  <p class="muted">저장하면 web·scheduler 모두 재시작 없이 반영된다(다른 프로세스는 1초 안). DB 값이 없으면 .env 값을 쓴다.</p>
+  {% if not encryption_ready %}
+  <div class="warn" data-slot="no-key">암호화 키 없음 — 대장이 .env에 RUNTIME_SETTINGS_KEY를 넣어야 함. 그 전에는 AI 키를 저장할 수 없다(.env 값으로 계속 돈다).</div>
+  {% endif %}
+  {% for group, rows in groups.items %}
+  <h2>{{ group }}</h2>
+  <table>
+    <thead><tr><th>이름</th><th>지금</th><th>바꾸기</th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    <tr data-setting="{{ row.name }}">
+      <td><strong>{{ row.name }}</strong><div class="muted">{{ row.help }}</div></td>
+      <td>
+        {% if row.secret %}
+          {% if row.is_set %}<span data-slot="state">설정됨</span>{% if row.last4 %} · 끝 4자리 <code>{{ row.last4 }}</code>{% endif %}{% else %}<span data-slot="state">없음</span>{% endif %}
+        {% else %}
+          <code data-slot="value">{{ row.current|default:"(빈 값)" }}</code>
+        {% endif %}
+        <div class="muted">출처 <span class="badge" data-slot="source">{{ row.source }}</span>
+          {% if row.in_db %} · {{ row.updated_at|date:"Y-m-d H:i" }} · {{ row.updated_by }}{% endif %}</div>
+      </td>
+      <td>
+        <form method="post">{% csrf_token %}
+          <input type="hidden" name="name" value="{{ row.name }}">
+          {% if row.secret %}
+            <input type="password" name="value" value="" autocomplete="new-password" placeholder="비워 두면 기존 값 유지">
+            <button type="submit" name="op" value="save">저장</button>
+            <button type="submit" name="op" value="test">연결 시험</button>
+          {% elif row.choices %}
+            <select name="value">
+              {% for choice in row.choices %}<option value="{{ choice }}"{% if choice == row.current %} selected{% endif %}>{{ choice|default:"(빈 값)" }}</option>{% endfor %}
+            </select>
+            <button type="submit" name="op" value="save">저장</button>
+          {% else %}
+            <input type="text" name="value" value="{{ row.current }}">
+            <button type="submit" name="op" value="save">저장</button>
+          {% endif %}
+          {% if row.in_db %}
+            <button type="submit" name="op" value="clear" onclick="return confirm('{{ row.name }}의 DB 값을 지울까요? .env 값으로 돌아갑니다.')">DB 값 지우기</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+
+  <h2>변경 이력</h2>
+  <table id="runtime-settings-history">
+    <thead><tr><th>시각</th><th>이름</th><th>동작</th><th>변경자</th></tr></thead>
+    <tbody>
+    {% for change in history %}
+      <tr><td>{{ change.changed_at|date:"Y-m-d H:i:s" }}</td><td>{{ change.name }}</td><td>{{ change.get_action_display }}</td><td>{{ change.changed_by }}</td></tr>
+    {% empty %}
+      <tr><td colspan="4" class="muted">아직 없음</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,7 +1,8 @@
 """LLM 어댑터(ADR 0006): Anthropic Messages API 호출은 이 파일에서만 한다.
 
-이 티켓(#123)은 동기 `create`만 둔다(배치는 #126). 키는 `settings.SANDCORP_NEWS_CLAUDE_KEY`를
-명시적으로 넘긴다 — SDK가 스스로 읽는 `ANTHROPIC_API_KEY`에는 기대지 않는다.
+키는 운영 설정 `SANDCORP_NEWS_CLAUDE_KEY`(#164: admin DB 값 → .env)를 호출마다 읽어
+명시적으로 넘긴다(모듈 전역에 키를 쥔 클라이언트를 두지 않는다) — SDK가 스스로 읽는
+`ANTHROPIC_API_KEY`에는 기대지 않는다.
 
 시험은 autouse 픽스처 `fake_llm`이 `FakeLlm`을 꽂는다. 가짜가 꽂혀 있지 않은데 키가 비었거나
 `LLM_FORBID_REAL`(시험 설정)이면 `get_llm()`은 실제 클라이언트를 만들지 않고 `LlmNotConfigured`.
@@ -9,7 +10,7 @@
 
 import hashlib
 import json
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import Literal, NotRequired, Protocol, TypedDict, cast
 
@@ -343,7 +344,9 @@ def get_llm(*, timeout: float | None = None, max_retries: int | None = None) -> 
         return _llm
     if getattr(settings, "LLM_FORBID_REAL", False):
         raise LlmNotConfigured("시험 중에는 실제 LLM 클라이언트를 만들지 않는다(fake_llm을 쓴다)")
-    key = settings.SANDCORP_NEWS_CLAUDE_KEY
+    from services import runtime_settings  # 순환 import 피함(services → adapters)
+
+    key = runtime_settings.SANDCORP_NEWS_CLAUDE_KEY.get()
     if not key:
         raise LlmNotConfigured("SANDCORP_NEWS_CLAUDE_KEY가 비어 있다")
     return AnthropicClient(
@@ -357,4 +360,46 @@ def set_llm(client: LlmClient | None) -> LlmClient | None:
     """등록 지점. 이전 값을 돌려줘 시험이 되돌릴 수 있게 한다."""
     global _llm
     previous, _llm = _llm, client
+    return previous
+
+
+# --- 키 연결 시험(#164, admin 「운영 설정」) ---
+
+
+@dataclass(frozen=True)
+class KeyCheck:
+    ok: bool
+    message: str  # 키·응답 본문을 담지 않는다
+
+
+type KeyChecker = Callable[[str], KeyCheck]
+
+
+def _real_key_check(key: str) -> KeyCheck:
+    """`GET /v1/models`(limit 1) 한 번. 토큰을 쓰지 않는 가벼운 호출이다."""
+    if getattr(settings, "LLM_FORBID_REAL", False):
+        return KeyCheck(False, "시험 중에는 실제 API를 부르지 않는다")
+    client = anthropic.Anthropic(api_key=key, timeout=10.0, max_retries=0)
+    try:
+        client.models.list(limit=1)
+    except anthropic.APIStatusError as error:
+        return KeyCheck(False, f"실패: HTTP {error.status_code} ({type(error).__name__})")
+    except anthropic.APIError as error:
+        return KeyCheck(False, f"연결 실패: {type(error).__name__}")
+    return KeyCheck(True, "연결 성공(200)")
+
+
+_key_checker: KeyChecker = _real_key_check
+
+
+def check_key(key: str) -> KeyCheck:
+    if not key:
+        return KeyCheck(False, "키가 비어 있다")
+    return _key_checker(key)
+
+
+def set_key_checker(checker: KeyChecker) -> KeyChecker:
+    """등록 지점(시험은 가짜). 이전 값을 돌려준다."""
+    global _key_checker
+    previous, _key_checker = _key_checker, checker
     return previous

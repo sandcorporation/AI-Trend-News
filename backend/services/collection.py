@@ -4,14 +4,13 @@ from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import timedelta
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
 from adapters.fetch import Fetcher, FetchError, get_fetcher
 from adapters.sources import ADAPTERS, find_og_image
 from collection.models import Item, SeenUrl, Source
-from services import collect_ai_filter
+from services import collect_ai_filter, runtime_settings
 from services.filter_rules import filter_reason, validate_filter_rules
 from services.urls import normalize_url, url_hash
 
@@ -44,7 +43,7 @@ def collect_source(source: Source, fetcher: Fetcher | None = None) -> CollectRes
     og_fetches = 0
     with_image = 0
     fresh: list[Item] = []  # 규칙을 통과한 새 수집물 — AI 판별(#160) 대상
-    cutoff = timezone.now() - timedelta(days=settings.COLLECT_MAX_AGE_DAYS)
+    cutoff = timezone.now() - timedelta(days=runtime_settings.COLLECT_MAX_AGE_DAYS.get())
     try:
         adapter = ADAPTERS.get(source.adapter_name)
         if adapter is None:

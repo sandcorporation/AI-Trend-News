@@ -9,12 +9,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from django.conf import settings
-
 from adapters.discord import Notifier
 from collection.models import Source
 from editor.models import ABANDON_AFTER, Alert, EditorCall, EditorRun
-from services import editor_budget, predictions
+from services import editor_budget, predictions, runtime_settings
 from services.editor_runs import counted_runs, last_finished_run
 
 logger = logging.getLogger("alerts")
@@ -90,7 +88,7 @@ def _budget_condition(now: datetime) -> Condition | None:
         Kind.EDITOR_BUDGET,
         editor_budget.month_key(now),
         f"[경보] 편집 예산 초과: 이번 달 합계 US${editor_budget.month_cost(now):.2f} / 상한 "
-        f"US${settings.EDITOR_MONTHLY_BUDGET_USD} — {editor_budget.RESUME_NOTE}.",
+        f"US${runtime_settings.EDITOR_MONTHLY_BUDGET_USD.get()} — {editor_budget.RESUME_NOTE}.",
     )
 
 

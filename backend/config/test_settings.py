@@ -25,3 +25,5 @@ SANDCORP_NEWS_CLAUDE_KEY = ""
 EDITOR_PIPELINE_MODE = "off"
 EDITOR_MODEL_CLASSIFY_COMPARE = ""
 LLM_FORBID_REAL = True
+# 운영 설정 암호화 키: 셸 값을 덮는다(필요한 시험이 override_settings로 넣는다).
+RUNTIME_SETTINGS_KEY = ""

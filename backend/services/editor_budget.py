@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from django.conf import settings
 from django.db.models import Avg, Sum
 from django.utils import timezone
 
 from collection.models import FilterCall
 from editor.models import EditorCall, EditorRun
+from services import runtime_settings
 
 # 기록이 없을 때 쓰는 호출당 예상액(US$, 설계 §7 표 ÷ 호출 수). 1·2단계는 Sonnet, 3단계는 Opus
 # (대표 결정 2026-10-30, $0.372 ÷ 4), 2·3단계는 배치.
@@ -79,7 +79,7 @@ class BudgetCheck:
 def check(stage: str, calls: int, now: datetime) -> BudgetCheck:
     total = month_cost(now)
     estimate = call_estimate(stage, now) * calls
-    budget = Decimal(settings.EDITOR_MONTHLY_BUDGET_USD)
+    budget = Decimal(runtime_settings.EDITOR_MONTHLY_BUDGET_USD.get())
     return BudgetCheck(total + estimate <= budget, total, estimate, budget)
 
 
@@ -91,7 +91,7 @@ def check_collect_filter(calls: int, now: datetime) -> BudgetCheck:
     per_call = Decimal(average) if average is not None else DEFAULT_FILTER_CALL_COST
     total = month_cost(now)
     estimate = per_call * calls
-    budget = Decimal(settings.EDITOR_MONTHLY_BUDGET_USD)
+    budget = Decimal(runtime_settings.EDITOR_MONTHLY_BUDGET_USD.get())
     return BudgetCheck(total + estimate <= budget, total, estimate, budget)
 
 

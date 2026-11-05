@@ -17,13 +17,12 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from adapters.anthropic import LlmError, get_llm
 from collection.models import Item
-from services import collect_ai_filter, llm_pricing
+from services import collect_ai_filter, llm_pricing, runtime_settings
 
 STATUSES = (Item.Status.BUNDLED.value, Item.Status.DISCARDED.value)
 VERDICTS = ("in", "out", "error")
@@ -100,7 +99,7 @@ class Command(BaseCommand):
         parser.add_argument("--model", default="")
 
     def handle(self, *args: Any, **options: Any) -> None:  # noqa: ANN401 - Django 명령 서명
-        model = options["model"] or settings.COLLECT_AI_FILTER_MODEL
+        model = options["model"] or runtime_settings.COLLECT_AI_FILTER_MODEL.get()
         try:
             llm_pricing.check_model(model)
         except llm_pricing.UnknownModel as error:
@@ -115,12 +114,12 @@ class Command(BaseCommand):
             raise CommandError("평가할 수집물(bundled·discarded)이 없다")
         try:
             llm = get_llm(
-                timeout=settings.COLLECT_AI_FILTER_TIMEOUT,
+                timeout=runtime_settings.COLLECT_AI_FILTER_TIMEOUT.get(),
                 max_retries=collect_ai_filter.MAX_RETRIES,
             )
         except LlmError as error:
             raise CommandError(f"LLM을 쓸 수 없다: {error}") from None
-        batch = max(1, settings.COLLECT_AI_FILTER_BATCH)
+        batch = max(1, runtime_settings.COLLECT_AI_FILTER_BATCH.get())
         result = collect_ai_filter.judge(
             llm,
             [collect_ai_filter.Candidate(r.source, r.title, r.excerpt) for r in rows],

@@ -13,14 +13,13 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError, CommandParser
 
 from adapters.anthropic import LlmClient, LlmNotConfigured, get_llm
 from adapters.clock import get_clock
 from adapters.fetch import get_fetcher
 from articles.models import Article, ArticleItem
-from services import editor_classify, editor_commentary, editor_write, llm_pricing
+from services import editor_classify, editor_commentary, editor_write, llm_pricing, runtime_settings
 from services.editor_pipeline import Outcome, classify, commentary, write
 from services.editor_prompts import parse_effort
 
@@ -44,10 +43,10 @@ class Command(BaseCommand):
         if stage == "commentary":
             self._commentary(options)
             return
-        model = settings.EDITOR_MODEL_CLASSIFY
-        effort = settings.EDITOR_EFFORT_CLASSIFY
-        write_model = options["model"] or settings.EDITOR_MODEL_WRITE
-        write_effort = options["effort"] or settings.EDITOR_EFFORT_WRITE
+        model = runtime_settings.EDITOR_MODEL_CLASSIFY.get()
+        effort = runtime_settings.EDITOR_EFFORT_CLASSIFY.get()
+        write_model = options["model"] or runtime_settings.EDITOR_MODEL_WRITE.get()
+        write_effort = options["effort"] or runtime_settings.EDITOR_EFFORT_WRITE.get()
         if stage == "classify":
             model, effort = options["model"] or model, options["effort"] or effort
         try:
@@ -85,8 +84,8 @@ class Command(BaseCommand):
             self._write(llm, outcome, data, write_model, write_effort, options)
 
     def _commentary(self, options: dict[str, Any]) -> None:  # noqa: ANN401 - Django 명령 옵션
-        model = options["model"] or settings.EDITOR_MODEL_COMMENTARY
-        effort = options["effort"] or settings.EDITOR_EFFORT_COMMENTARY
+        model = options["model"] or runtime_settings.EDITOR_MODEL_COMMENTARY.get()
+        effort = options["effort"] or runtime_settings.EDITOR_EFFORT_COMMENTARY.get()
         try:
             llm_pricing.check_model(model)
             parse_effort(effort)

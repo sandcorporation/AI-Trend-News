@@ -21,7 +21,6 @@ from decimal import Decimal
 from functools import partial
 
 from anthropic.types import Message
-from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -40,6 +39,7 @@ from services import (
     editor_save,
     editor_write,
     llm_pricing,
+    runtime_settings,
 )
 from services.editor_classify import JSON, ClassifyInput, Decision, InvalidOutput
 from services.editor_prompts import parse_effort
@@ -58,7 +58,7 @@ def due_slot(now: datetime) -> str | None:
     candidates: list[datetime] = []
     for days_ago in (0, 1):
         day = local.date() - timedelta(days=days_ago)
-        for hour in settings.EDITOR_RUN_HOURS:
+        for hour in runtime_settings.EDITOR_RUN_HOURS.get():
             start = timezone.make_aware(datetime.combine(day, time(hour)))
             if start <= local < start + CATCH_UP:
                 candidates.append(start)
@@ -287,7 +287,10 @@ def _write_one(
     article_id: int | None,
     now: datetime,
 ) -> tuple[Outcome, EditorCall]:
-    model, effort = settings.EDITOR_MODEL_WRITE, settings.EDITOR_EFFORT_WRITE
+    model, effort = (
+        runtime_settings.EDITOR_MODEL_WRITE.get(),
+        runtime_settings.EDITOR_EFFORT_WRITE.get(),
+    )
     try:
         prepared = prepare()
     except Article.DoesNotExist:
@@ -334,7 +337,7 @@ def write_stage(
     if not editor_budget.gate_stage(run, EditorCall.Stage.WRITE_NEW, len(new) + len(updates), now):
         result.stopped = True
         return result
-    if settings.EDITOR_USE_BATCH:
+    if runtime_settings.EDITOR_USE_BATCH.get():
         result.calls = editor_batch.enqueue_writes(run, decision)
         result.queued = True
         return result
@@ -574,8 +577,9 @@ def _settle(now: datetime) -> list[str]:
     """이번 주기 안에서 `EDITOR_BATCH_WAIT_SECONDS`까지 30초 간격으로 배치를 본다. 시간 안에 안
     끝나면 그대로 둔다 — 다음 매시 주기의 `_advance_pending`이 이어 간다."""
     notes = _advance_pending(now)
-    deadline = now + timedelta(seconds=settings.EDITOR_BATCH_WAIT_SECONDS)
-    steps = settings.EDITOR_BATCH_WAIT_SECONDS // editor_batch.POLL_SECONDS
+    wait = runtime_settings.EDITOR_BATCH_WAIT_SECONDS.get()
+    deadline = now + timedelta(seconds=wait)
+    steps = wait // editor_batch.POLL_SECONDS
     for _ in range(steps):
         if (
             not editor_batch.pending_runs()
@@ -593,13 +597,13 @@ def run_editor(now: datetime) -> str:
     키 없음·꺼짐이면 아무것도 하지 않는다. 먼저 이어 갈 배치 실행을 한 걸음 밀고(설계 §4-1),
     편집 시각 슬롯이면 새 실행을 열고(2), 진행 중인 배치를 기다린다(3).
     """
-    mode = settings.EDITOR_PIPELINE_MODE
+    mode = runtime_settings.EDITOR_PIPELINE_MODE.get()
     if mode == "off":
         return "편집 파이프라인: 꺼짐(EDITOR_PIPELINE_MODE=off)"
     if mode not in MODES:  # 오타 등 모르는 값은 꺼짐과 같이 아무것도 하지 않는다
         logger.warning("EDITOR_PIPELINE_MODE=%r는 모르는 값 — 꺼짐처럼 건너뜀", mode)
         return f"편집 파이프라인: 모르는 모드 {mode!r} — 꺼짐처럼 건너뜀"
-    if not settings.SANDCORP_NEWS_CLAUDE_KEY:
+    if not runtime_settings.SANDCORP_NEWS_CLAUDE_KEY.get():
         logger.warning("SANDCORP_NEWS_CLAUDE_KEY 없음 — 편집 파이프라인을 건너뜀")
         return "편집 파이프라인: 키 없음 — 건너뜀"
     notes = _advance_pending(now)
@@ -615,15 +619,19 @@ def _open_slot(now: datetime, mode: EditorRun.Mode) -> str:
     if EditorRun.objects.filter(slot=slot).exists():
         return f"편집 파이프라인: 슬롯 {slot}은 이미 열림"
 
-    effort = settings.EDITOR_EFFORT_CLASSIFY
-    models = [settings.EDITOR_MODEL_CLASSIFY]
-    if settings.EDITOR_MODEL_CLASSIFY_COMPARE:
-        models.append(settings.EDITOR_MODEL_CLASSIFY_COMPARE)
-    for model in [*models, settings.EDITOR_MODEL_WRITE, settings.EDITOR_MODEL_COMMENTARY]:
+    effort = runtime_settings.EDITOR_EFFORT_CLASSIFY.get()
+    models = [runtime_settings.EDITOR_MODEL_CLASSIFY.get()]
+    if runtime_settings.EDITOR_MODEL_CLASSIFY_COMPARE.get():
+        models.append(runtime_settings.EDITOR_MODEL_CLASSIFY_COMPARE.get())
+    for model in [
+        *models,
+        runtime_settings.EDITOR_MODEL_WRITE.get(),
+        runtime_settings.EDITOR_MODEL_COMMENTARY.get(),
+    ]:
         llm_pricing.check_model(model)
     parse_effort(effort)
-    parse_effort(settings.EDITOR_EFFORT_WRITE)
-    parse_effort(settings.EDITOR_EFFORT_COMMENTARY)
+    parse_effort(runtime_settings.EDITOR_EFFORT_WRITE.get())
+    parse_effort(runtime_settings.EDITOR_EFFORT_COMMENTARY.get())
 
     try:
         with transaction.atomic():

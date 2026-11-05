@@ -15,7 +15,7 @@
 
 ## 키 넣기
 
-1. 대표의 Anthropic API 키를 운영 `.env`에 `SANDCORP_NEWS_CLAUDE_KEY=…`로 넣는다. SDK 기본 이름 `ANTHROPIC_API_KEY`는 읽지 않는다.
+1. 대표의 Anthropic API 키는 admin 「운영 설정」(`<DJANGO_ADMIN_PATH>/core/runtimesetting/`, #164)에서 넣는다. 저장 즉시 web·scheduler에 반영되고(재시작 없음) DB에는 `RUNTIME_SETTINGS_KEY`(운영 `.env`의 Fernet 키)로 암호화돼 남는다. 화면은 「설정됨 · 끝 4자리」만 보이고 「연결 시험」(`GET /v1/models`)이 있다. admin에 값이 없으면 운영 `.env`의 `SANDCORP_NEWS_CLAUDE_KEY=…`를 쓴다. SDK 기본 이름 `ANTHROPIC_API_KEY`는 읽지 않는다.
 2. 키가 비어 있으면 `run_editor`는 로그만 남기고 건너뛴다. 모드가 `shadow`·`live`여도 같다.
 3. 키 값은 이슈·PR·로그·대화에 남기지 않는다. 손으로 확인할 때는 `~/.config/sandcorp/news-claude.env`(권한 600)를 `set -a; source …; set +a`로 환경 변수에만 올린다.
 
@@ -31,7 +31,7 @@
 
 1. 그림자 기간(3~7일)에 admin 「편집자 실행」 → 상세 「그림자 비교」로 판단 일치율, 사실 오류, 비용을 본다. 대표가 확인한다.
 2. **먼저 claude.ai 예약 루틴(06:40·12:40·18:40)을 끈다.** 순서를 바꾸면 루틴과 파이프라인이 같은 수집물을 두고 경쟁한다. 저장은 견디지만(이미 묶인 수집물은 빼고 저장) 같은 뉴스가 두 기사로 생길 수 있다.
-3. 같은 날 운영 `.env`를 `EDITOR_PIPELINE_MODE=live`로 바꾸고 재배포한다. 다음 매시 25분 주기부터 적용된다. 이미 열린 그림자 실행은 그림자로 끝난다.
+3. 같은 날 admin 「운영 설정」에서 `EDITOR_PIPELINE_MODE`를 `live`로 저장한다(재배포 없음; 운영 `.env`를 바꾸고 재배포해도 된다). 다음 매시 25분 주기부터 적용된다. 이미 열린 그림자 실행은 그림자로 끝난다.
 4. 첫 게시 슬롯(06:25·12:25·18:25 KST) 뒤에 확인한다.
    - admin 「편집자 실행」: 모드 「게시」, 메모의 「저장: 새 기사 N · 갱신 M · 버림 K」, 비용.
    - 「편집 호출」 상태: `saved`가 정상이다. `skipped`는 까닭이 `error`에 있다(수집물이 이미 묶임·버림, 숨긴 분석, 올린 포스트). `failed`는 「저장 실패: …」(분야 삭제·기사 삭제) 또는 모델 호출 실패다.

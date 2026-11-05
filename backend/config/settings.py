@@ -160,6 +160,12 @@ EDITOR_MAX_COMMENTARY = int(env("EDITOR_MAX_COMMENTARY", "4"))  # 슬롯당 3단
 # Fetch fallback (#70): URL template with {url}; used once when the direct GET looks bot-blocked.
 FETCH_FALLBACK_URL = env("FETCH_FALLBACK_URL", "")
 
+# 운영 설정(#164, services/runtime_settings.py): admin 「운영 설정」에서 바꾼 값이 위 값보다 먼저다.
+# RUNTIME_SETTINGS_KEY = 비밀 설정(AI 키)을 DB에 암호화하는 Fernet 키. 비면 비밀 저장을 거절한다.
+RUNTIME_SETTINGS_KEY = env("RUNTIME_SETTINGS_KEY")
+# 다른 프로세스가 바꾼 값을 확인하는 간격(초, 0이면 읽을 때마다 DB 버전 확인).
+RUNTIME_SETTINGS_CHECK_SECONDS = float(env("RUNTIME_SETTINGS_CHECK_SECONDS", "1"))
+
 # Pending items collected longer ago than this are auto-discarded by prune_items (#38).
 PENDING_MAX_AGE_HOURS = int(env("PENDING_MAX_AGE_HOURS", "24"))
 

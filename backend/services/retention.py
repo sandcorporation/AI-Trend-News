@@ -5,12 +5,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from django.conf import settings
 from django.utils import timezone
 
 from articles.models import ArticleView
 from collection.models import Item
 from editor.models import EditorCall
+from services import runtime_settings
 from services.editor_reserve import reserved_item_ids
 
 RETENTION = timedelta(days=30)
@@ -35,7 +35,8 @@ def prune_items(now: Callable[[], datetime] = timezone.now) -> PruneResult:
     discarded = (
         Item.objects.filter(
             status=Item.Status.PENDING,
-            collected_at__lt=current - timedelta(hours=settings.PENDING_MAX_AGE_HOURS),
+            collected_at__lt=current
+            - timedelta(hours=runtime_settings.PENDING_MAX_AGE_HOURS.get()),
         )
         .exclude(pk__in=list(reserved_item_ids(current)))  # 게시 모드 예약 중(#128)
         .update(status=Item.Status.DISCARDED)
