@@ -226,6 +226,9 @@ def test_prompt_uses_categories_and_data_block() -> None:
     assert "IT·AI·플랫폼·반도체·통신·데이터센터 산업이나 기업과 닿으면 주제 안" in system
     assert "CEO 선임" in system and "데이터센터 주민투표" in system
     assert "순수 정치" in system and "주제 밖" in system
+    # #166: 보안 사고·가상자산 해킹, IT·AI 기업 해외 진출·투자 유치는 안
+    assert "가상자산 거래소 해킹 같은 사이버 보안 소식은 주제 안" in system
+    assert "IT·AI 기업의 해외 진출·현지 법인·정부 프로그램 선정·투자 유치는 주제 안" in system
     # 같은 분야면 같은 바이트
     again = collect_ai_filter.request(candidates, "claude-haiku-5-5", ["인공지능", "반도체"])
     assert again["system"] == req["system"]
