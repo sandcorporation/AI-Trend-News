@@ -48,6 +48,7 @@ export function Layout({
         <p className="footer-links label">
           <a href={site.footer_url}>{site.sandcorp_label}</a> ·{" "}
           <a href={site.contact_url}>{site.contact_label}</a> ·{" "}
+          <a href={site.privacy_url}>{site.privacy_label}</a> ·{" "}
           <a href="/predictions">전망 기록표</a> ·{" "}
           <a href="/sitemap.xml">sitemap</a>
         </p>

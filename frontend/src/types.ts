@@ -72,6 +72,8 @@ export interface SiteData {
   made_by_url: string;
   contact_label: string;
   contact_url: string;
+  privacy_label: string;
+  privacy_url: string;
 }
 
 export interface CtaData {
