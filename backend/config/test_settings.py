@@ -9,6 +9,8 @@ os.environ.setdefault("AUTH_CLIENT_ID", "news-client")
 os.environ.setdefault("AUTH_CLIENT_SECRET", "news-secret")
 # `make db` publishes the local MySQL on 15443 (13306 is taken by the coordinator's tunnel).
 os.environ.setdefault("DB_PORT", "15443")
+# 오류 수집은 시험에서 켜지 않는다(셸에 DSN이 있어도). 켜는 시험은 가짜 전송으로 직접 켠다.
+os.environ["SENTRY_DSN_BACKEND"] = ""
 
 from config.settings import *  # noqa: E402, F403
 
@@ -16,6 +18,8 @@ from config.settings import *  # noqa: E402, F403
 COLLECT_MAX_AGE_DAYS = 36500
 FETCH_FALLBACK_URL = ""
 METRICS_SNIPPET_URL = ""
+SENTRY_DSN_FRONTEND = ""
+SENTRY_RELEASE = ""
 
 # 시험에서만 싼 비밀번호 해시(PBKDF2는 계정 하나 만들 때마다 CPU 0.5초+). 운영 설정은 기본값 그대로.
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
