@@ -62,6 +62,8 @@ CTA_CONTACT_LABEL = "문의하기"
 CONTACT_PATH = "/contact"
 PREDICTIONS_PATH = "/predictions"
 FOOTER_CONTACT_LABEL = "문의"
+PRIVACY_LABEL = "개인정보·오류 기록"
+PRIVACY_URL = "https://sandcorporation.github.io/privacy-and-terms/errors/"
 SIDEBAR_SANDCORP_TEXT = "반복 업무를 자동화하는 팀. 이 사이트도 Sandcorp가 만들었습니다."
 SIDEBAR_SANDCORP_LINK = "Sandcorp 알아보기"
 SIDEBAR_CONTACT_LABEL = "문의하기"
@@ -194,6 +196,8 @@ class SiteData(TypedDict):
     made_by_url: str
     contact_label: str
     contact_url: str
+    privacy_label: str
+    privacy_url: str
 
 
 class CtaData(TypedDict):
@@ -323,6 +327,8 @@ def _site(current: str | None = None, categories: Iterable[Category] | None = No
         "made_by_url": MADE_BY_URL,
         "contact_label": FOOTER_CONTACT_LABEL,
         "contact_url": CONTACT_PATH,
+        "privacy_label": PRIVACY_LABEL,
+        "privacy_url": PRIVACY_URL,
     }
 
 

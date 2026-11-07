@@ -48,6 +48,8 @@ const site = {
   made_by_url: "https://sandcorp.co.kr/?utm_source=foresight&utm_medium=footer",
   contact_label: "문의",
   contact_url: "/contact",
+  privacy_label: "개인정보·오류 기록",
+  privacy_url: "https://sandcorporation.github.io/privacy-and-terms/errors/",
 };
 const sidebar = {
   share_label: "오늘 뉴스 공유 →",

@@ -314,3 +314,13 @@ def test_website_ld_only_on_unfiltered_first_home_page(client: Client) -> None:
     (page,) = _ld(client.get("/predictions").content.decode())
     assert page["@type"] == "WebPage"
     assert _ld(client.get("/contact").content.decode()) == []
+
+
+def test_footer_privacy_link_in_html_and_page_data(client: Client) -> None:
+    url = "https://sandcorporation.github.io/privacy-and-terms/errors/"
+    body = client.get("/").content.decode()
+    assert f'<a href="{url}">개인정보·오류 기록</a>' in body
+    links = re.search(r'<p class="footer-links.*?</p>', body, re.S)
+    assert links
+    assert links[0].index(">문의</a>") < links[0].index(url) < links[0].index("전망 기록표")
+    assert "privacy_url" in body and "privacy_label" in body
