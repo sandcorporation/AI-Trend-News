@@ -104,3 +104,22 @@ def test_head_has_naver_site_verification_once(client: Client) -> None:
         '<meta name="naver-site-verification" content="8f87f757bdd2af4a28abb267601e24f6082da7c9" />'
     )
     assert html.count(tag) == 1
+
+
+def test_head_has_sentry_config_when_frontend_dsn_set(client: Client) -> None:
+    with override_settings(
+        SENTRY_DSN_FRONTEND="https://public@example.invalid/2</script>&", SENTRY_RELEASE="b" * 40
+    ):
+        html = client.get("/").content.decode()
+
+    found = re.search(r'<script type="application/json" id="sentry-config">(.*?)</script>', html)
+    assert found is not None
+    assert found.group(1) == (
+        '{"dsn": "https://public@example.invalid/2\\u003C/script\\u003E\\u0026", '
+        f'"release": "{"b" * 40}"}}'
+    )
+    assert html.index("sentry-config") < html.index('<script type="module"')
+
+
+def test_head_has_no_sentry_config_without_frontend_dsn(client: Client) -> None:
+    assert "sentry-config" not in client.get("/").content.decode()

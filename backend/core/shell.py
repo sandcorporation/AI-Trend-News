@@ -51,6 +51,17 @@ def ld_json(value: Mapping[str, object]) -> SafeString:
     return mark_safe(json.dumps(value, ensure_ascii=False).translate(_LD_ESCAPES))  # noqa: S308
 
 
+def sentry_public_config() -> SafeString | None:
+    """프런트 오류 수집(#168) 공개 설정 JSON. DSN이 비면 None(셸에 아무것도 내지 않는다).
+
+    Vite 빌드에 박지 않고 실행 env에서 넘긴다 — 이미지 하나를 sha로 그대로 배포하기 때문이다.
+    """
+    dsn = settings.SENTRY_DSN_FRONTEND
+    if not dsn:
+        return None
+    return ld_json({"dsn": dsn, "release": settings.SENTRY_RELEASE})
+
+
 def render_shell(
     request: HttpRequest,
     meta: PageMeta,
@@ -79,6 +90,7 @@ def render_shell(
         "ld_blocks": [ld_json(block) for block in meta.json_ld],
         "metrics_snippet_url": settings.METRICS_SNIPPET_URL,
         "metrics_site_key": settings.METRICS_SITE_KEY,
+        "sentry_config": sentry_public_config(),
         "body": body,
         "assets": entry_assets(),
     }

@@ -198,3 +198,14 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", "INFO")},
 }
+
+# 오류 수집(#168, core/observability.py): GlitchTip(Sentry SDK).
+# DSN이 비면 SDK를 켜지 않는다(dev·CI·시험).
+# SENTRY_RELEASE는 배포 커밋 sha(운영 compose가 SANDCORP_IMAGE_SHA를 넣는다).
+SENTRY_DSN_BACKEND = env("SENTRY_DSN_BACKEND").strip()
+SENTRY_DSN_FRONTEND = env("SENTRY_DSN_FRONTEND").strip()
+SENTRY_RELEASE = env("SENTRY_RELEASE").strip()
+
+from core.observability import configure_sentry  # noqa: E402
+
+configure_sentry(SENTRY_DSN_BACKEND, SENTRY_RELEASE)

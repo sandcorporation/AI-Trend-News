@@ -38,7 +38,8 @@
   {% endfor %}
   {% for href in assets.styles %}<link rel="stylesheet" href="{{ href }}">
   {% endfor %}
-  {% if assets.dev_server %}<script type="module">
+  {% if sentry_config %}<script type="application/json" id="sentry-config">{{ sentry_config }}</script>
+  {% endif %}{% if assets.dev_server %}<script type="module">
     import RefreshRuntime from "{{ assets.dev_server }}/@react-refresh";
     RefreshRuntime.injectIntoGlobalHook(window);
     window.$RefreshReg$ = () => {};
