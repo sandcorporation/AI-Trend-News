@@ -1,0 +1,118 @@
+# PR 검사(GitHub 호스팅 실행기) — Jenkins PR 검사(Jenkinsfile.pr → sandcorpPrCheck: 파괴적 migrate + scripts/ci/check.sh)와 같은 것.
+# 보안: pull_request만(pull_request_target 금지), GitHub 호스팅 실행기만, 읽기 권한만, secrets 없음(시험 값은 가짜).
+# 액션은 커밋 SHA로 고정한다(주석은 태그). 배포는 지금처럼 Jenkins `sandcorp-news`다.
+name: PR 검사
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # scripts/ci/check.Dockerfile과 같은 판
+  PYTHON_VERSION: "3.14"
+  NODE_VERSION: "24"
+  UV_VERSION: "0.12.9"
+  PNPM_VERSION: "11.25.0"
+
+jobs:
+  migrate-guard:
+    name: 파괴적 migrate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # PR이 새로 더한 */migrations/*.py만 본다. 통과 표시 `# sandcorp: destructive-ok — <이유>`(jenkins-shared README).
+      - run: bash scripts/ci/migrate-guard.sh "origin/${{ github.base_ref }}"
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g "pnpm@${PNPM_VERSION}"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      NEWS_TEST_CPU_LIMIT: "1.0"
+      UV_PYTHON_DOWNLOADS: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # service container는 mysqld 인자를 못 받아 docker run으로 띄운다(scripts/ci/check.sh와 같은 옵션).
+      - name: 시험 DB (mysql:26.10.0)
+        run: |
+          docker run -d --name db -p 127.0.0.1:3306:3306 \
+            -e MYSQL_DATABASE=news -e MYSQL_USER=news -e MYSQL_PASSWORD=news -e MYSQL_ROOT_PASSWORD=news-root \
+            mysql:26.10.0 \
+            --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_as_cs \
+            --skip-log-bin --innodb-flush-log-at-trx-commit=2 --innodb-doublewrite=OFF
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: 빌드 도구(mysqlclient)와 uv
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config default-libmysqlclient-dev
+          python -m pip install "uv==${UV_VERSION}"
+      # 비공개 git 의존성 sandcorp-authkit(ssh://git@github.com/…)을 키 없이 https로 받는다 — 이 실행기 안에서만.
+      # sandcorp-auth가 비공개인 동안은 이 단계가 실패하는 것이 예상이다(Jenkins PR 검사가 병합 기준).
+      - name: 의존성(uv sync)
+        working-directory: backend
+        run: |
+          git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+          uv sync --frozen
+      - name: ruff format --check · ruff check
+        working-directory: backend
+        run: uv run ruff format --check . && uv run ruff check .
+      - name: mypy
+        working-directory: backend
+        run: uv run mypy .
+      - name: 시험 DB 준비 기다림
+        run: |
+          for _ in $(seq 1 90); do
+            # root로 붙는 것만으로는 초기화 중일 수 있다 — 앱 사용자로 news DB에 붙어야 준비된 것이다.
+            if docker exec db mysql -unews -pnews -h127.0.0.1 -e 'SELECT 1' news >/dev/null 2>&1; then
+              # pytest-django가 시험 DB(test_news*)를 만들고 지운다(deploy/mysql/dev-init.sql과 같다).
+              docker exec db mysql -uroot -pnews-root -e 'GRANT ALL PRIVILEGES ON `test\_news%`.* TO '"'news'@'%'"';' 2>/dev/null
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "시험 DB가 뜨지 않았다" >&2
+          docker logs --tail 40 db >&2 || true
+          exit 1
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest -q
