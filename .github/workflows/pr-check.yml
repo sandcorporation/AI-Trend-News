@@ -1,4 +1,4 @@
-# PR 검사(GitHub 호스팅 실행기) — Jenkins PR 검사(Jenkinsfile.pr → sandcorpPrCheck: 파괴적 migrate + scripts/ci/check.sh)와 같은 것.
+# PR 검사(GitHub 호스팅 실행기) — 파괴적 migrate + scripts/ci/check.sh(배포 전 검사)와 같은 것. 옛 Jenkins PR 잡(sandcorp-news-pr)을 대신한다.
 # 보안: pull_request만(pull_request_target 금지), GitHub 호스팅 실행기만, 읽기 권한만, secrets 없음(시험 값은 가짜).
 # 액션은 커밋 SHA로 고정한다(주석은 태그). 배포는 지금처럼 Jenkins `sandcorp-news`다.
 name: PR 검사
