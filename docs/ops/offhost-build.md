@@ -11,7 +11,7 @@ oracle(aarch64, 4코어)은 운영 서비스 열 개 남짓이 CPU를 나눠 쓴
 
 ```
 PR ─▶ Actions pr-check ─▶ main 병합
-      ─▶ release.yml(push main): check(pr-check 재사용) ─▶ image(image.yml, ubuntu-24.04-arm, ghcr <sha>) ─▶ promote(production fast-forward)
+      ─▶ release.yml(push main): check(pr-check 재사용) ∥ image(image.yml, ubuntu-24.04-arm, ghcr <sha>) ─▶ promote(둘 다 초록이면 production fast-forward)
       ─▶ Jenkins sandcorp-news(production push만): 이미지가 ghcr에 있는지 확인(5분) ─▶ 배포(oracle)
                                                   docker pull ghcr.io/sandcorporation/sandcorp-news:<sha>
                                                   wait_for_db → migrate → web 교체 → healthy → scheduler 교체 → 헬스
@@ -21,7 +21,7 @@ PR ─▶ Actions pr-check ─▶ main 병합
 - **운영 = `production` 브랜치 머리.** 사람이 push하지 않는다. `release.yml`의 promote 잡이 `scripts/ci/promote.sh ff <sha>`로 앞으로만 옮긴다(옛 실행이 늦게 끝나면 건너뜀, 갈라지면 실패). 브랜치에는 ruleset(강제 push·삭제 금지)이 걸린다.
 - **Jenkins는 굽지도 검사하지도 않는다**(`deployFrom: 'production'`, jenkins-shared README 「승격 브랜치에서 배포」). main push로도 깨지만 production이 안 움직였으면 「이미 배포한 sha」로 `NOT_BUILT`.
 - **이미지**: `ghcr.io/sandcorporation/sandcorp-news:<커밋 sha 40자>`(web·scheduler 공용), 라벨 `org.opencontainers.image.source`·`revision`, provenance 없음. 빌드 캐시는 같은 패키지의 `:buildcache`(레지스트리, `mode=max`). Actions 빌드는 `AUTHKIT_VIA_HTTPS=1`로 공개 sandcorp-auth를 https로 받는다(비밀 없음).
-- **검사**: release의 check는 PR 검사와 같은 `pr-check.yml`(workflow_call)이다. 깨지면 이미지도 승격도 없다.
+- **검사**: release의 check는 PR 검사와 같은 `pr-check.yml`(workflow_call)이다. image와 병렬로 돌고, 깨지면 승격이 없다(이미지는 올라가도 배포되지 않는다).
 - 빌드 노드는 빌드 설명·디스코드 알림(`[Foresight]`)에 `actions`로 남는다.
 - 자격: Actions는 `GITHUB_TOKEN` 하나(image 잡 `packages: write`, promote 잡 `contents: write`). Jenkins 비상 길은 ghcr 쓰기 `ghcr-push-token`, SSH `github-farrar142`. 디스코드 `discord-deploy-webhook`. oracle은 호스트 docker 설정의 ghcr **읽기** 로그인을 쓴다.
 
