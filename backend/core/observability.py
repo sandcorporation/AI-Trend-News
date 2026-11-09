@@ -1,7 +1,8 @@
 """오류를 자체 GlitchTip(Sentry SDK)으로 보낸다(#168).
 
-받는 쪽은 sentry.io가 아니라 Sandcorp가 띄운 GlitchTip(`glitchtip.honeycombpizza.link`)이다.
-SDK는 같아서 DSN만 그쪽을 가리킨다. 본보기는 codemit `backend/core/observability.py`.
+받는 쪽은 sentry.io가 아니라 자체 GlitchTip이고, 어디로 보낼지는 DSN 환경 변수
+(`SENTRY_DSN_BACKEND`·`SENTRY_DSN_FRONTEND`)가 정한다. SDK는 같아서 DSN만 그쪽을 가리킨다.
+본보기는 codemit `backend/core/observability.py`.
 
 - **DSN이 없으면 아무것도 하지 않는다.** dev·CI·시험은 `SENTRY_DSN_BACKEND`를 주지 않으므로
   SDK가 꺼진 채로 돈다(네트워크를 치지 않는다).
