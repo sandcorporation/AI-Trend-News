@@ -1,0 +1,70 @@
+# 배포 이미지(#180): main push마다 linux/arm64 이미지를 GitHub 호스팅 arm64 실행기에서 네이티브로 굽고 ghcr에 올린다.
+# main push에서는 release.yml이 검사 통과 뒤 workflow_call로 부른다. 이미지가 모두 오르면 release.yml이 production을 승격하고,
+# Jenkins `sandcorp-news`는 production 머리의 이 태그를 받아(jenkins-shared sandcorpDeploy deployFrom, 상한 5분) oracle에 배포한다.
+#
+# 보안 규칙(공개 저장소):
+#   - main push의 release.yml(workflow_call)과 수동 실행만. pull_request·pull_request_target으로 이미지를 굽거나 올리지 않는다.
+#   - packages: write는 이 워크플로에만. 로그인은 GITHUB_TOKEN 하나, 다른 secrets 없음.
+#   - self-hosted·QEMU 없음. 액션은 공식(actions/*·docker/*)만, SHA 고정.
+#   - build-args는 비밀이 아니다(AUTHKIT_VIA_HTTPS=1: 공개 저장소 sandcorp-auth를 https로 받기). 로그는 공개다.
+#
+# 이미지마다 잡 하나(strategy.matrix.include) — 지금은 sandcorp-news 하나(web·scheduler가 같은 이미지).
+# 이름·태그·라벨은 옛 Jenkins 빌드(jenkins-shared resources/sandcorp/build-image.sh)와 같다:
+#   ghcr.io/sandcorporation/sandcorp-news:<커밋 sha 40자>, provenance 없음, 라벨 source·revision. oracle compose(NEWS_IMAGE)는 그대로다.
+# 빌드 캐시는 같은 패키지의 :buildcache 태그(레지스트리 캐시, mode=max). GitHub 캐시(10GB 공유)는 쓰지 않는다.
+name: image
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build (${{ matrix.name }})
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: sandcorp-news
+            dockerfile: Dockerfile
+            context: .
+            build_args: |
+              AUTHKIT_VIA_HTTPS=1
+    env:
+      IMAGE_REPO: ghcr.io/sandcorporation/${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 빌드·push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ env.IMAGE_REPO }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=registry,ref=${{ env.IMAGE_REPO }}:buildcache
+          cache-to: type=registry,ref=${{ env.IMAGE_REPO }}:buildcache,mode=max

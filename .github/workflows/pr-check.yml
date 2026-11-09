@@ -1,20 +1,22 @@
 # PR 검사(GitHub 호스팅 실행기) — 파괴적 migrate + scripts/ci/check.sh(배포 전 검사)와 같은 것. 옛 Jenkins PR 잡(sandcorp-news-pr)을 대신한다.
 # 보안: pull_request만(pull_request_target 금지), GitHub 호스팅 실행기만, 읽기 권한만, secrets 없음(시험 값은 가짜).
-# 액션은 커밋 SHA로 고정한다(주석은 태그). 배포는 지금처럼 Jenkins `sandcorp-news`다.
+# 액션은 커밋 SHA로 고정한다(주석은 태그).
+# main push에서는 release.yml이 이 워크플로를 workflow_call로 불러 같은 검사를 돌린다(#180) — 통과해야 이미지·production 승격으로 간다.
+# 그때 github.event_name·github.ref는 부른 쪽(push, refs/heads/main) 것이라 아래 캐시 저장 조건이 그대로 main에서 돈다.
 # 캐시(#177): 모든 실행이 복원(actions/cache/restore)하고 저장(actions/cache/save)은 main push에서만 한다 —
 # PR에서 만든 캐시는 그 PR 안에서만 쓰여 남의 PR이 못 쓰고 저장소 10GB 한도만 먹는다. PR은 main 캐시를 복원한다.
 name: PR 검사
 
 on:
   pull_request:
-  push:
-    branches: [main]
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pr-check-${{ github.event.pull_request.number || github.ref }}
+  # PR은 번호마다 새 push가 옛 실행을 끊는다. main(workflow_call)은 커밋마다 따로 — 끊기면 그 sha의 승격 실행이 취소로 끝난다.
+  group: pr-check-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -88,6 +90,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: production 승격 스크립트 시험
+        run: bash scripts/ci/promote_test.sh
       # service container는 mysqld 인자를 못 받아 docker run으로 띄운다(scripts/ci/check.sh와 같은 옵션).
       # 이미지 pull(약 15초)을 배경으로 돌려 의존성 설치와 겹친다 — 준비는 아래 「시험 DB 준비 기다림」이 본다.
       - name: 시험 DB (mysql:26.10.0, 배경)

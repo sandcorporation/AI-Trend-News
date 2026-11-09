@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image: the Vite build is baked in and collected into Django's static files (served by whitenoise).
-# Built off-host as linux/arm64 by Jenkins (macos, else home; jenkins-shared sandcorpDeploy), oracle only pulls; also builds on x86 for local checks.
+# Built as linux/arm64 by GitHub Actions (.github/workflows/image.yml, ubuntu-24.04-arm); emergency path: Jenkins BUILD_ON=jenkins (macos, else home).
+# oracle only pulls; also builds on x86 for local checks.
 
 FROM node:24-alpine AS frontend
 RUN npm install -g pnpm@11.25.0
@@ -23,9 +24,15 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock backend/.python-version ./
-# sandcorp-authkit은 private 저장소(sandcorp-auth)라 BuildKit ssh 마운트로 받는다.
-# known_hosts는 이 deps 단계에만 남고 runtime은 /opt/venv만 복사하므로 최종 이미지에 없다.
-RUN --mount=type=ssh mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null \
+# sandcorp-authkit(sandcorp-auth, 공개). AUTHKIT_VIA_HTTPS=1(GitHub Actions image.yml)이면 키 없이 https로 받는다 — 값은 비밀이 아니다.
+# 비어 있으면(Jenkins 비상 길·make prod-local) 지금처럼 BuildKit ssh 마운트로 받는다.
+# known_hosts·git 설정은 이 deps 단계에만 남고 runtime은 /opt/venv만 복사하므로 최종 이미지에 없다.
+ARG AUTHKIT_VIA_HTTPS=
+RUN --mount=type=ssh if [ -n "$AUTHKIT_VIA_HTTPS" ]; then \
+      git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"; \
+    else \
+      mkdir -p -m 0700 ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null; \
+    fi \
  && uv sync --frozen --no-dev --no-install-project
 
 FROM python:3.14-slim AS runtime
