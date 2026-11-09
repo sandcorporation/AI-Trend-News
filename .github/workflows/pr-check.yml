@@ -86,8 +86,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends pkg-config default-libmysqlclient-dev
           python -m pip install "uv==${UV_VERSION}"
-      # 비공개 git 의존성 sandcorp-authkit(ssh://git@github.com/…)을 키 없이 https로 받는다 — 이 실행기 안에서만.
-      # sandcorp-auth가 비공개인 동안은 이 단계가 실패하는 것이 예상이다(Jenkins PR 검사가 병합 기준).
+      # git 의존성 sandcorp-authkit(uv.lock은 ssh://git@github.com/…)을 키 없이 https로 받는다 — 이 실행기 안에서만.
       - name: 의존성(uv sync)
         working-directory: backend
         run: |
