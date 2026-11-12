@@ -5,11 +5,8 @@
 //                     oracle에서 pull → DB 대기 → migrate → web 교체 → 헬스 → scheduler 교체(헬스 실패면 직전 성공 이미지로 자동 롤백)
 //
 // 파이프라인은 Jenkins 공용 라이브러리 sandcorp(sandcorporation/jenkins-shared)의 sandcorpDeploy — README 「승격 브랜치에서 배포」.
-// 여기에는 이 저장소가 넘기는 값만 둔다. 이 저장소 사정은 docs/ops/offhost-build.md. 파라미터:
-//   BUILD_ON=jenkins  비상 길: Actions가 못 구울 때 oracle 밖(macos, MAC_WAIT_SECONDS 안에 못 잡으면 home)에서
-//                     check 뒤 굽고 배포한다. 이 길로 올린 sha는 production 머리 그대로다.
-//   ROLLBACK_SHA      비상 되돌리기: 빌드 없이 그 sha의 이미지로 배포. production은 그대로라 다음 승격이 다시 앞으로 간다.
-//                     정석은 main에 revert PR — docs/ops/offhost-build.md 「되돌리기」
+// Jenkins는 production에서 Actions가 GHCR에 올린 이미지를 배포한다. CI·검사·이미지 빌드는 GitHub Actions만 담당한다.
+// 이 저장소가 넘기는 배포 값과 롤백 절차는 docs/ops/offhost-build.md.
 @Library('sandcorp') _
 
 sandcorpDeploy(
@@ -19,8 +16,6 @@ sandcorpDeploy(
   imageVar: 'NEWS_IMAGE',
   imageWaitHint: 'https://github.com/sandcorporation/AI-Trend-News/actions/workflows/release.yml',
   sourceUrl: 'https://github.com/sandcorporation/AI-Trend-News',
-  buildSsh: true,                       // 비상 길(BUILD_ON=jenkins)의 sandcorp-authkit ssh 받기
-  check: 'bash scripts/ci/check.sh',    // 비상 길에서만: make check를 도커 안에서. 실패하면 굽지도 배포하지도 않는다
   composeProject: 'news',
   composeFiles: ['docker-compose.prod.yml', 'docker-compose.oracle.yml'],
   preServices: ['mysql'],               // 로컬 확인용 compose에만 있다. 운영 DB(HeatWave)는 compose 밖

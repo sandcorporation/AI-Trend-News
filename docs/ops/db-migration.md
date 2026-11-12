@@ -43,7 +43,7 @@ for m in apps.get_models():
 
 ## 3. 병합·배포 (새 이미지)
 
-PR을 병합하면 Jenkins가 `deploy/deploy.sh`를 돌린다: 빌드 → `wait_for_db`(최대 120초) → 빈 HeatWave에 `migrate` → web·scheduler 교체 → `/api/health`. 새 compose에는 `postgres` 서비스가 없으므로 옛 postgres 컨테이너는 고아로 남아 계속 돈다(그대로 둔다).
+PR 병합 뒤 GitHub Actions가 검증·운영 이미지를 빌드하고 `production`으로 승격한다. Jenkins는 GHCR의 Actions 게시 이미지를 배포한다: pull → `wait_for_db` → 빈 HeatWave에 `migrate` → web·scheduler 교체 → `/api/health`. 새 compose에는 `postgres` 서비스가 없으므로 옛 postgres 컨테이너는 고아로 남아 계속 돈다(그대로 둔다).
 
 ## 4. 적재 (새 이미지)
 
