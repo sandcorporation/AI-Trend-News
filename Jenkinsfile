@@ -15,7 +15,6 @@ sandcorpDeploy(
   image: 'ghcr.io/sandcorporation/sandcorp-news',
   imageVar: 'NEWS_IMAGE',
   imageWaitHint: 'https://github.com/sandcorporation/AI-Trend-News/actions/workflows/release.yml',
-  sourceUrl: 'https://github.com/sandcorporation/AI-Trend-News',
   composeProject: 'news',
   composeFiles: ['docker-compose.prod.yml', 'docker-compose.oracle.yml'],
   preServices: ['mysql'],               // 로컬 확인용 compose에만 있다. 운영 DB(HeatWave)는 compose 밖
