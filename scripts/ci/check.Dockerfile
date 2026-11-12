@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # `make check`를 노드 도구와 상관없이 돌리는 검사 이미지(scripts/ci/check.sh가 굽고 지운다). 운영 이미지가 아니다.
-# 빌드 노드(macos·home)의 네이티브 아키텍처로 굽는다 — QEMU를 쓰지 않는다. 의존성 층은 노드의 로컬 캐시에 남는다.
+# 로컬 실행기의 네이티브 아키텍처로 굽는다. 의존성 층은 로컬 이미지 캐시에 남는다.
 FROM node:24-bookworm-slim AS node
 
 FROM python:3.14-slim
