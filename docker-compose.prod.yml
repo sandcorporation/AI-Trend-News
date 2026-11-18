@@ -24,13 +24,13 @@ services:
       SENTRY_RELEASE: ${SANDCORP_IMAGE_SHA:-}
     ports:
       - "${HTTP_BIND:-127.0.0.1}:${HTTP_PORT:-18092}:8000"
-    # Hits /api/health (which round-trips to the database) with the first allowed host as Host header.
+    # Hits /api/health?scope=ready (which round-trips to the database) with the first allowed host as Host header.
     healthcheck:
       test:
         - CMD
         - python
         - -c
-        - "import os,urllib.request as u;h=os.environ.get('DJANGO_ALLOWED_HOSTS','localhost').split(',')[0].strip();u.urlopen(u.Request('http://127.0.0.1:8000/api/health',headers={'Host':h}),timeout=5)"
+        - "import os,urllib.request as u;h=os.environ.get('DJANGO_ALLOWED_HOSTS','localhost').split(',')[0].strip();u.urlopen(u.Request('http://127.0.0.1:8000/api/health?scope=ready',headers={'Host':h}),timeout=5)"
       interval: 60s
       timeout: 6s
       retries: 3
@@ -59,6 +59,12 @@ services:
       DJANGO_DEBUG: "0"
       # 오류 수집 release = 배포한 이미지의 커밋 sha(#168). jenkins-shared sandcorpDeploy가 넣고 로컬은 비어도 된다.
       SENTRY_RELEASE: ${SANDCORP_IMAGE_SHA:-}
+    healthcheck:
+      test: [CMD, python, manage.py, check_heartbeat, scheduler]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 90s
     cpus: 0.2
     mem_limit: 256m
     restart: unless-stopped

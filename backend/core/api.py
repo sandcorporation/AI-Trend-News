@@ -18,6 +18,7 @@ from core.admin_api import router as admin_router
 from core.auth_adapter import install_bearer_errors
 from core.shell import SITE_NAME
 from services import articles as svc
+from services import heartbeat
 from services import predictions as pred_svc
 from services.commentary import public_commentary
 
@@ -30,18 +31,27 @@ api.add_router("/admin", admin_router)
 
 class Health(Schema):
     status: str
-    db: str
+    failed: list[str] | None = None
 
 
-@api.get("/health", response={200: Health, 503: Health}, auth=None)
-def health(request: HttpRequest) -> Status[Health]:
-    """Liveness plus a real round trip to the database (MySQL); the deploy waits on this."""
+@api.get("/health", response={200: Health, 503: Health}, auth=None, exclude_none=True)
+def health(request: HttpRequest, scope: str = "") -> Status[Health]:
+    """db 왕복 + scheduler 생존 신호. `?scope=ready`는 db만(배포 스모크·web healthcheck용)."""
+    failed: list[str] = []
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
     except DatabaseError:
-        return Status(503, Health(status="error", db="unavailable"))
-    return Status(200, Health(status="ok", db="ok"))
+        failed.append("db")
+    if scope != "ready":
+        try:
+            if not heartbeat.is_alive("scheduler"):
+                failed.append("scheduler")
+        except DatabaseError:
+            failed.append("scheduler")
+    if failed:
+        return Status(503, Health(status="error", failed=failed))
+    return Status(200, Health(status="ok"))
 
 
 PUBLIC_MAX_LIMIT = 20

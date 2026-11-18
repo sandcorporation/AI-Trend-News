@@ -54,3 +54,17 @@ class RuntimeSettingChange(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} {self.action}"
+
+
+class Heartbeat(models.Model):
+    """백그라운드 워커의 생존 신호(#184). 워커가 주기적으로 `beat_at`을 갱신하고 health가 읽는다."""
+
+    name = models.CharField("이름", max_length=32, unique=True)
+    beat_at = models.DateTimeField("마지막 신호")
+
+    class Meta:
+        verbose_name = "생존 신호"
+        verbose_name_plural = "생존 신호"
+
+    def __str__(self) -> str:
+        return self.name

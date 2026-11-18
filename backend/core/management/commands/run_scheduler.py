@@ -4,6 +4,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand
 
+from services.heartbeat import start_beating
 from services.scheduler import run_cycle, seconds_until_next
 
 
@@ -20,6 +21,7 @@ class Command(BaseCommand):
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
         interval = int(options["interval"])
         offset = int(options["offset"]) % interval
+        start_beating("scheduler")
         while True:
             results = run_cycle()
             failed = [n for n, ok in results.items() if not ok]

@@ -77,7 +77,7 @@ echo "== 헬스 확인"
 compose exec -T web python -c "
 import os, urllib.request as u
 host = os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost').split(',')[0].strip()
-print(u.urlopen(u.Request('http://127.0.0.1:8000/api/health', headers={'Host': host}), timeout=5).read().decode())
+print(u.urlopen(u.Request('http://127.0.0.1:8000/api/health?scope=ready', headers={'Host': host}), timeout=5).read().decode())
 "
 compose ps
 if [ -n "${NEWS_IMAGE:-}" ]; then
