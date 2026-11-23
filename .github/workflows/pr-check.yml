@@ -5,6 +5,7 @@
 # 그때 github.event_name·github.ref는 부른 쪽(push, refs/heads/main) 것이라 아래 캐시 저장 조건이 그대로 main에서 돈다.
 # 캐시(#177): 모든 실행이 복원(actions/cache/restore)하고 저장(actions/cache/save)은 main push에서만 한다 —
 # PR에서 만든 캐시는 그 PR 안에서만 쓰여 남의 PR이 못 쓰고 저장소 10GB 한도만 먹는다. PR은 main 캐시를 복원한다.
+# `exp/` 갈래(실험용) PR은 잡 「파괴적 migrate」가 맨 앞 단계에서 실패시킨다.
 name: PR 검사
 
 on:
@@ -33,6 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: exp/ 갈래 막기
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          case "$HEAD_REF" in
+            exp/*) echo "::error::exp/ 갈래는 실험용이라 병합하지 않는다 — 운영에 들이기로 정해졌으면 평소 갈래에서 PR을 다시 낸다"; exit 1 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
