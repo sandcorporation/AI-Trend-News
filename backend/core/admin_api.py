@@ -3,7 +3,7 @@
 from http import HTTPStatus
 
 from django.http import HttpRequest, HttpResponse
-from ninja import NinjaAPI, Router
+from ninja import NinjaAPI, Query, Router
 
 from adapters.clock import get_clock
 from core.admin_schemas import (
@@ -16,6 +16,9 @@ from core.admin_schemas import (
     EnabledChange,
     FlagsChange,
     PredictionJudge,
+    PredictionListItem,
+    PredictionListOut,
+    PredictionQuery,
     PredictionRowOut,
     SourceChange,
     SourceCreate,
@@ -132,6 +135,19 @@ def update_article(request: HttpRequest, article_id: int, body: ArticleTextChang
 
 
 # --- 전망 기록표 ---
+
+
+@router.get("/predictions", response=PredictionListOut)
+def list_predictions(request: HttpRequest, params: Query[PredictionQuery]) -> PredictionListOut:
+    return _prediction_list(params)
+
+
+def _prediction_list(params: PredictionQuery) -> PredictionListOut:
+    due_before = params.due_before or predictions_svc.today_of(get_clock().now())
+    rows = predictions_svc.list_predictions(
+        due_before=due_before, judged=params.judged, limit=params.limit
+    )
+    return PredictionListOut(predictions=[PredictionListItem.of(r) for r in rows])
 
 
 @router.patch("/predictions/{prediction_id}", response=PredictionRowOut)

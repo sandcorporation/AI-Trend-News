@@ -57,6 +57,7 @@ ADMIN_TOOLS = {
     "set_article_flags_as_owner",
     "update_article_as_owner",
     "judge_prediction",
+    "list_predictions",
 }
 
 

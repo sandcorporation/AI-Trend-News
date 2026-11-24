@@ -197,6 +197,69 @@ def test_mcp_judge_is_admin_only(client: Client, token_signer: Signer) -> None:
     assert "찾을 수 없" in owner.fails("judge_prediction", {"id": 999, "verdict": "hit"})
 
 
+def due_set(clock: FixedClock) -> dict[str, int]:
+    """기한이 어제·오늘·내일인 미평가 셋과 어제 기한의 평가된 하나."""
+    write(featured_article_id(), ("어제", "1m"), ("오늘", "1m"), ("내일", "1m"))
+    write(featured_article_id(), ("평가됨", "1m"))
+    today = svc.today_of(clock.now())
+    ids = {r.claim: r.pk for r in Prediction.objects.all()}
+    for claim, delta in (("어제", -1), ("오늘", 0), ("내일", 1), ("평가됨", -2)):
+        Prediction.objects.filter(pk=ids[claim]).update(due_date=today + timedelta(days=delta))
+    svc.judge_prediction(ids["평가됨"], "hit", "출처 https://e.com", now=clock.now())
+    return ids
+
+
+def claims(body: JSON) -> list[str]:
+    predictions = obj(body)["predictions"]
+    assert isinstance(predictions, list)
+    return [str(obj(p)["claim"]) for p in predictions]
+
+
+def test_list_predictions_filters_and_orders(
+    client: Client, token_signer: Signer, frozen_clock: FixedClock
+) -> None:
+    ids = due_set(frozen_clock)
+    owner = McpClient(client, token_signer.token(scope="admin editor"))
+    body = owner.ok("list_predictions", {})
+    assert claims(body) == ["어제", "오늘"]  # 오늘 포함, 미래 제외, 기한 오래된 순
+    listed = obj(body)["predictions"]
+    assert isinstance(listed, list)
+    first = obj(listed[0])
+    assert first["id"] == ids["어제"] and first["verdict"] == "pending"
+    assert first["basis"] == "근거" and first["horizon"] == "1m"
+    article = obj(first["article"])
+    assert str(article["url"]).endswith(f"/a/{article['slug']}") and article["title"]
+    written = Prediction.objects.get(pk=ids["어제"]).commentary.created_at
+    assert first["created"] == timezone.localtime(written).date().isoformat()
+
+    tomorrow = (svc.today_of(frozen_clock.now()) + timedelta(days=1)).isoformat()
+    assert claims(owner.ok("list_predictions", {"due_before": tomorrow})) == [
+        "어제",
+        "오늘",
+        "내일",
+    ]
+    assert claims(owner.ok("list_predictions", {"judged": True})) == ["평가됨"]
+    assert claims(owner.ok("list_predictions", {"limit": 1})) == ["어제"]
+    assert "limit" in owner.fails("list_predictions", {"limit": 51})
+
+    editor = McpClient(client, token_signer.token(scope="editor"))
+    assert "list_predictions" not in editor.tool_names()
+
+
+def test_admin_api_lists_predictions(
+    client: Client, token_signer: Signer, frozen_clock: FixedClock
+) -> None:
+    due_set(frozen_clock)
+    api = Api(client, token_signer.token(scope="admin"))
+    status, body = api.call("get", "/predictions")
+    assert status == 200 and claims(body) == ["어제", "오늘"]
+    status, body = api.call("get", "/predictions?judged=true&limit=5")
+    assert status == 200 and claims(body) == ["평가됨"]
+    assert api.call("get", "/predictions?limit=51")[0] == 422
+    editor = Api(client, token_signer.token(scope="editor"))
+    assert editor.call("get", "/predictions")[0] == 403
+
+
 # --- 경보 ---
 
 
