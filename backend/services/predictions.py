@@ -107,6 +107,20 @@ def judge_prediction(
     return row
 
 
+LIST_LIMIT = 20
+LIST_LIMIT_MAX = 50
+
+
+def list_predictions(
+    *, due_before: date, judged: bool = False, limit: int = LIST_LIMIT
+) -> list[Prediction]:
+    """판정할 예측(#192): `due_date <= due_before`, 미평가(또는 평가된 것만), 기한 오래된 순."""
+    qs = Prediction.objects.filter(due_date__lte=due_before)
+    qs = qs.exclude(verdict=Verdict.PENDING) if judged else qs.filter(verdict=Verdict.PENDING)
+    limit = max(1, min(limit, LIST_LIMIT_MAX))
+    return list(qs.select_related("commentary__article").order_by("due_date", "id")[:limit])
+
+
 @dataclass(frozen=True)
 class HitRate:
     judged: int  # 적중 + 빗나감 (판단 불가 제외)

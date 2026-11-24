@@ -1,12 +1,16 @@
 """관리 기능의 입력·출력 스키마. 관리자 API(`core/admin_api.py`)와 MCP 관리 도구가 같이 쓴다."""
 
+from datetime import date
 from typing import Literal, Self
 
+from django.utils import timezone
 from ninja import Schema
 from pydantic import ConfigDict, Field
 
 from articles.models import Article, Category, Prediction
 from collection.models import Source
+from services.posts import article_url
+from services.predictions import LIST_LIMIT, LIST_LIMIT_MAX
 
 
 class Strict(Schema):
@@ -42,6 +46,16 @@ class PredictionJudge(Strict):
         description="결과: hit(적중)·miss(빗나감)·undecidable(판단 불가)·pending(미평가로 되돌림)"
     )
     note: str = Field(default="", max_length=300, description="평가 메모(근거 링크·사유)")
+
+
+class PredictionQuery(Strict):
+    due_before: date | None = Field(
+        default=None, description="이 날짜까지 기한인 예측(포함, YYYY-MM-DD). 기본 오늘(KST)"
+    )
+    judged: bool = Field(default=False, description="false면 미평가(pending)만, true면 평가된 것만")
+    limit: int = Field(
+        default=LIST_LIMIT, ge=1, le=LIST_LIMIT_MAX, description=f"최대 개수(1~{LIST_LIMIT_MAX})"
+    )
 
 
 class EnabledChange(Strict):
@@ -177,3 +191,42 @@ class PredictionRowOut(Schema):
             verdict_note=row.verdict_note,
             judged_at=row.judged_at.isoformat() if row.judged_at else None,
         )
+
+
+class PredictionArticleRef(Schema):
+    slug: str
+    title: str
+    url: str
+
+
+class PredictionListItem(Schema):
+    id: int
+    claim: str
+    horizon: str
+    basis: str
+    due_date: str
+    created: str  # 분석 작성일(KST)
+    verdict: str
+    verdict_note: str
+    article: PredictionArticleRef
+
+    @classmethod
+    def of(cls, row: Prediction) -> Self:
+        article = row.commentary.article
+        return cls(
+            id=row.pk,
+            claim=row.claim,
+            horizon=row.horizon,
+            basis=row.basis,
+            due_date=row.due_date.isoformat(),
+            created=timezone.localtime(row.commentary.created_at).date().isoformat(),
+            verdict=row.verdict,
+            verdict_note=row.verdict_note,
+            article=PredictionArticleRef(
+                slug=article.slug, title=article.title, url=article_url(article.slug)
+            ),
+        )
+
+
+class PredictionListOut(Schema):
+    predictions: list[PredictionListItem]

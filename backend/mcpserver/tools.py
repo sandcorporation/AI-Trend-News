@@ -35,6 +35,9 @@ from core.admin_schemas import (
     EnabledChange,
     FlagsChange,
     PredictionJudge,
+    PredictionListItem,
+    PredictionListOut,
+    PredictionQuery,
     PredictionRowOut,
     SourceChange,
     SourceCreate,
@@ -571,7 +574,7 @@ class UpdateArticleAsOwnerInput(ArticleTextChange, ArticleIdInput):
 
 
 class JudgePredictionInput(PredictionJudge):
-    id: int = Field(description="예측 id(admin 「전망 예측」 목록에서 확인)")
+    id: int = Field(description="예측 id(list_predictions로 확인)")
 
 
 def _dump(model: BaseModel) -> ToolResult:
@@ -691,10 +694,28 @@ def update_article_as_owner(token: AccessToken, args: UpdateArticleAsOwnerInput)
 
 
 @tool(
+    "list_predictions",
+    "전망 예측 목록",
+    "판정할 예측: 기한(due_date)이 due_before(기본 오늘 KST, 포함) 이전인 것을 기한 오래된 순으로. "
+    "judged=false(기본)면 미평가만, true면 평가된 것만. 항목의 id를 judge_prediction에 넘긴다.",
+    PredictionQuery,
+    scope="admin",
+    read_only=True,
+)
+def list_predictions(token: AccessToken, args: PredictionQuery) -> ToolResult:
+    due_before = args.due_before or predictions_svc.today_of(get_clock().now())
+    rows = predictions_svc.list_predictions(
+        due_before=due_before, judged=args.judged, limit=args.limit
+    )
+    return _dump(PredictionListOut(predictions=[PredictionListItem.of(r) for r in rows]))
+
+
+@tool(
     "judge_prediction",
     "전망 예측 평가",
     "대표로서 분석의 예측 하나에 결과를 매긴다: hit(적중)·miss(빗나감)·undecidable(판단 불가). "
-    "pending이면 미평가로 되돌린다. 공개 적중률은 판단 불가를 뺀 평가분으로 계산한다.",
+    "pending이면 미평가로 되돌린다. 공개 적중률은 판단 불가를 뺀 평가분으로 계산한다. "
+    "note(300자)에는 근거 요약과 출처 URL을 적는다.",
     JudgePredictionInput,
     scope="admin",
 )
