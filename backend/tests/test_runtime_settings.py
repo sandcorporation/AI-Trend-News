@@ -115,6 +115,7 @@ def test_excluded_settings_are_not_registered() -> None:
         "SCHEDULER_INTERVAL",
         "RUNTIME_SETTINGS_KEY",
         "DISCORD_WEBHOOK_URL",
+        "NOTICE_WEBHOOK_URL",
     ):
         assert name not in rs.REGISTRY
 

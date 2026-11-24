@@ -11,6 +11,7 @@ from django.conf import settings
 logger = logging.getLogger("alerts")
 
 TIMEOUT_SECONDS = 10
+NOTICE_TIMEOUT_SECONDS = 5
 MAX_CONTENT = 1900  # Discord 메시지 한도(2000자) 안쪽
 
 PostJson = Callable[[str, bytes], None]
@@ -23,35 +24,53 @@ class Notifier(Protocol):
         ...
 
 
-def _post_json(url: str, body: bytes) -> None:
+def _post_json(url: str, body: bytes, timeout: float = TIMEOUT_SECONDS) -> None:
     request = urllib.request.Request(  # noqa: S310
         url,
         data=body,
         headers={"Content-Type": "application/json", "User-Agent": "Foresight-Alerts/1.0"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS):  # noqa: S310
+    with urllib.request.urlopen(request, timeout=timeout):  # noqa: S310
         pass
 
 
 class DiscordNotifier:
     """실제 구현. 웹훅 URL이 없으면 보내지 않고 로그만 남긴다."""
 
-    def __init__(self, webhook_url: str, post: PostJson = _post_json) -> None:
+    def __init__(self, webhook_url: str, notice_url: str = "", post: PostJson = _post_json) -> None:
         self._url = webhook_url
+        self._notice_url = notice_url
         self._post = post
 
     def send(self, message: str) -> bool:
+        """반환값은 Discord 결과만이다(경보 상태 갱신 기준). 둘째 알림 목적지는 덤이다."""
+        body = json.dumps({"content": message[:MAX_CONTENT]}).encode()
+        ok = self._send_discord(message, body)
+        self._send_notice(body)
+        return ok
+
+    def _send_discord(self, message: str, body: bytes) -> bool:
         if not self._url:
             logger.warning("DISCORD_WEBHOOK_URL 없음 — 경보를 보내지 않고 기록만: %s", message)
             return True
-        body = json.dumps({"content": message[:MAX_CONTENT]}).encode()
         try:
             self._post(self._url, body)
         except Exception:  # noqa: BLE001 - 경보 전송 실패가 점검 명령을 죽이면 안 된다
             logger.exception("Discord 전송 실패")
             return False
         return True
+
+    def _send_notice(self, body: bytes) -> None:
+        if not self._notice_url:
+            return
+        try:
+            if self._post is _post_json:
+                _post_json(self._notice_url, body, NOTICE_TIMEOUT_SECONDS)
+            else:
+                self._post(self._notice_url, body)
+        except Exception:  # noqa: BLE001 - 예외 메시지에 주소가 들어갈 수 있어 기록하지 않는다
+            logger.warning("둘째 알림 목적지 전송 실패")
 
 
 class FakeNotifier:
@@ -72,7 +91,11 @@ _notifier: Notifier | None = None
 
 
 def get_notifier() -> Notifier:
-    return _notifier if _notifier is not None else DiscordNotifier(settings.DISCORD_WEBHOOK_URL)
+    return (
+        _notifier
+        if _notifier is not None
+        else DiscordNotifier(settings.DISCORD_WEBHOOK_URL, settings.NOTICE_WEBHOOK_URL)
+    )
 
 
 def set_notifier(notifier: Notifier | None) -> Notifier | None:

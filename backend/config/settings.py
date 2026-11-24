@@ -171,6 +171,8 @@ PENDING_MAX_AGE_HOURS = int(env("PENDING_MAX_AGE_HOURS", "24"))
 
 # Discord webhook for operational alerts (#10). Empty = log only, nothing is sent.
 DISCORD_WEBHOOK_URL = env("DISCORD_WEBHOOK_URL")
+# Optional second alert destination (same body as Discord). Empty = off. Env only.
+NOTICE_WEBHOOK_URL = env("NOTICE_WEBHOOK_URL")
 # portfolio inquiry API (ADR 0003). Either empty = inquiries are only queued, never sent.
 PORTFOLIO_INQUIRY_URL = env("PORTFOLIO_INQUIRY_URL")
 PORTFOLIO_INQUIRY_SECRET = env("PORTFOLIO_INQUIRY_SECRET")
