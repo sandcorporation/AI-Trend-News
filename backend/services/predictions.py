@@ -1,7 +1,8 @@
 """전망 기록표(#52): 분석의 예측 문장을 `Prediction` 행으로 모아 대표가 결과를 매기고 적중률을 낸다.
 
 - 동기화: 분석을 upsert할 때 `predictions` JSON과 행을 맞춘다. 평가된 행은 그대로 두고 미평가
-  행만 교체한다(같은 claim 문자열이면 같은 행).
+  행만 교체한다(같은 claim 문자열이면 같은 행). 기한은 작성일 + 기간이되, 문장 속 명시 날짜가
+  더 이르면 그 날짜로 당긴다(#191, `services/claim_dates.py`).
 - 평가는 대표만 한다(admin·관리자 API·MCP `judge_prediction`). 편집자 경로는 없다.
 - 적중률은 평가된 것 중 적중 비율이고 「판단 불가」는 분모에서 뺀다.
 """
@@ -15,6 +16,7 @@ from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
 from articles.models import Commentary, Prediction
+from services import claim_dates
 
 HORIZON_MONTHS = {"1m": 1, "3m": 3, "6m": 6, "12m": 12}
 MIN_PUBLIC_SAMPLE = 5  # 사이드바 적중률 블록은 평가 5건 이상일 때만
@@ -48,6 +50,13 @@ def due_date_for(created: date, horizon: str) -> date:
     return date(year, month, day)
 
 
+def due_for(claim: str, created: date, horizon: str) -> date:
+    """평가 기한: 작성일 + 기간, 문장 속 명시 날짜가 더 이르면 그 날짜(#191)."""
+    due = due_date_for(created, horizon)
+    stated = claim_dates.deadline(claim, created)
+    return stated if stated is not None and stated < due else due
+
+
 @transaction.atomic
 def sync_predictions(commentary: Commentary) -> None:
     """분석의 `predictions` JSON에 행을 맞춘다. 평가된 행은 유지하고 미평가 행만 교체한다."""
@@ -62,7 +71,7 @@ def sync_predictions(commentary: Commentary) -> None:
             continue
         p = wanted[claim]
         row.horizon, row.basis = p["horizon"], p["basis"]
-        row.due_date = due_date_for(base, p["horizon"])
+        row.due_date = due_for(claim, base, p["horizon"])
         row.save()
     for claim, p in wanted.items():
         if claim in existing:
@@ -72,7 +81,7 @@ def sync_predictions(commentary: Commentary) -> None:
             claim=claim,
             horizon=p["horizon"],
             basis=p["basis"],
-            due_date=due_date_for(base, p["horizon"]),
+            due_date=due_for(claim, base, p["horizon"]),
         )
 
 

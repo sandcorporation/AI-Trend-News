@@ -18,6 +18,8 @@ import json
 from datetime import datetime, timedelta
 from typing import Literal, TypedDict
 
+from django.utils import timezone
+
 from adapters.anthropic import LlmRequest
 from articles.models import Article, ArticleItem, Category, Commentary
 from collection.models import Item
@@ -382,6 +384,8 @@ def check(parsed: object, plan: Plan) -> JSON:
             opinion=_str(raw, "opinion"),
             predictions=_predictions(raw),
             watchpoints=_strings(raw, "watchpoints"),
+            # 저장(게시 모드)은 지금 만들어지는 분석이라 작성일은 오늘(KST)이다(#191 날짜 검사).
+            created=timezone.localdate(),
         )
     except InvalidCommentary as error:
         raise InvalidOutput(str(error)) from None
