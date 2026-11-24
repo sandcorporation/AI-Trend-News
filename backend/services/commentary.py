@@ -3,15 +3,18 @@
 추천이 풀리거나 비게시가 되어도 분석은 지우지 않는다. 공개 화면은 `public_commentary`만 쓴다.
 `predictions`는 `{claim, horizon, basis}`로 저장하고, 저장할 때마다 `services/predictions.py`가
 `Prediction` 행으로 동기화한다(평가된 행은 유지). `watchpoints`(지켜볼 신호)는 문자열 0~3개(#60).
+예측 문장 속 명시 날짜가 기한(작성일 + 기간)보다 늦으면 검증 오류다(#191).
 """
 
+from datetime import date
 from typing import TypedDict
 
 from django.db import transaction
+from django.utils import timezone
 from pydantic import BaseModel
 
 from articles.models import Article, Commentary
-from services import articles
+from services import articles, claim_dates
 from services import predictions as predictions_svc
 from services.articles import Actor
 
@@ -62,7 +65,21 @@ def _clean(label: str, value: str, limit: int) -> str:
     return value
 
 
-def _clean_predictions(predictions: list[PredictionIn]) -> list[PredictionData]:
+def _check_claim_date(claim: str, horizon: str, created: date) -> None:
+    """문장 속 명시 날짜가 기한보다 늦으면 `InvalidCommentary`(#191)."""
+    stated = claim_dates.deadline(claim, created)
+    due = predictions_svc.due_date_for(created, horizon)
+    if stated is not None and stated > due:
+        raise InvalidCommentary(
+            f"예측 문장 속 날짜({stated:%Y-%m-%d})가 기한({due:%Y-%m-%d} = 작성일 "
+            f"{created:%Y-%m-%d} + {HORIZONS[horizon]})보다 늦습니다. 기간을 늘리거나 "
+            f"날짜를 기한 안으로 고치세요: {claim}"
+        )
+
+
+def _clean_predictions(
+    predictions: list[PredictionIn], created: date | None
+) -> list[PredictionData]:
     if len(predictions) > MAX_PREDICTIONS:
         raise InvalidCommentary(
             f"예측 문장은 {MAX_PREDICTIONS}개까지입니다(지금 {len(predictions)}개)."
@@ -73,9 +90,12 @@ def _clean_predictions(predictions: list[PredictionIn]) -> list[PredictionData]:
             raise InvalidCommentary(
                 f"예측 기간은 {', '.join(HORIZONS)} 중 하나여야 합니다: {p.horizon}"
             )
+        claim = _clean("예측 문장", p.claim, MAX_CLAIM_LENGTH)
+        if created is not None:
+            _check_claim_date(claim, p.horizon, created)
         cleaned.append(
             {
-                "claim": _clean("예측 문장", p.claim, MAX_CLAIM_LENGTH),
+                "claim": claim,
                 "horizon": p.horizon,
                 "basis": _clean("예측 근거", p.basis, MAX_BASIS_LENGTH),
             }
@@ -110,8 +130,10 @@ def clean_fields(
     opinion: str,
     predictions: list[PredictionIn],
     watchpoints: list[str] | None = None,
+    created: date | None = None,
 ) -> CommentaryFields:
-    """저장 없이 길이·개수만 검사하고 다듬은 값을 돌려준다. 어기면 `InvalidCommentary`.
+    """저장 없이 길이·개수(와 `created`가 있으면 예측 문장 속 날짜)를 검사하고 다듬은 값을 돌려준다.
+    어기면 `InvalidCommentary`. `created`는 분석 작성일(KST) — 기한의 기준이다.
 
     `upsert_commentary`와 편집 파이프라인 3단계(`services/editor_commentary.py`)가 함께 쓴다.
     """
@@ -121,7 +143,7 @@ def clean_fields(
         "outlook_bull": _clean("낙관 관점", outlook_bull, MAX_TEXT_LENGTH),
         "outlook_bear": _clean("회의 관점", outlook_bear, MAX_TEXT_LENGTH),
         "opinion": _clean("의견", opinion, MAX_OPINION_LENGTH),
-        "predictions": _clean_predictions(predictions),
+        "predictions": _clean_predictions(predictions, created),
         "watchpoints": _clean_watchpoints(watchpoints or []),
     }
 
@@ -146,6 +168,8 @@ def upsert_commentary(
             f"추천이면서 게시된 기사에만 분석을 쓸 수 있습니다: {article_id} "
             f"(게시 {article.published}, 추천 {article.featured})"
         )
+    existing = Commentary.objects.select_for_update().filter(article=article).first()
+    written = existing.created_at if existing is not None else timezone.now()
     fields = clean_fields(
         background=background,
         significance=significance,
@@ -154,8 +178,8 @@ def upsert_commentary(
         opinion=opinion,
         predictions=predictions,
         watchpoints=watchpoints,
+        created=timezone.localtime(written).date(),
     )
-    existing = Commentary.objects.select_for_update().filter(article=article).first()
     if existing is None:
         created = Commentary.objects.create(article=article, **fields)
         predictions_svc.sync_predictions(created)

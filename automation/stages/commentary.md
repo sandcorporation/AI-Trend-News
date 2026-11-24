@@ -13,4 +13,5 @@
 ## 출력
 
 - `background`, `significance`, `outlook_bull`, `outlook_bear`, `watchpoints`, `opinion`, `predictions`: 「AI 분석」 절의 「분석 틀」 그대로(길이·개수 포함). 문단은 빈 줄(`\n\n`)로 나눈다.
+- `predictions`의 `claim` 속 날짜는 기한(오늘 + `horizon`)을 넘지 않는다. 넘으면 오류 문구와 함께 다시 요청된다.
 - `post_text`: 「포스트 초안」 절의 문구에서 **링크 줄을 뺀 문장만**. 한국어 2~3문장, 링크·URL을 쓰지 않는다 — 서버가 마지막 줄에 기사 링크를 붙인다. 링크 줄(약 50자)을 더해 300자 이내가 되도록 240자 안으로 쓴다.
