@@ -2,7 +2,8 @@
 
 루틴 실행을 새로 열 때 `STALE_AFTER`(2시간) 넘은 미종료 루틴 실행은 실패로 닫는다.
 종료 보고 없이 `ABANDON_AFTER`(24시간)가 지난 실행은 미실행으로 본다. 미실행 경보(#10)는
-`last_finished_run()`과 `EditorRun.state(now)`를 읽는다.
+`last_finished_run()`과 `EditorRun.state(now)`를 읽는다. 실패로 닫은 루틴 실행은 마지막 종료로
+세지 않는다.
 """
 
 from datetime import timedelta
@@ -49,7 +50,7 @@ def start_run() -> StartedRun:
     """루틴 실행을 열고, 종료 보고 없이 `STALE_AFTER` 넘게 지난 루틴 실행을 실패로 닫는다.
 
     그보다 새것은 동시에 도는 실행일 수 있어 둔다. 그림자·게시 실행은 파이프라인이 관리한다.
-    닫힌 실행은 종료 시각이 생기므로 미실행 경보가 종료로 센다.
+    닫힌 실행은 종료 시각이 생기지만 미실행 경보는 종료로 세지 않는다(`last_finished_run`).
     """
     run = EditorRun.objects.create()
     now = timezone.now()
@@ -119,4 +120,13 @@ def counted_runs() -> QuerySet[EditorRun]:
 
 
 def last_finished_run() -> EditorRun | None:
-    return counted_runs().filter(finished_at__isnull=False).order_by("-finished_at").first()
+    """마지막으로 끝난 실행. 실패로 닫은 루틴 실행은 뺀다 — 루틴이 매번 멈춰도 다음 실행이
+    앞 실행을 닫으므로, 세면 미실행 경보가 켜지지 않는다. 게시 실행의 실패는 센다.
+    """
+    return (
+        counted_runs()
+        .filter(finished_at__isnull=False)
+        .exclude(mode=EditorRun.Mode.ROUTINE, status=EditorRun.Status.FAILED)
+        .order_by("-finished_at")
+        .first()
+    )
