@@ -246,6 +246,11 @@ class FinishRunInput(_Input):
     note: str = Field(default="", description="메모(대표가 admin에서 읽는다)")
 
 
+class AppendRunNoteInput(_Input):
+    run_id: int = Field(description="끝낸 실행 id")
+    note: str = Field(min_length=1, description="기존 메모 뒤에 줄을 바꿔 덧붙일 내용")
+
+
 # --- 응답 모양 ---
 
 
@@ -501,12 +506,17 @@ def add_category(token: AccessToken, args: AddCategoryInput) -> ToolResult:
     "start_editor_run",
     "편집 실행 시작",
     "편집 실행을 시작하고 run_id를 받는다. 일을 마치면 finish_editor_run으로 건수를 보고한다. "
-    "보고 없이 24시간이 지난 실행은 미실행으로 본다.",
+    "보고 없이 24시간이 지난 실행은 미실행으로 본다. 보고 없이 2시간 넘게 지난 이전 실행은 "
+    "이때 실패로 닫고 그 id를 closed_run_ids로 준다.",
     NoInput,
 )
 def start_editor_run(token: AccessToken, args: NoInput) -> ToolResult:
-    run = editor_runs.start_run()
-    return {"run_id": run.pk, "started_at": run.started_at.isoformat()}
+    run, closed_run_ids = editor_runs.start_run()
+    return {
+        "run_id": run.pk,
+        "started_at": run.started_at.isoformat(),
+        "closed_run_ids": [*closed_run_ids],
+    }
 
 
 @tool(
@@ -532,6 +542,18 @@ def finish_editor_run(token: AccessToken, args: FinishRunInput) -> ToolResult:
         "updated": run.updated,
         "discarded": run.discarded,
     }
+
+
+@tool(
+    "append_editor_run_note",
+    "편집 실행 메모 덧붙이기",
+    "finish_editor_run으로 끝낸 실행의 메모 뒤에 덧붙인다. 종료 뒤 6시간 안에만 되고 "
+    "메모 전체는 2000자까지다.",
+    AppendRunNoteInput,
+)
+def append_editor_run_note(token: AccessToken, args: AppendRunNoteInput) -> ToolResult:
+    run = editor_runs.append_run_note(args.run_id, args.note)
+    return {"run_id": run.pk, "note": run.note}
 
 
 # --- 관리 도구 (스코프 admin, 주체 대표) ---

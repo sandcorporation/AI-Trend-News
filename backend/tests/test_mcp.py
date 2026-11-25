@@ -6,8 +6,8 @@
 
 import json
 from collections.abc import Iterator
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from django.test import Client
@@ -44,6 +44,7 @@ EDITOR_TOOLS = {
     "list_categories",
     "start_editor_run",
     "finish_editor_run",
+    "append_editor_run_note",
 }
 ADMIN_TOOLS = {
     "add_category",
@@ -274,7 +275,9 @@ def test_list_pending_items_clips_excerpt_and_caps_page_size(mcp: McpClient) -> 
 @pytest.mark.django_db
 def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     items = make_items(4)
-    run_id = mcp.ok("start_editor_run", {})["run_id"]
+    started = mcp.ok("start_editor_run", {})
+    assert started["closed_run_ids"] == []
+    run_id = started["run_id"]
     assert isinstance(run_id, int)
 
     page = mcp.ok("list_pending_items", {"page": 1, "page_size": 3})
@@ -413,7 +416,7 @@ def test_recent_articles_respects_days(mcp: McpClient) -> None:
 
 @pytest.mark.django_db
 def test_unfinished_run_counts_as_missed_after_24_hours(admin_client: Client) -> None:
-    run = editor_runs.start_run()
+    run = editor_runs.start_run().run
     assert run.state(run.started_at + timedelta(hours=23)) is EditorRun.State.RUNNING
     assert run.state(run.started_at + timedelta(hours=24)) is EditorRun.State.ABANDONED
     assert editor_runs.last_finished_run() is None
@@ -426,3 +429,72 @@ def test_unfinished_run_counts_as_missed_after_24_hours(admin_client: Client) ->
     assert changelist.status_code == 200
     assert "종료" in changelist.content.decode()
     assert admin_client.get(reverse("admin:editor_editorrun_add")).status_code == 403
+
+
+@pytest.mark.django_db
+def test_start_run_closes_only_stale_unfinished_routine_runs(mcp: McpClient) -> None:
+    now = timezone.now()
+    long_ago = now - editor_runs.STALE_AFTER - timedelta(minutes=1)
+    recently = now - editor_runs.STALE_AFTER + timedelta(minutes=1)
+
+    def make(started_at: datetime, **fields: Any) -> EditorRun:
+        run = EditorRun.objects.create(**fields)
+        EditorRun.objects.filter(pk=run.pk).update(started_at=started_at)
+        run.refresh_from_db()
+        return run
+
+    stale = make(long_ago)
+    kept = [
+        make(recently),
+        make(long_ago, mode="shadow", slot="2026-10-30T06"),
+        make(long_ago, mode="live", slot="2026-10-30T12"),
+        make(long_ago, finished_at=long_ago, status="finished", note="끝"),
+    ]
+    before = list(EditorRun.objects.filter(pk__in=[r.pk for r in kept]).order_by("pk").values())
+
+    started = mcp.ok("start_editor_run", {})
+
+    assert started["closed_run_ids"] == [stale.pk]
+    stale.refresh_from_db()
+    assert stale.status == EditorRun.Status.FAILED
+    assert stale.finished_at is not None and stale.finished_at >= now
+    assert stale.note == f"종료 보고 없이 끝남 — 실행 {started['run_id']} 시작 때 닫음"
+    assert editor_runs.last_finished_run() == stale  # 경보는 닫힌 실행을 종료로 센다
+    assert before == list(
+        EditorRun.objects.filter(pk__in=[r.pk for r in kept]).order_by("pk").values()
+    )
+    assert "이미" in mcp.fails(
+        "finish_editor_run", {"run_id": stale.pk, "created": 0, "updated": 0, "discarded": 0}
+    )
+
+
+@pytest.mark.django_db
+def test_append_note_only_to_recently_finished_routine_runs(mcp: McpClient) -> None:
+    run_id = mcp.ok("start_editor_run", {})["run_id"]
+    assert isinstance(run_id, int)
+    extra: dict[str, JSON] = {"run_id": run_id, "note": "분석 1건"}
+    assert "아직 끝나지 않았습니다" in mcp.fails("append_editor_run_note", extra)
+
+    mcp.ok(
+        "finish_editor_run",
+        {"run_id": run_id, "created": 0, "updated": 0, "discarded": 0, "note": "분석 대상 1건"},
+    )
+    appended = mcp.ok("append_editor_run_note", extra)
+    assert appended == {"run_id": run_id, "note": "분석 대상 1건\n분석 1건"}
+
+    room = editor_runs.NOTE_MAX_LENGTH - len("분석 대상 1건\n분석 1건\n")
+    too_long: dict[str, JSON] = {"run_id": run_id, "note": "가" * (room + 1)}
+    assert "2000자" in mcp.fails("append_editor_run_note", too_long)
+    mcp.ok("append_editor_run_note", {"run_id": run_id, "note": "가" * room})
+
+    EditorRun.objects.filter(pk=run_id).update(
+        finished_at=timezone.now() - editor_runs.NOTE_APPEND_WINDOW - timedelta(minutes=1)
+    )
+    assert "6시간" in mcp.fails("append_editor_run_note", extra)
+
+    pipeline = EditorRun.objects.create(
+        mode="shadow", slot="2026-10-30T06", finished_at=timezone.now()
+    )
+    for missing in (pipeline.pk, pipeline.pk + 1000):
+        refused = mcp.fails("append_editor_run_note", {"run_id": missing, "note": "x"})
+        assert "없는 루틴 실행" in refused
