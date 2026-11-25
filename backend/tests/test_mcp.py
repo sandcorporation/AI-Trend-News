@@ -459,7 +459,7 @@ def test_start_run_closes_only_stale_unfinished_routine_runs(mcp: McpClient) -> 
     assert stale.status == EditorRun.Status.FAILED
     assert stale.finished_at is not None and stale.finished_at >= now
     assert stale.note == f"종료 보고 없이 끝남 — 실행 {started['run_id']} 시작 때 닫음"
-    assert editor_runs.last_finished_run() == stale  # 경보는 닫힌 실행을 종료로 센다
+    assert editor_runs.last_finished_run() == kept[-1]  # 닫힌 실패 실행은 종료로 세지 않는다
     assert before == list(
         EditorRun.objects.filter(pk__in=[r.pk for r in kept]).order_by("pk").values()
     )

@@ -5,12 +5,14 @@ from pathlib import Path
 
 import pytest
 from django.core.management import call_command
+from django.utils import timezone
 from sandcorp_authkit.testing import FixedClock
 
 from adapters.discord import DiscordNotifier, FakeNotifier, set_notifier
 from collection.models import Source
 from editor.models import Alert, EditorRun
 from mcpserver import tools
+from services.editor_runs import finish_run, start_run
 
 PROMPT = Path(__file__).resolve().parents[2] / "automation" / "editor.md"
 
@@ -148,3 +150,37 @@ def test_prompt_and_editor_tools_agree() -> None:
     assert editor_tools <= mentioned, f"프롬프트에 빠진 편집자 도구: {editor_tools - mentioned}"
     admin_tools = {name for name, t in tools.TOOLS.items() if t.scope == "admin"}
     assert not (admin_tools & mentioned)
+
+
+@pytest.mark.django_db
+def test_routine_runs_closed_as_failed_do_not_silence_editor_missing(
+    frozen_clock: FixedClock, fake_discord: FakeNotifier, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(timezone, "now", frozen_clock.now)
+    good = start_run().run
+    finish_run(good.pk, created=0, updated=0, discarded=0)
+
+    # 이후의 루틴은 매번 종료 보고 전에 멈추고, 다음 실행이 앞 실행을 닫기만 한다.
+    start_run()
+    for _ in range(2):
+        frozen_clock.advance(8 * 3600)
+        assert start_run().closed_run_ids
+    frozen_clock.advance(7 * 3600)  # 마지막 정상 종료 뒤 23시간
+    call_command("check_alerts")
+    assert fake_discord.sent == []
+
+    frozen_clock.advance(3600 + 60)
+    assert start_run().closed_run_ids
+    call_command("check_alerts")
+    assert len(fake_discord.sent) == 1 and "편집자 미실행" in fake_discord.sent[0]
+
+
+@pytest.mark.django_db
+def test_failed_pipeline_live_run_still_counts_as_finished(
+    frozen_clock: FixedClock, fake_discord: FakeNotifier
+) -> None:
+    EditorRun.objects.create(
+        mode="live", slot="2026-10-30T06", status="failed", finished_at=frozen_clock.now()
+    )
+    call_command("check_alerts")
+    assert fake_discord.sent == []
