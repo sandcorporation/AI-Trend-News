@@ -306,3 +306,12 @@ def test_article_page_splits_commentary_paragraphs_and_escapes(client: Client) -
     html = client.get(f"/a/{article.slug}").content.decode()
     assert "<p>첫 문단이다.</p>\n\n<p>둘째 문단 &lt;b&gt;굵게&lt;/b&gt;.</p>" in html
     assert "지켜볼 신호" not in html  # 신호가 없으면 제목도 없다
+
+
+@pytest.mark.django_db
+def test_upsert_works_after_editor_run_is_finished(mcp: McpClient) -> None:
+    run_id = mcp.ok("start_editor_run", {})["run_id"]
+    article = make_article(mcp)
+    mcp.ok("finish_editor_run", {"run_id": run_id, "created": 1, "updated": 0, "discarded": 0})
+    mcp.ok("upsert_commentary", args(article))
+    assert Commentary.objects.count() == 1

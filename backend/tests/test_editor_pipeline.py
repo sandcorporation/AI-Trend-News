@@ -593,6 +593,13 @@ def test_classify_prompt_has_chosen_sections_only() -> None:
     assert "MCP 도구뿐이다" not in prompt  # 서두 둘째 문단(루틴 전용)
 
 
+def test_commentary_prompt_has_topic_rule_but_no_routine_structure() -> None:
+    commentary = editor_prompts.system_prompt("commentary")
+    assert "### 조심할 주제" in commentary
+    assert "서브에이전트" not in commentary and "## 실행 절차" not in commentary
+    assert "생물 설계" in editor_prompts.system_prompt("write")
+
+
 def usage(i: int, o: int, created: int = 0, read: int = 0) -> Usage:
     return Usage(
         input_tokens=i,
@@ -626,7 +633,7 @@ def test_shadow_runs_do_not_silence_editor_missing_alert(fake_discord: FakeNotif
     sent = check_alerts(fake_discord, now)
     assert any("편집자 미실행" in m for m in sent)
 
-    routine = start_run()
+    routine = start_run().run
     EditorRun.objects.filter(pk=routine.pk).update(finished_at=now)
     assert routine.mode == "routine"
     assert any("[복구]" in m for m in check_alerts(fake_discord, now))
@@ -698,7 +705,7 @@ def test_editor_probe_prints_and_saves_nothing(fake_llm: FakeLlm) -> None:
 
 
 def test_mcp_runs_stay_routine() -> None:
-    assert start_run().mode == EditorRun.Mode.ROUTINE
+    assert start_run().run.mode == EditorRun.Mode.ROUTINE
 
 
 # --- 월 예산 상한(#124) ---
@@ -1320,7 +1327,7 @@ def test_shadow_compare_aggregates_against_routine_results(
 
 
 def test_shadow_compare_requires_login_and_shadow_run(client: Client) -> None:
-    routine = start_run()
+    routine = start_run().run
     url = f"/{settings.ADMIN_PATH}editor/editorrun/{routine.pk}/shadow/"
     assert client.get(url).status_code == 302  # 로그인 화면으로
     owner = get_user_model().objects.create_superuser("owner", password=None)

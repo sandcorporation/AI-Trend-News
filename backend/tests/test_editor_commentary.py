@@ -549,7 +549,7 @@ def test_shadow_compare_shows_commentary_side_by_side(
 
 
 def test_compare_without_commentary_calls_is_empty() -> None:
-    routine = start_run()
+    routine = start_run().run
     assert compare(routine).commentaries == []
 
 
