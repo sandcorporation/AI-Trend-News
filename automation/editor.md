@@ -20,7 +20,7 @@
 - `finish_editor_run()` — `run_id`, `created`, `updated`, `discarded`, `note`로 실행을 끝낸다.
 - `append_editor_run_note()` — 끝낸 실행의 메모 뒤에 한 줄을 덧붙인다(`run_id`, `note`). 종료 뒤 6시간 안에만 되고, 메모 전체는 2000자까지다.
 - `list_categories()` — 분야 목록(`name`, `slug`).
-- `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, `has_commentary`(AI 분석이 있는지), 묶인 수집물(`items`의 `id`, `url`)을 준다.
+- `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, `published_by_owner`·`featured_by_owner`(게시·추천을 대표가 정했는지. 참인 쪽은 네가 바꿀 수 없다), `has_commentary`(AI 분석이 있는지), 묶인 수집물(`items`의 `id`, `url`)을 준다.
 - `list_pending_items()` — 미처리 수집물을 최신순으로(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`, `image_url`(대표 이미지, 없으면 빈 값)을 준다.
 - `read_item()` — 수집물 원문 본문을 평문으로 읽는다(`item_id`). `text`(최대 8000자, 문단은 빈 줄로 나뉨, 넘으면 `truncated`가 참)를 준다. 받지 못하거나 본문이 없으면 `text`가 빈 값이고 `reason`에 까닭이 온다. 오류가 아니므로 그때는 발췌로 대신 쓴다. 본문은 저장되지 않는다.
 - `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`. `image_url`은 묶은 수집물 중 이미지가 있는 첫 것의 `image_url`을 그대로 넘긴다. 없으면 비운다. 이미지 주소를 지어내지 않는다.
@@ -84,6 +84,7 @@
 - 게시(`published=true`)는 사실 확인이 가능한 보도만 한다. 루머, 출처가 불분명한 단독 보도, 광고·홍보성 글은 `published=false`로 만들고 종료 메모에 남긴다.
 - 추천(`featured=true`)은 그날 파급력이 큰 기사만, **한 실행에 최대 6개**. 추천은 게시를 전제로 하므로 비게시 기사는 추천하지 않는다. 무리해서 채우지 않는다.
 - 기사를 만들 때 `create_article()`의 `published`·`featured`로 한 번에 정한다. 이미 있는 기사의 플래그는 `update_article()`로 바뀌지 않는다.
+- 재게시: MCP 도구 결과의 최근 기사 중 `published=false`이고 `published_by_owner=false`인 기사는 네가 비게시로 만든 것이다. 그중 근거가 부족해(루머, 출처가 불분명한 단독 보도) 비게시였던 기사에, 이번 실행에서 그 사실을 확인하는 후속 보도(공식 발표, 여러 매체의 보도, 당사자 확인)를 묶었으면 `set_article_flags()`로 `published=true`를 주어 게시하고 종료 메모에 적는다.
 
 ## 오류 처리
 
@@ -92,7 +93,7 @@
 ## 하지 말 것
 
 - 분야를 추가하지 않는다(대표만 관리). 분야 목록을 외우지 않는다 — 매 실행 `list_categories()` 결과만 믿는다.
-- `set_article_flags()`로 대표가 끈 게시를 다시 켜지 않는다. 최근 기사에서 `published=false`인 기사는 네가 비게시로 만든 것이 아니면 대표가 끈 것일 수 있으니 건드리지 않는다.
+- MCP 도구 결과에서 `published_by_owner=true`인 기사의 게시는 바꾸지 않는다(대표가 정한 것이다).
 - 수집물 본문이나 요약을 길게 복제하지 않는다.
 - 관리 도구(소스·분야 수정·삭제, 대표 권한으로 기사를 덮어쓰는 도구)는 쓰지 않는다. 보이지도 않지만 시도하지 않는다.
 - 한 실행에 60개를 넘겨 처리하지 않는다.

@@ -324,6 +324,7 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     )
     article_id = article["id"]
     assert article["published"] is True and article["slug"] == "rates-held"
+    assert article["published_by_owner"] is False and article["featured_by_owner"] is False
 
     again = mcp.fails(
         "create_article",
@@ -376,6 +377,8 @@ def test_editor_run_scenario(mcp: McpClient, admin_client: Client) -> None:
     recent = mcp.ok("list_recent_articles", {"days": 1})["articles"]
     assert isinstance(recent, list) and len(recent) == 1
     assert isinstance(recent[0], dict) and recent[0]["published"] is False
+    assert recent[0]["published_by_owner"] is True and recent[0]["featured_by_owner"] is False
+    assert updated["published_by_owner"] is True
 
     finished = mcp.ok(
         "finish_editor_run",

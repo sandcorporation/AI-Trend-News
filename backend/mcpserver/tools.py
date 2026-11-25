@@ -263,6 +263,8 @@ def _article(article: Article) -> ToolResult:
         "category": article.category.slug,
         "published": article.published,
         "featured": article.featured,
+        "published_by_owner": article.published_overridden,
+        "featured_by_owner": article.featured_overridden,
         "has_commentary": hasattr(article, "commentary"),
         "items": [
             {"id": link.item.pk, "url": link.item.url} for link in article.article_items.all()
@@ -352,6 +354,7 @@ def read_item(token: AccessToken, args: ReadItemInput) -> ToolResult:
     "list_recent_articles",
     "최근 기사",
     "최근 days일 안에 만든 기사(게시 여부 무관) 최신순: id·제목·slug·분야 slug·게시·추천·"
+    "대표가 게시·추천을 정했는지(published_by_owner·featured_by_owner)·"
     "묶인 수집물(id, URL). 같은 사건의 새 수집물을 기존 기사에 더할지 판단할 때 쓴다.",
     DaysInput,
     read_only=True,
