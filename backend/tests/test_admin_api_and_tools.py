@@ -174,6 +174,8 @@ def test_mcp_override_blocks_editor_from_turning_publishing_back_on(
     editor = McpClient(client, token_signer.token(scope="editor"))
     message = editor.fails("set_article_flags", {"id": article.pk, "published": True})
     assert "대표가 정했" in message
+    flagged = editor.ok("set_article_flags", {"id": article.pk, "featured": True})
+    assert flagged["published_by_owner"] is True and flagged["featured_by_owner"] is False
     article.refresh_from_db()
     assert article.published is False
 
