@@ -138,7 +138,7 @@ def _safe_next(request: HttpRequest, value: object) -> str:
 def login_start(request: HttpRequest) -> HttpResponse:
     """state·PKCE·nonce를 세션에 두고 sandcorp-auth 인가 엔드포인트로 보낸다."""
     if request.user.is_active and request.user.is_staff:
-        return HttpResponseRedirect(_admin_index())
+        return HttpResponseRedirect(_safe_next(request, request.GET.get("next", "")))
     try:
         url = start_login(
             login_config(),
