@@ -1,25 +1,19 @@
 """#191 데이터 마이그레이션: 미평가 예측의 기한을 문장 날짜로 당긴다."""
 
+import importlib
 from datetime import UTC, date, datetime
 
 import pytest
-from django.db import connection
-from django.db.migrations.executor import MigrationExecutor
+from django.apps import apps
 
-pytestmark = pytest.mark.django_db(transaction=True)
+from articles.models import Article, Category, Commentary, Prediction
+
+pytestmark = pytest.mark.django_db
+
+mig = importlib.import_module("articles.migrations.0013_prediction_claim_due")
 
 
 def test_backfill_pulls_due_and_marks_owner() -> None:
-    executor = MigrationExecutor(connection)
-    before = [("articles", "0012_commentary_watchpoints")]
-    executor.migrate(before)
-    apps = executor.loader.project_state(before).apps
-    Category, Article = (
-        apps.get_model("articles", "Category"),
-        apps.get_model("articles", "Article"),
-    )
-    Commentary = apps.get_model("articles", "Commentary")
-    Prediction = apps.get_model("articles", "Prediction")
     cat = Category.objects.create(name="c", slug="c")
     article = Article.objects.create(title="a", slug="aaa-1", category=cat)
     commentary = Commentary.objects.create(article=article)
@@ -39,14 +33,9 @@ def test_backfill_pulls_due_and_marks_owner() -> None:
     plain = row("1개월 안에 공지한다")
     judged = row("11월 3일까지 발표한다", "hit")
 
-    executor = MigrationExecutor(connection)
-    after = [("articles", "0013_prediction_claim_due")]
-    executor.migrate(after)
-    new = executor.loader.project_state(after).apps.get_model("articles", "Prediction")
-    assert new.objects.get(pk=early).due_date == date(2026, 11, 4)
-    assert new.objects.get(pk=late).due_date == due  # 늦은 날짜로는 미루지 않는다
-    assert new.objects.get(pk=plain).due_date == due
-    assert new.objects.get(pk=judged).due_date == due  # 평가된 행은 기한 그대로
+    mig.forwards(apps, None)  # 시험: 지금 앱 레지스트리로 부름
 
-    executor = MigrationExecutor(connection)
-    executor.migrate(executor.loader.graph.leaf_nodes())
+    assert Prediction.objects.get(pk=early).due_date == date(2026, 11, 4)
+    assert Prediction.objects.get(pk=late).due_date == due  # 늦은 날짜로는 미루지 않는다
+    assert Prediction.objects.get(pk=plain).due_date == due
+    assert Prediction.objects.get(pk=judged).due_date == due  # 평가된 행은 기한 그대로
