@@ -11,7 +11,7 @@ from typing import TypedDict
 
 from django.db import transaction
 from django.utils import timezone
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from articles.models import Article, Commentary
 from services import articles, claim_dates
@@ -109,6 +109,27 @@ def _clean_watchpoints(watchpoints: list[str]) -> list[str]:
             f"지켜볼 신호는 {MAX_WATCHPOINTS}개까지입니다(지금 {len(watchpoints)}개)."
         )
     return [_clean("지켜볼 신호", w, MAX_WATCHPOINT_LENGTH) for w in watchpoints]
+
+
+_PREDICTIONS_JSON = TypeAdapter(list[PredictionIn])
+_WATCHPOINTS_JSON = TypeAdapter(list[str])
+
+
+def parse_json_fields(
+    predictions: object, watchpoints: object
+) -> tuple[list[PredictionIn], list[str]]:
+    """admin 폼의 JSON 칸을 `clean_fields` 입력으로. 빈 칸은 빈 목록, 모양이 틀리면 거절."""
+    try:
+        parsed = _PREDICTIONS_JSON.validate_python([] if predictions is None else predictions)
+    except ValidationError:
+        raise InvalidCommentary(
+            '예측 문장 형식은 [{"claim": 문장, "horizon": 기간, "basis": 근거}] 목록입니다.'
+        ) from None
+    try:
+        signals = _WATCHPOINTS_JSON.validate_python([] if watchpoints is None else watchpoints)
+    except ValidationError:
+        raise InvalidCommentary("지켜볼 신호 형식은 문자열 목록입니다.") from None
+    return parsed, signals
 
 
 class CommentaryFields(TypedDict):
