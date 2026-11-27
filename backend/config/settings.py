@@ -4,7 +4,7 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
-from config.database import mysql_options
+from config import database
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -24,6 +24,7 @@ if not SECRET_KEY:
 
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1")
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
+CSRF_FAILURE_VIEW = "core.public.csrf_failure"
 # NPMplus terminates TLS and forwards X-Forwarded-Proto.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
@@ -85,7 +86,7 @@ DATABASES = {
         "HOST": env("DB_HOST", "127.0.0.1"),
         "PORT": env("DB_PORT", "3306"),
         # 접속·읽기·쓰기 시간 제한(#228, config/database.py).
-        "OPTIONS": mysql_options(os.environ),
+        "OPTIONS": database.mysql_options(database.web_io_timeout),
         "CONN_MAX_AGE": 60,
         "CONN_HEALTH_CHECKS": True,
         "TEST": {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_0900_as_cs"},

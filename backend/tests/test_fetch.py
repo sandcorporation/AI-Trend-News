@@ -1,4 +1,6 @@
 import io
+import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
@@ -7,6 +9,7 @@ from email.message import Message
 import pytest
 from django.test import override_settings
 
+from adapters import fetch as fetch_mod
 from adapters.fetch import FetchError, HttpFetcher
 
 PROXY = "https://proxy.example/{url}"
@@ -31,9 +34,11 @@ class _Net:
     def __init__(self, routes: dict[str, object]) -> None:
         self.routes = routes
         self.calls: list[urllib.request.Request] = []
+        self.timeouts: list[float] = []
 
     def __call__(self, request: urllib.request.Request, timeout: float) -> _Resp:
         self.calls.append(request)
+        self.timeouts.append(timeout)
         result = self.routes[request.full_url]
         if isinstance(result, int):
             raise urllib.error.HTTPError(request.full_url, result, "x", Message(), None)
@@ -109,3 +114,46 @@ def test_non_block_errors_skip_fallback(net: Install, code: int) -> None:
     with pytest.raises(FetchError):
         HttpFetcher().fetch(URL)
     assert len(n.calls) == 1
+
+
+@override_settings(FETCH_FALLBACK_URL=PROXY)
+def test_without_deadline_each_get_keeps_its_own_timeout(net: Install) -> None:
+    n = net({URL: 403, PROXY_URL: _Resp(b"real")})
+    HttpFetcher().fetch(URL)
+    assert n.timeouts == [15, 15]
+
+
+@override_settings(FETCH_FALLBACK_URL=PROXY)
+def test_deadline_gives_fallback_only_the_remaining_time(
+    monkeypatch: pytest.MonkeyPatch, net: Install
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(time, "monotonic", lambda: clock[0])
+    n = net({URL: 403, PROXY_URL: _Resp(b"real")})
+
+    def slow_direct(request: urllib.request.Request, timeout: float) -> _Resp:
+        if request.full_url == URL:
+            clock[0] += 14  # 직접 시도가 14초를 썼다
+        return n(request, timeout)
+
+    monkeypatch.setattr(urllib.request, "urlopen", slow_direct)
+
+    assert fetch_mod._timeout(None) == 15
+    assert HttpFetcher().fetch(URL, deadline_seconds=20) == b"real"
+    assert n.timeouts == [15, 6]
+
+
+@override_settings(FETCH_FALLBACK_URL=PROXY)
+def test_deadline_ends_a_response_that_never_finishes(monkeypatch: pytest.MonkeyPatch) -> None:
+    release = threading.Event()
+
+    def hang(request: urllib.request.Request, timeout: float) -> _Resp:
+        release.wait(5)
+        raise TimeoutError
+
+    monkeypatch.setattr(urllib.request, "urlopen", hang)
+    try:
+        with pytest.raises(FetchError, match="시간 초과"):
+            HttpFetcher().fetch(URL, deadline_seconds=0.05)
+    finally:
+        release.set()

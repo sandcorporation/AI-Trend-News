@@ -7,6 +7,8 @@ import importlib
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -123,14 +125,40 @@ def test_web_process_limits_reads_and_writes(monkeypatch: pytest.MonkeyPatch) ->
     """gunicorn이 읽는 config.wsgi만 읽기·쓰기 제한을 켠다(migrate·scheduler는 긴 쿼리 허용)."""
     monkeypatch.setattr(os, "environ", dict(os.environ))
     import config.wsgi
-    from config.database import mysql_options
+    from config import database
 
-    os.environ.pop("DB_IO_TIMEOUT", None)
-    assert "read_timeout" not in mysql_options(os.environ)
+    monkeypatch.setattr(database, "web_io_timeout", 0)
+    os.environ.pop("WEB_DB_IO_TIMEOUT", None)
+    assert "read_timeout" not in database.mysql_options(database.web_io_timeout)
 
     importlib.reload(config.wsgi)
-    options = mysql_options(os.environ)
+    options = database.mysql_options(database.web_io_timeout)
 
     assert options["read_timeout"] == options["write_timeout"] == 5
     # 남은 연결 ping + 다시 접속이 gunicorn --timeout 30보다 훨씬 짧아야 한다.
     assert int(options["read_timeout"]) + int(options["connect_timeout"]) < 30
+
+
+@pytest.mark.parametrize(("value", "expected"), [("9", 9), ("0", 0)])
+def test_web_process_timeout_comes_from_web_db_io_timeout(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: int
+) -> None:
+    from config import database
+
+    monkeypatch.setattr(os, "environ", {**os.environ, "WEB_DB_IO_TIMEOUT": value})
+    monkeypatch.setattr(database, "web_io_timeout", 0)
+    import config.wsgi
+
+    importlib.reload(config.wsgi)
+
+    assert database.web_io_timeout == expected
+
+
+def test_environment_alone_does_not_limit_other_processes() -> None:
+    """.env의 값은 wsgi를 거치지 않는 migrate·scheduler에 닿지 않는다."""
+    code = "from config import settings; print(sorted(settings.DATABASES['default']['OPTIONS']))"
+    env = {**os.environ, "WEB_DB_IO_TIMEOUT": "9"}
+    out = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "['charset', 'connect_timeout']"
