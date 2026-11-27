@@ -1,13 +1,14 @@
 from datetime import timedelta
 from typing import Any
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.exceptions import ValidationError
 from django.db.models import Q, QuerySet, Sum
 from django.forms import BaseModelFormSet, ModelForm
 from django.http import HttpRequest
 from django.template.response import TemplateResponse
 from django.utils import timezone
+from django.utils.functional import cached_property
 
 from adapters.clock import get_clock
 from articles.models import (
@@ -24,6 +25,7 @@ from services import commentary as commentary_svc
 from services import outbound
 from services import predictions as predictions_svc
 
+_TEXT_FIELDS = ("background", "significance", "outlook_bull", "outlook_bear", "opinion")
 _JSON_FIELDS = ("predictions", "watchpoints")
 
 
@@ -52,9 +54,9 @@ class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런�
 
 
 class CommentaryForm(ModelForm):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
-    """분석 칸을 고치면 편집자 경로와 같은 검사(`commentary.clean_fields`)를 거친다.
+    """고친 분석 칸은 편집자 경로와 같은 검사를 거치고, 오류는 그 칸에 붙인다. 새 분석은 모두 검사.
 
-    숨김만 바꿀 때는 검사하지 않는다(검사가 생기기 전 값이 남은 분석도 숨길 수 있어야 한다).
+    손대지 않은 칸은 검사하지 않는다(검사가 생기기 전 값이 남아도 다른 칸을 고치고 숨길 수 있게).
     """
 
     class Meta:
@@ -70,26 +72,38 @@ class CommentaryForm(ModelForm):  # type: ignore[type-arg]  # 런타임에 제�
             "hidden",
         )
 
+    @cached_property
+    def changed_data(self) -> list[str]:
+        """textarea는 CRLF로 보내서, 손대지 않은 여러 문단 칸이 바뀐 것으로 잡힌다. 그것은 뺀다."""
+        return [
+            name
+            for name in super().changed_data
+            if name not in _TEXT_FIELDS
+            or svc.is_text_changed(
+                str(self.initial.get(name, "")), str(self.data.get(self.add_prefix(name), ""))
+            )
+        ]
+
     def clean(self) -> dict[str, Any]:
         data: dict[str, Any] = super().clean() or {}
-        checked = commentary_svc.CommentaryFields.__annotations__
-        # 칸 자체의 오류(빈 칸·JSON 문법)가 있으면 그 오류만 보인다.
-        if self.errors or not set(checked) & set(self.changed_data):
-            return data
+        adding = self.instance.pk is None
+        for name in _TEXT_FIELDS:
+            if not adding and name not in self.changed_data and name in data:
+                data[name] = self.initial[name]  # 줄바꿈 표기만 다른 값은 저장된 그대로 둔다
         written = self.instance.created_at or get_clock().now()
-        try:
-            predictions, watchpoints = commentary_svc.parse_json_fields(
-                data["predictions"], data["watchpoints"]
-            )
-            cleaned = commentary_svc.clean_fields(
-                **{name: data[name] for name in checked if name not in _JSON_FIELDS},
-                predictions=predictions,
-                watchpoints=watchpoints,
-                created=timezone.localtime(written).date(),
-            )
-        except commentary_svc.CommentaryError as error:
-            raise ValidationError(str(error)) from None
-        return data | cleaned
+        created = timezone.localtime(written).date()
+        for name in (*_TEXT_FIELDS, *_JSON_FIELDS):
+            # 칸 자체의 오류(빈 칸·JSON 문법)가 있는 칸은 `data`에 없고 그 오류만 보인다.
+            if name not in data or not (adding or name in self.changed_data):
+                continue
+            try:
+                if name in _JSON_FIELDS:
+                    data[name] = commentary_svc.clean_json_field(name, data[name], created=created)
+                else:
+                    data[name] = commentary_svc.clean_text(name, data[name])
+            except commentary_svc.CommentaryError as error:
+                self.add_error(name, str(error))
+        return data
 
 
 class CommentaryInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
@@ -102,8 +116,34 @@ class CommentaryInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타
     can_delete = True
 
 
+class ArticleForm(ModelForm):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    def clean_slug(self) -> str:
+        """바꾸거나 새로 정한 slug는 서비스와 같은 검사를 거친다. 비우면 자동·유지."""
+        slug: str = self.cleaned_data["slug"]
+        if not slug or "slug" not in self.changed_data:
+            return slug
+        try:
+            return svc.check_article_slug(slug, exclude=self.instance if self.instance.pk else None)
+        except svc.ArticleError as error:
+            raise ValidationError(str(error)) from None
+
+
+class CategoryForm(ModelForm):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    def clean_slug(self) -> str:
+        slug: str = self.cleaned_data["slug"]
+        if not slug or "slug" not in self.changed_data:
+            return slug
+        try:
+            return svc.check_category_slug(
+                slug, exclude=self.instance if self.instance.pk else None
+            )
+        except svc.ArticleError as error:
+            raise ValidationError(str(error)) from None
+
+
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    form = ArticleForm
     list_display = (
         "title",
         "category",
@@ -154,6 +194,7 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     ) -> None:
         """admin은 대표의 도구다. 바꾼 제목·요약·발행 시각·플래그는 덮어씀을 표시한다."""
         if not change:
+            obj.title_overridden = obj.summary_overridden = True
             if not obj.slug:
                 obj.slug = svc.make_slug(obj.title, Article, "news")
             obj.save()
@@ -187,7 +228,10 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         super().save_formset(request, form, formset, change)
         if formset.model is not Commentary:
             return
-        saved = [*formset.new_objects, *(obj for obj, _ in formset.changed_objects)]
+        saved = [
+            *formset.new_objects,
+            *(obj for obj, changed in formset.changed_objects if "predictions" in changed),
+        ]
         for commentary in saved:
             predictions_svc.sync_predictions(commentary)
 
@@ -198,6 +242,7 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    form = CategoryForm
     list_display = ("name", "slug", "order")
     list_editable = ("order",)
 
@@ -291,24 +336,29 @@ class PredictionAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
             obj.pk, obj.verdict, obj.verdict_note, now=get_clock().now()
         )
 
-    def _judge(self, queryset: QuerySet[Prediction], verdict: str) -> None:
-        for row in queryset:
+    def _judge(self, request: HttpRequest, queryset: QuerySet[Prediction], verdict: str) -> None:
+        rows = list(queryset)
+        for row in rows:
             predictions_svc.judge_prediction(
                 row.pk, verdict, row.verdict_note, now=get_clock().now()
             )
+        label = Prediction.Verdict(verdict).label
+        self.message_user(
+            request, f"예측 {len(rows)}건을 「{label}」 상태로 바꿨습니다.", messages.SUCCESS
+        )
 
     @admin.action(description="적중으로 표시", permissions=["change"])
     def mark_hit(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
-        self._judge(queryset, Prediction.Verdict.HIT)
+        self._judge(request, queryset, Prediction.Verdict.HIT)
 
     @admin.action(description="빗나감으로 표시", permissions=["change"])
     def mark_miss(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
-        self._judge(queryset, Prediction.Verdict.MISS)
+        self._judge(request, queryset, Prediction.Verdict.MISS)
 
     @admin.action(description="판단 불가로 표시", permissions=["change"])
     def mark_undecidable(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
-        self._judge(queryset, Prediction.Verdict.UNDECIDABLE)
+        self._judge(request, queryset, Prediction.Verdict.UNDECIDABLE)
 
     @admin.action(description="미평가로 되돌림", permissions=["change"])
     def mark_pending(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
-        self._judge(queryset, Prediction.Verdict.PENDING)
+        self._judge(request, queryset, Prediction.Verdict.PENDING)

@@ -30,6 +30,8 @@ from articles.models import (
 from collection.models import Item
 from services.outbound import is_bot
 
+MAX_TAG_LENGTH = 50  # `Tag.name` 열 길이
+
 
 class Actor(Enum):
     EDITOR = "editor"
@@ -53,6 +55,10 @@ class InvalidCategorySlug(ArticleError):
 
 
 class InvalidArticleSlug(ArticleError):
+    pass
+
+
+class InvalidTag(ArticleError):
     pass
 
 
@@ -100,19 +106,36 @@ def make_slug(text: str, exists: type[Category] | type[Article], fallback: str) 
 
 
 def _slug_taken(model: type[Category] | type[Article], slug: str) -> bool:
-    if model.objects.filter(slug=slug).exists():
-        return True
-    return model is Article and ArticleSlugAlias.objects.filter(slug=slug).exists()
+    aliases = CategorySlugAlias if model is Category else ArticleSlugAlias
+    return model.objects.filter(slug=slug).exists() or aliases.objects.filter(slug=slug).exists()
 
 
-def unique_article_slug(slug: str) -> str:
-    """편집자가 준 slug를 검증하고, 이미 있으면 -2, -3을 붙여 유일하게 만든다."""
+def _check_article_slug_format(slug: str) -> str:
     slug = slug.strip()
     if not 3 <= len(slug) <= 60 or not ARTICLE_SLUG_RE.fullmatch(slug):
         raise InvalidArticleSlug(
             "slug는 라틴 소문자·숫자·하이픈 3~60자이고 첫 글자는 소문자여야 합니다"
             f"(앞뒤·연속 하이픈 불가): {slug!r}"
         )
+    return slug
+
+
+def check_article_slug(slug: str, *, exclude: Article | None = None) -> str:
+    """대표가 지정한 slug 검증: 형식, 다른 기사의 현재·옛 slug와 겹치지 않음."""
+    slug = _check_article_slug_format(slug)
+    taken = Article.objects.filter(slug=slug)
+    aliased = ArticleSlugAlias.objects.filter(slug=slug)
+    if exclude is not None:
+        taken = taken.exclude(pk=exclude.pk)
+        aliased = aliased.exclude(article=exclude)
+    if taken.exists() or aliased.exists():
+        raise InvalidArticleSlug(f"이미 쓰는 slug입니다: {slug}")
+    return slug
+
+
+def unique_article_slug(slug: str) -> str:
+    """편집자가 준 slug를 검증하고, 이미 있으면 -2, -3을 붙여 유일하게 만든다."""
+    slug = _check_article_slug_format(slug)
     candidate, n = slug, 2
     while _slug_taken(Article, candidate):
         suffix = f"-{n}"
@@ -144,7 +167,7 @@ def list_categories() -> list[Category]:
     return list(Category.objects.all())
 
 
-def _check_new_slug(slug: str, *, exclude: Category | None = None) -> str:
+def check_category_slug(slug: str, *, exclude: Category | None = None) -> str:
     """대표가 지정한 slug 검증: 형식, 다른 분야의 현재·옛 slug와 겹치지 않음."""
     slug = slug.strip()
     if not 1 <= len(slug) <= 60 or not CATEGORY_SLUG_RE.fullmatch(slug):
@@ -176,7 +199,7 @@ def add_category(name: str, order: int | None = None, slug: str | None = None) -
     if order is None:
         last = Category.objects.order_by("-order").first()
         order = last.order + 1 if last else 0
-    slug = _check_new_slug(slug) if slug else make_slug(name, Category, "category")
+    slug = check_category_slug(slug) if slug else make_slug(name, Category, "category")
     return Category.objects.create(name=name, order=order, slug=slug)
 
 
@@ -208,7 +231,7 @@ def update_category(
     if order is not None:
         category.order = order
     if new_slug is not None and new_slug.strip() != category.slug:
-        record_slug_change(category, _check_new_slug(new_slug, exclude=category))
+        record_slug_change(category, check_category_slug(new_slug, exclude=category))
     category.save()
     return category
 
@@ -265,7 +288,12 @@ def reorder_categories(slugs: Iterable[str]) -> list[Category]:
 
 
 def _tags(names: Iterable[str]) -> list[Tag]:
-    cleaned = dict.fromkeys(n.strip() for n in names if n.strip())
+    cleaned = dict.fromkeys(n.strip() for n in names)
+    for name in cleaned:
+        if not 1 <= len(name) <= MAX_TAG_LENGTH:
+            raise InvalidTag(
+                f"태그 이름은 1~{MAX_TAG_LENGTH}자여야 합니다(지금 {len(name)}자): {name!r}"
+            )
     return [Tag.objects.get_or_create(name=n)[0] for n in cleaned]
 
 
@@ -525,6 +553,17 @@ def public_list(category: str = "") -> QuerySet[Article]:
     """게시된 기사 최신순. category(slug)가 있으면 그 분야만. 페이지는 호출부가 자른다."""
     qs = _public()
     return qs.filter(category__slug=category) if category else qs
+
+
+def public_related(article: Article, limit: int = 3) -> list[Article]:
+    """같은 분야의 게시된 다른 기사, 최신순 limit개. 쿼리 1개(태그는 읽지 않는다)."""
+    qs = (
+        Article.objects.filter(published=True, category_id=article.category_id)
+        .exclude(pk=article.pk)
+        .select_related("category", "commentary")
+        .order_by("-published_at", "-id")
+    )
+    return list(qs[:limit])
 
 
 def public_article(slug: str) -> Article:

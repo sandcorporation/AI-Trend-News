@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "./App";
 import type {
   ArticlePageData,
@@ -53,7 +53,7 @@ const site = {
   privacy_url: "https://sandcorporation.github.io/privacy-and-terms/errors/",
 };
 const sidebar = {
-  share_label: "오늘 뉴스 공유 →",
+  share_label: "오늘 뉴스 공유",
   share_url: "/news/2026-10-23",
   most_read_title: "많이 읽은 기사",
   sandcorp_title: "Sandcorp",
@@ -255,6 +255,8 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
       url: "https://news.sandcorp.co.kr/a/rate-freeze",
       x_url: "https://twitter.com/intent/tweet?text=x&url=y",
     },
+    related_title: "같은 분야 기사",
+    related: [],
     article: {
       ...card,
       commentary: null,
@@ -297,8 +299,26 @@ function articleData(): ArticlePageData {
       x_url: "https://twitter.com/intent/tweet?x=1",
     },
     article: { ...card, items: [], commentary: null },
+    related_title: "같은 분야 기사",
+    related: [],
   };
 }
+
+test("같은 분야 기사는 CTA 앞에 카드로 그리고, 없으면 칸이 없다", () => {
+  const data = articleData();
+  const { container, rerender } = render(<App data={data} />);
+  expect(container.querySelector('[data-slot="related"]')).toBeNull();
+
+  data.related = [{ ...card, slug: "b", title: "이웃 기사", url: "/a/b" }];
+  rerender(<App data={{ ...data }} />);
+  const block = q(container, '[data-slot="related"]');
+  expect(block).toHaveTextContent("같은 분야 기사");
+  expect(q(block, ".card h3 a")).toHaveAttribute("href", "/a/b");
+  expect(
+    block.compareDocumentPosition(q(container, '[data-slot="article-cta"]')) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
 
 test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
   render(<App data={articleData()} />);
@@ -605,6 +625,9 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   expect(q(block, ".predictions")).toHaveTextContent("근거: 물가 둔화");
   expect(q(block, ".predictions")).toHaveTextContent("기한 2027.1.23");
   expect(block.querySelector('[data-slot="verdict"]')).toBeNull(); // 미평가는 배지 없음
+  expect(
+    screen.getByRole("link", { name: "전망 기록표 →" }),
+  ).toHaveAttribute("href", "/predictions");
   // 요약 아래, 출처 목록 다음(#72)
   const html = container.innerHTML;
   expect(html.indexOf('class="summary"')).toBeLessThan(html.indexOf("commentary"));
@@ -613,6 +636,7 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   data.article.commentary = { ...data.article.commentary, predictions: [] };
   rerender(<App data={{ ...data }} />);
   expect(container.querySelector(".predictions")).toBeNull();
+  expect(screen.queryByRole("link", { name: "전망 기록표 →" })).toBeNull();
 });
 
 test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록으로 그린다", () => {
@@ -639,13 +663,33 @@ test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록
   expect(items).toEqual(["물가 지표가 2%대면 낙관 쪽", "환율이 오르면 회의 쪽"]);
 });
 
-test("분석 배지는 메인 카드에만 있고 캐러셀 장에는 없다", () => {
+test("분석 배지는 카드와 캐러셀 장에 같은 꼬리표로 붙는다", () => {
   const data = homeData();
-  data.featured = data.featured.map((f) => ({ ...f, has_commentary: true }));
+  data.featured = data.featured.map((f, i) => ({ ...f, has_commentary: i === 0 }));
   data.articles = data.articles.map((f, i) => ({ ...f, has_commentary: i === 0 }));
   const { container } = render(<App data={data} />);
-  expect(container.querySelector('[data-slot="hero"] .badge-analysis')).toBeNull();
+  const hero = container.querySelectorAll('[data-slot="hero"] .badge-analysis');
+  expect(hero).toHaveLength(1);
+  expect(hero[0]).toHaveTextContent("분석");
   expect(container.querySelectorAll(".card .badge-analysis")).toHaveLength(1);
+});
+
+test("홈은 h1 하나, 「최신 기사」 라벨, 좁은 화면용 공유 링크를 둔다", () => {
+  const { container } = render(<App data={homeData()} />);
+  expect(container.querySelectorAll("h1")).toHaveLength(1);
+  expect(q(container, "h1")).toHaveTextContent("오늘의 AI·IT 뉴스");
+  expect(q(container, ".latest .section-head .label")).toHaveTextContent("최신 기사");
+  expect(container).not.toHaveTextContent("Latest");
+  // 화살표는 .side-link::after 하나뿐이다. 라벨에는 넣지 않는다.
+  for (const slot of ["day-share-link", "latest-share-link"]) {
+    const link = q(container, `[data-slot="${slot}"] a`);
+    expect(link).toHaveClass("side-link");
+    expect(link.textContent).toBe("오늘 뉴스 공유");
+  }
+  expect(q(container, '[data-slot="latest-share-link"] a')).toHaveAttribute(
+    "href",
+    "/news/2026-10-23",
+  );
 });
 
 test("기사 예측 목록: 평가된 것만 결과 배지", () => {
@@ -726,6 +770,23 @@ test("전망 기록표: 적중률·기간 탭·목록", () => {
   expect(q(container, '.tabs a[aria-current="page"]')).toHaveTextContent("전체");
   expect(q(container, ".prediction-list")).toHaveTextContent("금리가 내린다");
   expect(q(container, ".prediction-list a")).toHaveAttribute("href", "/a/rates");
+});
+
+test("전망 기록표: 빈 상태 문구는 적중·빗나감·판단 불가가 모두 0일 때만", () => {
+  const data: PredictionsPageData = {
+    kind: "predictions",
+    site: homeData().site,
+    period: "3m",
+    periods: [],
+    rate: { percent: null, judged: 0, hits: 0, undecidable: 2, pending: 0 },
+    rows: [],
+  };
+  const { container, rerender } = render(<App data={data} />);
+  const rate = () => q(container, '[data-slot="hit-rate"]');
+  expect(rate()).toHaveTextContent("판단 불가");
+  expect(rate()).not.toHaveTextContent("아직 평가된 예측이 없습니다.");
+  rerender(<App data={{ ...data, rate: { ...data.rate, undecidable: 0 } }} />);
+  expect(rate()).toHaveTextContent("아직 평가된 예측이 없습니다.");
 });
 
 const dayData: DayPageData = {
@@ -848,7 +909,8 @@ test("메인 사이드바에 오늘 뉴스 공유 링크", () => {
     num_pages: 1,
   };
   render(<App data={data} />);
-  expect(screen.getByRole("link", { name: "오늘 뉴스 공유 →" })).toHaveAttribute(
+  const sidebarEl = within(screen.getByRole("complementary", { name: "사이드바" }));
+  expect(sidebarEl.getByRole("link", { name: "오늘 뉴스 공유" })).toHaveAttribute(
     "href",
     "/news/2026-10-23",
   );

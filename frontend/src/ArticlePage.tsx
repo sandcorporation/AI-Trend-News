@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { Card } from "./Home";
 import { Layout } from "./Layout";
 import { ShareFragment } from "./Share";
 import type { ArticlePageData, CommentaryData } from "./types";
@@ -46,6 +47,20 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
         </section>
         {a.commentary && <Commentary c={a.commentary} />}
         <ShareFragment share={data.share} title={a.title} text={a.summary} />
+        {data.related.length > 0 && (
+          <section
+            className="related"
+            data-slot="related"
+            aria-labelledby="related-h"
+          >
+            <h2 id="related-h">{data.related_title}</h2>
+            <div className="grid">
+              {data.related.map((card) => (
+                <Card key={card.slug} card={card} site={data.site} />
+              ))}
+            </div>
+          </section>
+        )}
         <section className="cta" data-slot="article-cta">
           <p>{data.cta.text}</p>
           <p className="cta-actions">
@@ -151,6 +166,11 @@ function Commentary({ c }: { c: CommentaryData }) {
               </li>
             ))}
           </ul>
+          <p className="predictions-more">
+            <a className="more" href="/predictions">
+              전망 기록표 →
+            </a>
+          </p>
         </>
       )}
     </section>

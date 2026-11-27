@@ -20,7 +20,7 @@ from services import claim_dates
 
 HORIZON_MONTHS = {"1m": 1, "3m": 3, "6m": 6, "12m": 12}
 MIN_PUBLIC_SAMPLE = 5  # 사이드바 적중률 블록은 평가 5건 이상일 때만
-RECENT_DAYS = 90  # 「3개월」 필터: 기한이 최근 90일 안인 예측
+RECENT_DAYS = 90  # 「3개월」 필터: 오늘−90일 ≤ 기한 ≤ 오늘
 Verdict = Prediction.Verdict
 
 
@@ -137,7 +137,9 @@ def _public() -> QuerySet[Prediction]:
 
 
 def _window(qs: QuerySet[Prediction], recent: bool, today: date) -> QuerySet[Prediction]:
-    return qs.filter(due_date__gte=today - timedelta(days=RECENT_DAYS)) if recent else qs
+    if not recent:
+        return qs
+    return qs.filter(due_date__range=(today - timedelta(days=RECENT_DAYS), today))
 
 
 def public_predictions(*, recent: bool, today: date) -> list[Prediction]:

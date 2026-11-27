@@ -662,7 +662,8 @@ def set_source_enabled(token: AccessToken, args: SetSourceEnabledInput) -> ToolR
 @tool(
     "update_category",
     "분야 수정",
-    "분야의 이름·순서를 고친다. slug는 바뀌지 않는다.",
+    "분야의 이름·순서·slug를 고친다. slug는 new_slug를 줄 때만 바뀌고, "
+    "옛 slug 링크는 새 slug로 301된다.",
     UpdateCategoryInput,
     scope="admin",
 )

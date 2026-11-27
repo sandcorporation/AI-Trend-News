@@ -42,10 +42,20 @@
         {% for p in c.predictions %}<li><span class="horizon">{{ p.horizon_label }}</span> {{ p.claim }} <span class="basis">근거: {{ p.basis }}</span> <span class="due">기한 {{ p.due_label }}</span>{% if p.verdict %} <span class="verdict verdict-{{ p.verdict }}" data-slot="verdict">{{ p.verdict_label }}</span>{% endif %}</li>
         {% endfor %}
       </ul>
+      <p class="predictions-more"><a class="more" href="/predictions">전망 기록표 →</a></p>
       {% endif %}
     </section>
     {% endwith %}{% endif %}
     {% include "core/public/_share.html" %}
+    {% if data.related %}
+    <section class="related" data-slot="related" aria-labelledby="related-h">
+      <h2 id="related-h">{{ data.related_title }}</h2>
+      <div class="grid">
+        {% for card in data.related %}{% include "core/public/_card.html" %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
     <section class="cta" data-slot="article-cta">
       <p>{{ data.cta.text }}</p>
       <p class="cta-actions">
