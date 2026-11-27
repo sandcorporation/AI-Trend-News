@@ -140,14 +140,17 @@ def targets(run: EditorRun) -> list[Plan]:
             .values_list("item_id", flat=True)
         )
         new_ids = _ints(changes.get("item_ids")) or list(call.item_ids)
+        # 대표가 고친 칸은 저장에서 무시되므로 작성 단계의 제안이 아니라 기사 값으로 분석한다.
+        title = "" if article_.title_overridden else _text(changes.get("title"))
+        summary = "" if article_.summary_overridden else _text(changes.get("summary"))
         found.append(
             {
                 "kind": "update",
                 "write_key": call.key,
                 "article_id": article_.pk,
                 "category": article_.category.slug,
-                "title": _text(changes.get("title")) or article_.title,
-                "summary": _text(changes.get("summary")) or article_.summary,
+                "title": title or article_.title,
+                "summary": summary or article_.summary,
                 "slug": article_.slug,
                 "item_ids": new_ids + [i for i in bundled if i not in new_ids],
             }

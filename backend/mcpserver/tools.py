@@ -265,6 +265,8 @@ def _article(article: Article) -> ToolResult:
         "featured": article.featured,
         "published_by_owner": article.published_overridden,
         "featured_by_owner": article.featured_overridden,
+        "title_by_owner": article.title_overridden,
+        "summary_by_owner": article.summary_overridden,
         "has_commentary": hasattr(article, "commentary"),
         "items": [
             {"id": link.item.pk, "url": link.item.url} for link in article.article_items.all()
@@ -355,6 +357,7 @@ def read_item(token: AccessToken, args: ReadItemInput) -> ToolResult:
     "최근 기사",
     "최근 days일 안에 만든 기사(게시 여부 무관) 최신순: id·제목·slug·분야 slug·게시·추천·"
     "대표가 게시·추천을 정했는지(published_by_owner·featured_by_owner)·"
+    "대표가 제목·요약을 고쳤는지(title_by_owner·summary_by_owner)·"
     "묶인 수집물(id, URL). 같은 사건의 새 수집물을 기존 기사에 더할지 판단할 때 쓴다.",
     DaysInput,
     read_only=True,
@@ -391,7 +394,9 @@ def create_article(token: AccessToken, args: CreateArticleInput) -> ToolResult:
     "update_article",
     "기사 갱신",
     "기사에 수집물을 더 묶거나 제목·요약·태그·대표 이미지를 고친다. 생략한 값은 그대로. "
-    "slug와 게시·추천은 바뀌지 않는다(게시·추천은 set_article_flags).",
+    "slug와 게시·추천은 바뀌지 않는다(게시·추천은 set_article_flags). "
+    "대표가 고친 제목·요약(title_by_owner·summary_by_owner)은 바꾸지 않고 나머지만 반영하며, "
+    "무시한 칸 이름을 ignored_fields로 준다.",
     UpdateArticleInput,
 )
 def update_article(token: AccessToken, args: UpdateArticleInput) -> ToolResult:
@@ -404,7 +409,7 @@ def update_article(token: AccessToken, args: UpdateArticleInput) -> ToolResult:
         tags=args.tags,
         image_url=args.image_url,
     )
-    return _article(article)
+    return _article(article) | {"ignored_fields": list(article.ignored_fields)}
 
 
 @tool(

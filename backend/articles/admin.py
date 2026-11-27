@@ -117,6 +117,8 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     search_fields = ("title", "summary")
     readonly_fields = (
         "old_slugs",
+        "title_overridden",
+        "summary_overridden",
         "published_overridden",
         "featured_overridden",
         "published_at_overridden",
@@ -150,7 +152,7 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         form: ModelForm,  # type: ignore[type-arg]
         change: bool,
     ) -> None:
-        """admin은 대표의 도구다. 플래그 변경은 서비스 함수(대표 주체)를 거쳐 덮어씀을 표시한다."""
+        """admin은 대표의 도구다. 바꾼 제목·요약·발행 시각·플래그는 덮어씀을 표시한다."""
         if not change:
             if not obj.slug:
                 obj.slug = svc.make_slug(obj.title, Article, "news")
@@ -159,6 +161,10 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         published, featured = obj.published, obj.featured
         stored = Article.objects.get(pk=obj.pk)
         obj.published, obj.featured = stored.published, stored.featured
+        if svc.is_text_changed(stored.title, obj.title):
+            obj.title_overridden = True
+        if svc.is_text_changed(stored.summary, obj.summary):
+            obj.summary_overridden = True
         if obj.published_at != stored.published_at:
             obj.published_at_overridden = True
         if not obj.slug:

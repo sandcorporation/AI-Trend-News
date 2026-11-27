@@ -20,11 +20,11 @@
 - `finish_editor_run()` — `run_id`, `created`, `updated`, `discarded`, `note`로 실행을 끝낸다.
 - `append_editor_run_note()` — 끝낸 실행의 메모 뒤에 한 줄을 덧붙인다(`run_id`, `note`). 종료 뒤 6시간 안에만 되고, 메모 전체는 2000자까지다.
 - `list_categories()` — 분야 목록(`name`, `slug`).
-- `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, `published_by_owner`·`featured_by_owner`(게시·추천을 대표가 정했는지. 참인 쪽은 네가 바꿀 수 없다), `has_commentary`(AI 분석이 있는지), 묶인 수집물(`items`의 `id`, `url`)을 준다.
+- `list_recent_articles()` — 최근 기사(`days` 1~90). 각 기사의 `id`, `title`, `slug`, `url`, `category`, `published`, `featured`, `published_by_owner`·`featured_by_owner`(게시·추천을 대표가 정했는지. 참인 쪽은 네가 바꿀 수 없다), `title_by_owner`·`summary_by_owner`(제목·요약을 대표가 고쳤는지), `has_commentary`(AI 분석이 있는지), 묶인 수집물(`items`의 `id`, `url`)을 준다.
 - `list_pending_items()` — 미처리 수집물을 최신순으로(`page`, `page_size` 기본 20·최대 50). `total`과 각 수집물의 `id`, `source`, `collected_at`, `published_at`, `title`, `excerpt`(300자까지, 넘으면 `…`), `url`, `image_url`(대표 이미지, 없으면 빈 값)을 준다.
 - `read_item()` — 수집물 원문 본문을 평문으로 읽는다(`item_id`). `text`(최대 8000자, 문단은 빈 줄로 나뉨, 넘으면 `truncated`가 참)를 준다. 받지 못하거나 본문이 없으면 `text`가 빈 값이고 `reason`에 까닭이 온다. 오류가 아니므로 그때는 발췌로 대신 쓴다. 본문은 저장되지 않는다.
 - `create_article()` — 새 기사. `item_ids`(1개 이상), `title`, `summary`, `category`(분야 slug), `slug`(영문 주소, 아래 「slug」 절), `tags`, `published`, `featured`, `image_url`. `image_url`은 묶은 수집물 중 이미지가 있는 첫 것의 `image_url`을 그대로 넘긴다. 없으면 비운다. 이미지 주소를 지어내지 않는다.
-- `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. `add_item_ids`로 묶는 수집물에 `image_url`이 있고 그 기사의 이미지가 비어 있으면 `image_url`을 채운다(지어내지 않는다). 게시·추천은 바꾸지 못한다.
+- `update_article()` — 기존 기사 갱신. `id`와 바꿀 것만: `add_item_ids`(더 묶을 수집물), `title`, `summary`, `tags`(주면 전체 교체), `image_url`. `add_item_ids`로 묶는 수집물에 `image_url`이 있고 그 기사의 이미지가 비어 있으면 `image_url`을 채운다(지어내지 않는다). 게시·추천은 바꾸지 못한다. `title_by_owner`·`summary_by_owner`가 참인 칸은 보내도 바뀌지 않는다. 오류가 아니며 결과의 `ignored_fields`에 무시한 칸이 온다(다시 시도하지 않는다).
 - `set_article_flags()` — 기사의 `published`·`featured` 변경(`id`와 바꿀 것만).
 - `upsert_post_draft()` — 추천이면서 게시된 기사의 포스트 초안 작성·갱신(`article_id`, `channel`, `text`). 아래 「포스트 초안」 절의 규칙을 따른다.
 - `upsert_commentary()` — 추천이면서 게시된 기사의 AI 분석 작성·갱신(`article_id`, `background`, `significance`, `outlook_bull`, `outlook_bear`, `watchpoints`, `opinion`, `predictions`). 아래 「AI 분석」 절의 규칙을 따른다.
