@@ -1,6 +1,7 @@
 """문의 접수·전달 규칙(ADR 0003). 이 사이트는 저장하지 않고 portfolio로 전달만 한다.
 
-제출 → (honeypot이면 조용히 성공) → IP 요청 제한 → 검증 → 대기열에 넣고 즉시 1회 전송.
+제출 → (honeypot이면 조용히 성공) → IP 요청 제한 확인 → 검증 → 제출 1회로 기록
+→ 대기열에 넣고 즉시 1회 전송. 검증에 실패한 제출은 제한에 세지 않는다.
 성공하면 지우고, 재시도할 실패면 대기로 남기며, 4xx면 영구실패로 표시해 admin에 남긴다.
 로그에는 id·상태만 남기고 내용·연락처는 남기지 않는다.
 """
@@ -63,7 +64,6 @@ def _check_rate(ip: str, now: datetime) -> None:
     recent = SubmitAttempt.objects.filter(ip=ip, at__gte=now - RATE_WINDOW).count()
     if recent >= RATE_LIMIT:
         raise RateLimited
-    SubmitAttempt.objects.create(ip=ip, at=now)
 
 
 def submit(s: Submission, ip: str, now: datetime) -> None:
@@ -74,6 +74,7 @@ def submit(s: Submission, ip: str, now: datetime) -> None:
     errors = _validate(s)
     if errors:
         raise InquiryInvalid(errors)
+    SubmitAttempt.objects.create(ip=ip, at=now)
     inquiry = Inquiry.objects.create(
         name=s.name.strip(),
         company=s.company.strip(),
