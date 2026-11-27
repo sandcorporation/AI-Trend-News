@@ -105,14 +105,42 @@ test("폼 밖에 초점이 있으면 초점을 옮기지 않는다", () => {
   expect(document.body).toHaveFocus();
 });
 
-test("400 화면은 칸에 초점이 있어도 오류 요약이 먼저고 값은 남는다", () => {
-  control('[name="company"]').value = "친 값";
-  control('[name="company"]').focus();
-  attach(
-    contactData({
-      error_summary: [{ href: "#contact-name", text: "이름: 필요" }],
-    }),
+const ERRORS = {
+  error_summary: [{ href: "#contact-name", text: "이름: 필요" }],
+};
+
+/** 400 화면의 서버 HTML: 폼 앞에 `autofocus`가 걸린 오류 요약이 있다. */
+function focusServerSummary() {
+  element.insertAdjacentHTML(
+    "afterbegin",
+    '<div class="notice err error-summary" role="alert" tabindex="-1"></div>',
   );
-  expect(element.querySelector(".error-summary")).toHaveFocus();
-  expect(control('[name="company"]')).toHaveValue("친 값");
+  element.querySelector<HTMLElement>(".error-summary")?.focus();
+}
+
+test("400 화면에서 마운트 전에 옮긴 칸의 초점과 커서가 남는다", () => {
+  focusServerSummary();
+  const before = control('[name="message"]');
+  before.value = "덧붙인 글";
+  before.focus();
+  before.setSelectionRange(3, 3);
+
+  attach(contactData(ERRORS));
+
+  const after = control('[name="message"]');
+  expect(after).not.toBe(before);
+  expect(after).toHaveValue("덧붙인 글");
+  expect(after).toHaveFocus();
+  expect([after.selectionStart, after.selectionEnd]).toEqual([3, 3]);
+});
+
+test("400 화면에서 초점을 옮기지 않았으면 오류 요약에 초점이 있다", () => {
+  focusServerSummary();
+  const before = element.querySelector(".error-summary");
+
+  attach(contactData(ERRORS));
+
+  const after = element.querySelector(".error-summary");
+  expect(after).not.toBe(before);
+  expect(after).toHaveFocus();
 });
