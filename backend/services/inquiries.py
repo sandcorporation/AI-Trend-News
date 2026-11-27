@@ -7,6 +7,7 @@
 """
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -18,6 +19,7 @@ from adapters.portfolio import (
     get_gateway,
     is_configured,
 )
+from core.korean import josa
 from inquiries.models import Inquiry, SubmitAttempt
 
 logger = logging.getLogger("inquiries")
@@ -25,6 +27,10 @@ logger = logging.getLogger("inquiries")
 RATE_WINDOW = timedelta(minutes=15)
 RATE_LIMIT = 5
 LIMITS = {"name": 50, "company": 100, "contact": 200, "message": 5000}
+CONTACT_FORMAT_ERROR = "이메일이나 전화번호를 적어 주세요."
+PHONE_MIN_DIGITS = 9
+_EMAIL = re.compile(r"[^@\s]+@[^@\s.]+(\.[^@\s.]+)+")
+_PHONE = re.compile(r"[0-9+() -]+")
 
 
 class RateLimited(Exception):
@@ -46,14 +52,24 @@ class Submission:
     honeypot: str = ""
 
 
+def _is_reachable(contact: str) -> bool:
+    """이메일(도메인에 점)이거나 전화번호(숫자 9자리 이상)인가."""
+    if _EMAIL.fullmatch(contact):
+        return True
+    digits = sum(c.isdigit() for c in contact)
+    return bool(_PHONE.fullmatch(contact)) and digits >= PHONE_MIN_DIGITS
+
+
 def _validate(s: Submission) -> dict[str, str]:
     errors: dict[str, str] = {}
     for key, label in (("name", "이름"), ("contact", "연락처"), ("message", "내용")):
         if not getattr(s, key).strip():
-            errors[key] = f"{label}을(를) 입력해 주세요."
+            errors[key] = f"{josa(label, '을/를')} 입력해 주세요."
     for key, limit in LIMITS.items():
         if len(getattr(s, key)) > limit:
             errors.setdefault(key, f"{limit}자 이하로 입력해 주세요.")
+    if s.contact.strip() and not _is_reachable(s.contact.strip()):
+        errors.setdefault("contact", CONTACT_FORMAT_ERROR)
     if s.kind not in Inquiry.Kind.values:
         errors["kind"] = "종류를 고르세요."
     return errors

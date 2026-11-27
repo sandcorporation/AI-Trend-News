@@ -14,6 +14,7 @@ from django.utils import timezone
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from articles.models import Article, Commentary
+from core.korean import josa
 from services import articles, claim_dates
 from services import predictions as predictions_svc
 from services.articles import Actor
@@ -61,7 +62,9 @@ class PredictionData(TypedDict):
 def _clean(label: str, value: str, limit: int) -> str:
     value = value.replace("\r\n", "\n").strip()
     if not value or len(value) > limit:
-        raise InvalidCommentary(f"{label}은(는) 1~{limit}자여야 합니다(지금 {len(value)}자).")
+        raise InvalidCommentary(
+            f"{josa(label, '은/는')} 1~{limit}자여야 합니다(지금 {len(value)}자)."
+        )
     return value
 
 

@@ -111,9 +111,9 @@ def test_new_commentary_from_inline_creates_rows(admin_client: Client) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "message"),
     [
-        ("background", "가" * 901, "배경은(는) 1~900자"),
-        ("opinion", "가" * 241, "의견은(는) 1~240자"),
-        ("predictions", json.dumps([prediction("가" * 121)]), "예측 문장은(는) 1~120자"),
+        ("background", "가" * 901, "배경은 1~900자"),
+        ("opinion", "가" * 241, "의견은 1~240자"),
+        ("predictions", json.dumps([prediction("가" * 121)]), "예측 문장은 1~120자"),
         ("predictions", json.dumps([prediction("a", basis="가" * 301)]), "예측 근거"),
         ("predictions", json.dumps([prediction(c) for c in "abcd"]), "예측 문장은 3개까지"),
         ("predictions", json.dumps([prediction("a", "2w")]), "예측 기간은"),
