@@ -136,6 +136,8 @@ export interface ArticlePageData {
   article: DetailData;
   cta: CtaData;
   share: ShareData;
+  related_title: string;
+  related: CardData[];
 }
 
 export interface DayShareData extends ShareData {

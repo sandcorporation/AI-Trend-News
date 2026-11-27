@@ -332,8 +332,32 @@ def test_predictions_page_shows_rate_rows_and_filters(
     assert isinstance(rows, list) and len(rows) == 6
 
     recent = page(client.get("/predictions?period=3m").content.decode())
-    assert recent["rate"] == {"percent": 0, "judged": 1, "hits": 0, "undecidable": 0, "pending": 1}
+    # 기한이 아직 오지 않은 대기 예측은 「3개월」에서 빠진다
+    assert recent["rate"] == {"percent": 0, "judged": 1, "hits": 0, "undecidable": 0, "pending": 0}
     assert client.get("/predictions?period=1y").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("offset_days", "included"), [(1, False), (0, True), (-90, True), (-91, False)]
+)
+def test_recent_window_boundaries(
+    frozen_clock: FixedClock, offset_days: int, included: bool
+) -> None:
+    today = date(2026, 1, 1)
+    make_judged(frozen_clock, hits=1, misses=0, due=today + timedelta(days=offset_days))
+    assert len(svc.public_predictions(recent=True, today=today)) == int(included)
+    assert svc.hit_rate(recent=True, today=today).judged == int(included)
+    assert len(svc.public_predictions(recent=False, today=today)) == 1
+
+
+def test_predictions_page_with_only_undecidable_has_no_empty_note(
+    client: Client, frozen_clock: FixedClock
+) -> None:
+    make_judged(frozen_clock, hits=0, misses=0, undecidable=1)
+    html = client.get("/predictions").content.decode()
+    assert '<dt class="label">판단 불가</dt><dd>1</dd>' in html
+    assert "아직 평가된 예측이 없습니다." not in html
+    assert "편집부가 적중 여부를" in html and "대표" not in html
 
 
 def test_predictions_page_hides_hidden_and_empty_state(client: Client) -> None:
@@ -371,6 +395,7 @@ def test_article_page_badges_only_judged(client: Client, frozen_clock: FixedCloc
     slug = Commentary.objects.get().article.slug
     html = client.get(f"/a/{slug}").content.decode()
     assert html.count('data-slot="verdict"') == 1 and "적중" in html
+    assert '<a class="more" href="/predictions">전망 기록표 →</a>' in html
     predictions = page(html)["article"]["commentary"]["predictions"]  # type: ignore[index]
     assert {p["claim"]: p["verdict"] for p in predictions} == {
         "맞은 예측": "hit",
