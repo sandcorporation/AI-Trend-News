@@ -16,11 +16,11 @@ export function ContactPage({
   const summary = useRef<HTMLDivElement>(null);
   const formElement = useRef<HTMLFormElement>(null);
   const initialFocus = useRef(draft?.focus);
-  // 마운트 때 한 번: 400으로 다시 그린 화면은 오류 요약이 먼저고, 아니면 보던 칸이다.
+  // 마운트 때 한 번: 보던 칸이 있으면 그 칸, 없으면 400 화면의 오류 요약이다.
   useEffect(() => {
-    if (summary.current) summary.current.focus();
-    else if (formElement.current && initialFocus.current)
+    if (formElement.current && initialFocus.current)
       restoreFocus(formElement.current, initialFocus.current);
+    else summary.current?.focus();
   }, []);
   return (
     <Layout site={data.site}>
