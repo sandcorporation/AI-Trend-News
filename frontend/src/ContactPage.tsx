@@ -1,13 +1,27 @@
 import { useEffect, useRef } from "react";
+import { restoreFocus, type ContactDraft } from "./contactDraft";
 import { Layout } from "./Layout";
 import type { ContactPageData } from "./types";
 
 /** 문의 폼. JS 없이도 되는 일반 POST 폼이다(서버가 결과를 같은 페이지로 다시 그린다). */
-export function ContactPage({ data }: { data: ContactPageData }) {
-  const { form } = data;
+export function ContactPage({
+  data,
+  draft = null,
+}: {
+  data: ContactPageData;
+  draft?: ContactDraft | null;
+}) {
+  // JS가 늦게 붙으면 서버 HTML 폼에 이미 친 값이 초깃값이다.
+  const form = { ...data.form, ...draft?.values };
   const summary = useRef<HTMLDivElement>(null);
-  // 400으로 다시 그린 화면은 초점을 오류 요약에 둔다.
-  useEffect(() => summary.current?.focus(), []);
+  const formElement = useRef<HTMLFormElement>(null);
+  const initialFocus = useRef(draft?.focus);
+  // 마운트 때 한 번: 400으로 다시 그린 화면은 오류 요약이 먼저고, 아니면 보던 칸이다.
+  useEffect(() => {
+    if (summary.current) summary.current.focus();
+    else if (formElement.current && initialFocus.current)
+      restoreFocus(formElement.current, initialFocus.current);
+  }, []);
   return (
     <Layout site={data.site}>
       <section className="contact" data-slot="contact">
@@ -48,7 +62,12 @@ export function ContactPage({ data }: { data: ContactPageData }) {
                 </ul>
               </div>
             )}
-            <form method="post" action="/contact" className="contact-form">
+            <form
+              ref={formElement}
+              method="post"
+              action="/contact"
+              className="contact-form"
+            >
               <div className="hp" aria-hidden="true">
                 <label>
                   웹사이트{" "}
