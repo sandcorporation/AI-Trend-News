@@ -288,11 +288,11 @@ def reorder_categories(slugs: Iterable[str]) -> list[Category]:
 
 
 def _tags(names: Iterable[str]) -> list[Tag]:
-    cleaned = dict.fromkeys(n.strip() for n in names)
+    cleaned = dict.fromkeys(n.strip() for n in names if n.strip())
     for name in cleaned:
-        if not 1 <= len(name) <= MAX_TAG_LENGTH:
+        if len(name) > MAX_TAG_LENGTH:
             raise InvalidTag(
-                f"태그 이름은 1~{MAX_TAG_LENGTH}자여야 합니다(지금 {len(name)}자): {name!r}"
+                f"태그 이름은 {MAX_TAG_LENGTH}자까지입니다(지금 {len(name)}자): {name!r}"
             )
     return [Tag.objects.get_or_create(name=n)[0] for n in cleaned]
 
