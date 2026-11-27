@@ -419,6 +419,32 @@ describe("히어로 캐러셀", () => {
     expect(slides[1]).toHaveAttribute("inert");
   });
 
+  test("슬라이드 안 초점에서 화살표로 넘기면 새 장 제목 링크로 초점이 옮겨 가고 자동 넘김은 멈춘 채다", () => {
+    const { container } = render(<App data={homeData()} />);
+    const title = () => q(active(container), "h3 a") as HTMLElement;
+    act(() => title().focus());
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowRight" });
+    expect(label(container)).toBe("2 / 3");
+    expect(title()).toHaveFocus();
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowRight" });
+    expect(label(container)).toBe("3 / 3");
+    expect(title()).toHaveFocus();
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowLeft" });
+    expect(label(container)).toBe("2 / 3");
+    expect(title()).toHaveFocus();
+    tick(20000);
+    expect(label(container)).toBe("2 / 3");
+  });
+
+  test("버튼에 초점이 있을 때 화살표로 넘기면 초점은 버튼에 남는다", () => {
+    const { container } = render(<App data={homeData()} />);
+    const next = screen.getByRole("button", { name: "다음 장" });
+    act(() => next.focus());
+    fireEvent.keyDown(next, { key: "ArrowRight" });
+    expect(label(container)).toBe("2 / 3");
+    expect(next).toHaveFocus();
+  });
+
   test("5초마다 다음 장으로 넘어가고 끝에서 처음으로 돈다", () => {
     const { container } = render(<App data={homeData()} />);
     expect(label(container)).toBe("1 / 3");
