@@ -23,6 +23,7 @@ from django.http import (
     HttpResponse,
     HttpResponsePermanentRedirect,
     HttpResponseRedirect,
+    JsonResponse,
 )
 from django.template.loader import render_to_string
 from django.templatetags.static import static
@@ -79,6 +80,7 @@ OG_CACHE_SECONDS = 3600
 OG_CARD_TTL = 24 * 3600
 NOT_FOUND_HEADING = "페이지를 찾을 수 없습니다"
 NOT_FOUND_LATEST_COUNT = 5
+MACHINE_PATH_PREFIXES = ("/api/", "/mcp/")
 logger = logging.getLogger(__name__)
 
 
@@ -685,7 +687,12 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
 
 
 def not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
-    """handler404: 없는 경로와 뷰의 `Http404`가 모두 같은 화면. 예외 문구는 내보내지 않는다."""
+    """handler404: 없는 경로와 뷰의 `Http404`가 모두 같은 화면. 예외 문구는 내보내지 않는다.
+
+    `/api/`·`/mcp/` 아래는 기계가 읽으므로 DB를 읽지 않고 JSON으로 답한다.
+    """
+    if request.path_info.startswith(MACHINE_PATH_PREFIXES):
+        return JsonResponse({"detail": "Not Found"}, status=404)
     data: dict[str, object] = {
         "kind": "not_found",
         "site": _site(),
@@ -707,9 +714,32 @@ def not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
     return render_shell(request, meta, status=404, data=data, body=body)
 
 
+def _error_screen(status: int, heading: str, message: str) -> HttpResponse:
+    """DB·static 매니페스트·컨텍스트 없이 그리는 오류 화면. 예외 문구는 내보내지 않는다."""
+    body = render_to_string("core/public/error.html", {"heading": heading, "message": message})
+    return HttpResponse(body, status=status)
+
+
 def server_error(request: HttpRequest) -> HttpResponse:
-    """handler500: 무엇이 깨졌는지 모르므로 DB·static 매니페스트·컨텍스트 없이 그린다."""
-    return HttpResponse(render_to_string("core/public/server_error.html"), status=500)
+    """handler500: 무엇이 깨졌는지 모른다."""
+    return _error_screen(500, "일시적인 오류가 났습니다", "잠시 뒤 다시 시도해 주세요.")
+
+
+def bad_request(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler400."""
+    return _error_screen(400, "잘못된 요청입니다", "주소와 입력한 내용을 확인해 주세요.")
+
+
+def permission_denied(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler403."""
+    return _error_screen(403, "접근할 수 없습니다", "이 페이지를 볼 권한이 없습니다.")
+
+
+def csrf_failure(request: HttpRequest, reason: str = "") -> HttpResponse:
+    """`CSRF_FAILURE_VIEW`."""
+    return _error_screen(
+        403, "요청을 확인할 수 없습니다", "이전 화면을 새로고침한 뒤 다시 시도해 주세요."
+    )
 
 
 def day_path(day: date) -> str:

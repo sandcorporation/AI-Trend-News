@@ -44,9 +44,11 @@ class FakeFetcher:
     def __init__(self, responses: dict[str, bytes | Exception] | None = None) -> None:
         self.responses: dict[str, bytes | Exception] = responses or {}
         self.requested: list[str] = []
+        self.deadlines: list[float | None] = []
 
-    def fetch(self, url: str) -> bytes:
+    def fetch(self, url: str, deadline_seconds: float | None = None) -> bytes:
         self.requested.append(url)
+        self.deadlines.append(deadline_seconds)
         response = self.responses[url]
         if isinstance(response, Exception):
             raise response

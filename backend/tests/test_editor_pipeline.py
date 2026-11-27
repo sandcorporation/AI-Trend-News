@@ -81,7 +81,7 @@ class Pages:
         self.pages: dict[str, bytes | Exception] = {}
         self.requested: list[str] = []
 
-    def fetch(self, url: str) -> bytes:
+    def fetch(self, url: str, deadline_seconds: float | None = None) -> bytes:
         self.requested.append(url)
         page = self.pages.get(url, FetchError("HTTP 404"))
         if isinstance(page, Exception):

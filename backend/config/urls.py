@@ -7,6 +7,8 @@ from core.api import api
 from core.auth_adapter import protected_resource_metadata
 from mcpserver.views import mcp_endpoint
 
+handler400 = public.bad_request
+handler403 = public.permission_denied
 handler404 = public.not_found
 handler500 = public.server_error
 
