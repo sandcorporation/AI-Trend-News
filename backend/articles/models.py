@@ -266,7 +266,7 @@ class Prediction(models.Model):
     )
     claim = models.CharField("예측 문장", max_length=120)
     horizon = models.CharField("기간", max_length=3)
-    basis = models.CharField("근거", max_length=200, blank=True)
+    basis = models.CharField("근거", max_length=300, blank=True)
     due_date = models.DateField("평가 기한", help_text="분석 작성일 + 기간")
     verdict = models.CharField("결과", max_length=12, choices=Verdict.choices, default="pending")
     verdict_note = models.CharField("평가 메모", max_length=300, blank=True)
