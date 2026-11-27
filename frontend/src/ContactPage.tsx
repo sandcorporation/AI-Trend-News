@@ -1,9 +1,13 @@
+import { useEffect, useRef } from "react";
 import { Layout } from "./Layout";
 import type { ContactPageData } from "./types";
 
 /** 문의 폼. JS 없이도 되는 일반 POST 폼이다(서버가 결과를 같은 페이지로 다시 그린다). */
 export function ContactPage({ data }: { data: ContactPageData }) {
   const { form } = data;
+  const summary = useRef<HTMLDivElement>(null);
+  // 400으로 다시 그린 화면은 초점을 오류 요약에 둔다.
+  useEffect(() => summary.current?.focus(), []);
   return (
     <Layout site={data.site}>
       <section className="contact" data-slot="contact">
@@ -27,6 +31,23 @@ export function ContactPage({ data }: { data: ContactPageData }) {
                 요청이 너무 많습니다. 잠시 뒤에 다시 시도해 주세요.
               </p>
             )}
+            {data.error_summary.length > 0 && (
+              <div
+                ref={summary}
+                className="notice err error-summary"
+                role="alert"
+                tabIndex={-1}
+              >
+                <p>입력한 내용을 확인해 주세요.</p>
+                <ul>
+                  {data.error_summary.map((e) => (
+                    <li key={e.href}>
+                      <a href={e.href}>{e.text}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <form method="post" action="/contact" className="contact-form">
               <div className="hp" aria-hidden="true">
                 <label>
@@ -41,60 +62,71 @@ export function ContactPage({ data }: { data: ContactPageData }) {
               </div>
               <fieldset className="kind">
                 <legend>종류</legend>
-                {data.kinds.map((k) => (
+                {data.kinds.map((k, i) => (
                   <label key={k}>
                     <input
                       type="radio"
                       name="kind"
                       value={k}
+                      id={i === 0 ? "contact-kind" : undefined}
+                      {...errorProps("kind", form.errors.kind)}
                       defaultChecked={k === form.kind}
                     />{" "}
                     {k}
                   </label>
                 ))}
+                <FieldError field="kind" text={form.errors.kind} />
               </fieldset>
               <label>
                 이름{" "}
                 <input
                   name="name"
+                  id="contact-name"
+                  {...errorProps("name", form.errors.name)}
                   required
                   maxLength={50}
                   autoComplete="name"
                   defaultValue={form.name}
                 />
               </label>
-              <FieldError text={form.errors.name} />
+              <FieldError field="name" text={form.errors.name} />
               <label>
                 회사 (선택){" "}
                 <input
                   name="company"
+                  id="contact-company"
+                  {...errorProps("company", form.errors.company)}
                   maxLength={100}
                   autoComplete="organization"
                   defaultValue={form.company}
                 />
               </label>
+              <FieldError field="company" text={form.errors.company} />
               <label>
                 연락처 (이메일 또는 전화){" "}
                 <input
                   name="contact"
+                  id="contact-contact"
+                  {...errorProps("contact", form.errors.contact)}
                   required
                   maxLength={200}
                   defaultValue={form.contact}
                 />
               </label>
-              <FieldError text={form.errors.contact} />
+              <FieldError field="contact" text={form.errors.contact} />
               <label>
                 내용{" "}
                 <textarea
                   name="message"
+                  id="contact-message"
+                  {...errorProps("message", form.errors.message)}
                   required
                   rows={6}
                   maxLength={5000}
                   defaultValue={form.message}
                 />
               </label>
-              <FieldError text={form.errors.message} />
-              <FieldError text={form.errors.kind} />
+              <FieldError field="message" text={form.errors.message} />
               <button className="btn primary" type="submit">
                 보내기
               </button>
@@ -106,6 +138,19 @@ export function ContactPage({ data }: { data: ContactPageData }) {
   );
 }
 
-function FieldError({ text }: { text?: string }) {
-  return text ? <p className="field-error">{text}</p> : null;
+function errorProps(field: string, text?: string) {
+  return text
+    ? {
+        "aria-invalid": true,
+        "aria-describedby": `contact-${field}-error`,
+      }
+    : {};
+}
+
+function FieldError({ field, text }: { field: string; text?: string }) {
+  return text ? (
+    <p className="field-error" id={`contact-${field}-error`}>
+      {text}
+    </p>
+  ) : null;
 }
