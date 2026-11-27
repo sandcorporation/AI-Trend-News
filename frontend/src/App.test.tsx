@@ -318,38 +318,6 @@ test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
   expect(x).toHaveAttribute("target", "_blank");
 });
 
-test("링크 복사는 주소를 클립보드에 넣고 복사됨을 보여 준다", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", {
-    value: { writeText },
-    configurable: true,
-  });
-  render(<App data={articleData()} />);
-
-  fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
-
-  expect(writeText).toHaveBeenCalledWith(
-    "https://news.sandcorp.co.kr/a/rate-freeze",
-  );
-  expect(
-    await screen.findByRole("button", { name: "복사됨" }),
-  ).toBeInTheDocument();
-});
-
-test("클립보드가 막히면 주소를 선택된 입력으로 보여 준다", async () => {
-  Object.defineProperty(navigator, "clipboard", {
-    value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
-    configurable: true,
-  });
-  render(<App data={articleData()} />);
-
-  fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
-
-  expect(await screen.findByLabelText("기사 주소")).toHaveValue(
-    "https://news.sandcorp.co.kr/a/rate-freeze",
-  );
-});
-
 test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확인을 보여 준다", () => {
   const form = {
     name: "",
@@ -917,37 +885,90 @@ test("404 화면: 사이트 틀·제목·홈·최신 기사 링크", () => {
 });
 
 // 서버 HTML의 같은 목록은 backend/tests/test_news_day.py::test_share_fragment_matches_react
-test("날짜 페이지 공유 조각: 서버 HTML과 같은 항목·순서", () => {
-  Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
-  const { container } = render(<App data={dayData} />);
-  const items = [...q(container, '[data-slot="share"]').children];
-  expect(
-    items.map((el) => [el.tagName.toLowerCase(), el.getAttribute("aria-label") ?? el.textContent]),
-  ).toEqual([
-    ["input", "공유 주소"],
-    ["button", "링크 복사"],
-    ["a", "X에 공유"],
-  ]);
-  expect(items[0]).toHaveValue(dayData.share.url);
-  expect(items[0]).toHaveAttribute("readonly");
-  expect(items[1]).toBeVisible();
-});
+describe.each([
+  { page: "날짜", data: () => dayData },
+  { page: "기사", data: () => articleData() },
+])("$page 페이지 공유 조각", ({ data }) => {
+  const url = () => data().share.url;
+  const stubClipboard = (writeText: () => Promise<void>) =>
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  const copyButton = () => screen.getByRole("button", { name: "링크 복사" });
+  const addressInput = () => screen.getByRole<HTMLInputElement>("textbox", { name: "공유 주소" });
 
-test("날짜 페이지 링크 복사: 성공하면 복사됨, 막히면 주소 입력칸을 고른다", async () => {
-  const writeText = vi.fn().mockRejectedValueOnce(new Error("denied")).mockResolvedValue(undefined);
-  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
-  render(<App data={dayData} />);
-  const input = screen.getByRole<HTMLInputElement>("textbox", { name: "공유 주소" });
-
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+  test("서버 HTML과 같은 항목·순서", () => {
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+    const { container } = render(<App data={data()} />);
+    const items = [...q(container, '[data-slot="share"]').children];
+    expect(
+      items.map((el) => [
+        el.tagName.toLowerCase(),
+        el.getAttribute("role") ?? el.getAttribute("aria-label") ?? el.textContent,
+      ]),
+    ).toEqual([
+      ["input", "공유 주소"],
+      ["button", "링크 복사"],
+      ["span", "status"],
+      ["a", "X에 공유"],
+    ]);
+    expect(items[0]).toHaveValue(url());
+    expect(items[0]).toHaveAttribute("readonly");
+    expect(items[1]).toBeVisible();
+    expect(items[2]).toHaveAttribute("aria-live", "polite");
+    expect(items[2]).toBeEmptyDOMElement();
   });
-  expect(input).toHaveFocus();
-  expect(input.selectionEnd).toBe(dayData.share.url.length);
 
-  await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+  test("Web Share를 지원하면 「공유…」가 끝에 붙는다", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "share", { value: share, configurable: true });
+    const { container } = render(<App data={data()} />);
+    const button = screen.getByRole("button", { name: "공유…" });
+    expect(q(container, '[data-slot="share"]').lastElementChild).toBe(button);
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(share).toHaveBeenCalledWith(expect.objectContaining({ url: url() }));
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
   });
-  expect(writeText).toHaveBeenLastCalledWith(dayData.share.url);
-  expect(screen.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
+
+  test("복사에 성공하면 버튼과 live 영역에 알린다", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    render(<App data={data()} />);
+    await act(async () => {
+      fireEvent.click(copyButton());
+    });
+    expect(writeText).toHaveBeenCalledWith(url());
+    expect(screen.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("주소를 복사했습니다");
+  });
+
+  test("초점이 버튼에 있는데 막히면 주소 입력칸을 고르고 알린다", async () => {
+    stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    render(<App data={data()} />);
+    act(() => copyButton().focus());
+    await act(async () => {
+      fireEvent.click(copyButton());
+    });
+    expect(addressInput()).toHaveFocus();
+    expect(addressInput().selectionEnd).toBe(url().length);
+    expect(screen.getByRole("status")).toHaveTextContent("복사하지 못했습니다");
+  });
+
+  test("실패가 오기 전에 초점을 옮기면 초점은 그대로 남는다", async () => {
+    let reject: (reason: Error) => void = () => {};
+    stubClipboard(
+      () =>
+        new Promise<void>((_, r) => {
+          reject = r;
+        }),
+    );
+    render(<App data={data()} />);
+    act(() => copyButton().focus());
+    fireEvent.click(copyButton());
+    const elsewhere = screen.getByRole("link", { name: "X에 공유" });
+    act(() => elsewhere.focus());
+    await act(async () => reject(new Error("denied")));
+    expect(elsewhere).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("복사하지 못했습니다");
+  });
 });
