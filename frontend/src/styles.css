@@ -306,6 +306,10 @@ img {
   cursor: pointer;
 }
 
+.btn[hidden] {
+  display: none;
+}
+
 .btn:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
@@ -974,7 +978,9 @@ img {
   gap: 0.75rem;
 }
 
-.copy-fallback {
+.copy-fallback,
+.share-url {
+  min-width: 0;
   flex: 1 1 16rem;
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--color-line);
