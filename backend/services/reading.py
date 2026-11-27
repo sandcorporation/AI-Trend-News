@@ -15,6 +15,8 @@ from collection.models import Item
 from services.articles import ItemNotFound
 
 MAX_BYTES = 1_000_000  # 원문은 앞 1MB만 본다
+# MCP `read_item`은 web 요청이라 gunicorn `--timeout 30`보다 먼저 끝나야 한다(직접+대체 합).
+FETCH_DEADLINE_SECONDS = 20
 MAX_TEXT_LENGTH = 8000  # 편집자에게 넘기는 본문 상한(넘으면 자른다)
 MIN_TEXT_LENGTH = 80  # 이보다 짧으면 본문을 못 찾은 것으로 본다
 
@@ -108,7 +110,8 @@ def read_item(item_id: int, fetcher: Fetcher | None = None) -> ReadResult:
         "reason": "",
     }
     try:
-        html = (fetcher or get_fetcher()).fetch(item.url)[:MAX_BYTES]
+        page = (fetcher or get_fetcher()).fetch(item.url, FETCH_DEADLINE_SECONDS)
+        html = page[:MAX_BYTES]
     except FetchError as exc:
         return result | {"reason": f"원문을 받지 못했습니다: {exc}"}
     try:

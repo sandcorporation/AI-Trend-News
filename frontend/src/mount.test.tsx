@@ -144,3 +144,36 @@ test("400 화면에서 초점을 옮기지 않았으면 오류 요약에 초점�
   expect(after).not.toBe(before);
   expect(after).toHaveFocus();
 });
+
+test("400 화면에서 마운트 전에 「보내기」에 둔 초점이 남는다", () => {
+  focusServerSummary();
+  const before = control('button[type="submit"]');
+  before.focus();
+
+  attach(contactData(ERRORS));
+
+  const after = control('button[type="submit"]');
+  expect(after).not.toBe(before);
+  expect(after).toHaveFocus();
+});
+
+test("400 화면에서 마운트 전에 오류 요약 링크에 둔 초점이 남는다", () => {
+  const errors = {
+    error_summary: [
+      ...ERRORS.error_summary,
+      { href: "#contact-message", text: "내용: 필요" },
+    ],
+  };
+  focusServerSummary();
+  control(".error-summary").innerHTML = errors.error_summary
+    .map((e) => `<a href="${e.href}">${e.text}</a>`)
+    .join("");
+  const before = control('a[href="#contact-message"]');
+  before.focus();
+
+  attach(contactData(errors));
+
+  const after = control('a[href="#contact-message"]');
+  expect(after).not.toBe(before);
+  expect(after).toHaveFocus();
+});

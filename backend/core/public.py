@@ -23,6 +23,7 @@ from django.http import (
     HttpResponse,
     HttpResponsePermanentRedirect,
     HttpResponseRedirect,
+    JsonResponse,
 )
 from django.template.loader import render_to_string
 from django.templatetags.static import static
@@ -50,6 +51,8 @@ from services import og_card, outbound
 from services import predictions as predictions_svc
 
 PAGE_SIZE = 12
+RELATED_COUNT = 3
+RELATED_TITLE = "같은 분야 기사"
 FEATURED_COUNT = 6
 # Sandcorp links always go through the tracked inflow link (services/outbound.py); label lives here.
 SANDCORP_LABEL = "Sandcorp"
@@ -74,11 +77,12 @@ DAY_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 SITEMAP_DAYS = 60
 DAY_DESCRIPTION_TITLES = 3
 DAY_EMPTY_DESCRIPTION = "이 날은 게시된 기사가 없습니다. 다른 날의 AI·IT 뉴스를 확인해 보세요."
-SIDEBAR_SHARE_LABEL = "오늘 뉴스 공유 →"
+SIDEBAR_SHARE_LABEL = "오늘 뉴스 공유"
 OG_CACHE_SECONDS = 3600
 OG_CARD_TTL = 24 * 3600
 NOT_FOUND_HEADING = "페이지를 찾을 수 없습니다"
 NOT_FOUND_LATEST_COUNT = 5
+MACHINE_PATH_PREFIXES = ("/api/", "/mcp/")
 logger = logging.getLogger(__name__)
 
 
@@ -349,13 +353,14 @@ def _share(title: str, url: str) -> ShareData:
     return {"url": url, "x_url": f"https://twitter.com/intent/tweet?{query}"}
 
 
-def _card(article: Article) -> CardData:
+def _card(article: Article, *, with_tags: bool = True) -> CardData:
+    """`with_tags=False`는 태그를 그리지 않는 목록용(태그 조회 쿼리를 내지 않는다)."""
     return {
         "slug": article.slug,
         "title": article.title,
         "summary": article.summary,
         "category": {"name": article.category.name, "slug": article.category.slug},
-        "tags": [t.name for t in article.tags.all()],
+        "tags": [t.name for t in article.tags.all()] if with_tags else [],
         "published_at": article.published_at.isoformat(),
         "published_label": _relative_label(article.published_at),
         "image_url": article.image_url,
@@ -569,6 +574,8 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "article": detail,
         "cta": _cta(article.slug),
         "share": _share(article.title, request.build_absolute_uri(request.path)),
+        "related_title": RELATED_TITLE,
+        "related": [_card(a, with_tags=False) for a in svc.public_related(article, RELATED_COUNT)],
     }
     meta = PageMeta(
         title=f"{article.title} - {SITE_NAME}",
@@ -616,7 +623,7 @@ PERIODS = {"all": "전체", "3m": "3개월"}
 
 
 def predictions_page(request: HttpRequest) -> HttpResponse:
-    """전망 기록표: 평가된 예측의 적중률과 목록. `?period=3m`이면 기한이 최근 3개월인 것만."""
+    """전망 기록표: 평가된 예측의 적중률과 목록. `?period=3m`은 기한이 최근 90일(오늘까지)."""
     period = request.GET.get("period", "all")
     if period not in PERIODS:
         raise Http404("없는 기간입니다.")
@@ -685,7 +692,12 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
 
 
 def not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
-    """handler404: 없는 경로와 뷰의 `Http404`가 모두 같은 화면. 예외 문구는 내보내지 않는다."""
+    """handler404: 없는 경로와 뷰의 `Http404`가 모두 같은 화면. 예외 문구는 내보내지 않는다.
+
+    `/api/`·`/mcp/` 아래는 기계가 읽으므로 DB를 읽지 않고 JSON으로 답한다.
+    """
+    if request.path_info.startswith(MACHINE_PATH_PREFIXES):
+        return JsonResponse({"detail": "Not Found"}, status=404)
     data: dict[str, object] = {
         "kind": "not_found",
         "site": _site(),
@@ -707,9 +719,32 @@ def not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
     return render_shell(request, meta, status=404, data=data, body=body)
 
 
+def _error_screen(status: int, heading: str, message: str) -> HttpResponse:
+    """DB·static 매니페스트·컨텍스트 없이 그리는 오류 화면. 예외 문구는 내보내지 않는다."""
+    body = render_to_string("core/public/error.html", {"heading": heading, "message": message})
+    return HttpResponse(body, status=status)
+
+
 def server_error(request: HttpRequest) -> HttpResponse:
-    """handler500: 무엇이 깨졌는지 모르므로 DB·static 매니페스트·컨텍스트 없이 그린다."""
-    return HttpResponse(render_to_string("core/public/server_error.html"), status=500)
+    """handler500: 무엇이 깨졌는지 모른다."""
+    return _error_screen(500, "일시적인 오류가 났습니다", "잠시 뒤 다시 시도해 주세요.")
+
+
+def bad_request(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler400."""
+    return _error_screen(400, "잘못된 요청입니다", "주소와 입력한 내용을 확인해 주세요.")
+
+
+def permission_denied(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler403."""
+    return _error_screen(403, "접근할 수 없습니다", "이 페이지를 볼 권한이 없습니다.")
+
+
+def csrf_failure(request: HttpRequest, reason: str = "") -> HttpResponse:
+    """`CSRF_FAILURE_VIEW`."""
+    return _error_screen(
+        403, "요청을 확인할 수 없습니다", "이전 화면을 새로고침한 뒤 다시 시도해 주세요."
+    )
 
 
 def day_path(day: date) -> str:
@@ -1028,8 +1063,12 @@ def contact(request: HttpRequest) -> HttpResponse:
             state = "limited"
             status = 429
         else:
-            state = "done"
-            form = {**form, "name": "", "company": "", "contact": "", "message": ""}
+            # PRG: 성공 화면을 GET으로 옮겨 새로고침이 문의를 다시 보내지 않게 한다.
+            redirect = HttpResponseRedirect(f"{CONTACT_PATH}?sent=1")
+            redirect.status_code = 303
+            return redirect
+    elif request.GET.get("sent") == "1":
+        state = "done"
     site = _site("contact")
     data: dict[str, object] = {
         "kind": "contact",

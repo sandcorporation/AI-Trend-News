@@ -1,28 +1,23 @@
+import importlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from django.db import connection
-from django.db.migrations.executor import MigrationExecutor
+from django.apps import apps
 from django.utils import timezone
 
-pytestmark = pytest.mark.django_db(transaction=True)
+from articles.models import Article, ArticleItem, Category
+from collection.models import Item, Source
+
+pytestmark = pytest.mark.django_db
+
+mig = importlib.import_module("articles.migrations.0011_backfill_article_published_at")
 
 
 def test_backfill_sets_earliest_item_time_or_created_at() -> None:
-    executor = MigrationExecutor(connection)
-    before = [("articles", "0009_predictions"), *executor.loader.graph.leaf_nodes("collection")]
-    executor.migrate(before)
-    apps = executor.loader.project_state(before).apps
-    Source, Item = apps.get_model("collection", "Source"), apps.get_model("collection", "Item")
-    Category, Article = (
-        apps.get_model("articles", "Category"),
-        apps.get_model("articles", "Article"),
-    )
-    ArticleItem = apps.get_model("articles", "ArticleItem")
     cat = Category.objects.create(name="c", slug="c")
     src = Source.objects.create(name="s", url="https://e.com/f")
 
-    def item(n: int, published_at: datetime | None) -> object:
+    def item(n: int, published_at: datetime | None) -> Item:
         return Item.objects.create(
             source=src,
             url=f"https://e.com/{n}",
@@ -41,11 +36,9 @@ def test_backfill_sets_earliest_item_time_or_created_at() -> None:
     a3 = Article.objects.create(title="a3", slug="aaa-3", category=cat)
     ArticleItem.objects.create(article=a3, item=item(4, timezone.now() + timedelta(days=5)))
 
-    executor = MigrationExecutor(connection)
-    after = [("articles", "0011_backfill_article_published_at")]
-    executor.migrate(after)
-    new = executor.loader.project_state(after).apps.get_model("articles", "Article")
-    assert new.objects.get(pk=a1.pk).published_at == early
+    mig.backfill(apps, None)  # 시험: 지금 앱 레지스트리로 부름
+
+    assert Article.objects.get(pk=a1.pk).published_at == early
     for pk in (a2.pk, a3.pk):
-        row = new.objects.get(pk=pk)
+        row = Article.objects.get(pk=pk)
         assert row.published_at == row.created_at

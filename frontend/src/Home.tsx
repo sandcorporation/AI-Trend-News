@@ -206,6 +206,12 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
                 </span>{" "}
                 · <span className={`chip tone-${card.tone}`}>{card.category.name}</span>{" "}
                 · <time dateTime={card.published_at}>{card.published_label}</time>
+                {card.has_commentary && (
+                  <>
+                    {" "}
+                    <span className="badge-analysis">분석</span>
+                  </>
+                )}
               </p>
               <h3>
                 <a href={card.url}>{card.title}</a>
@@ -388,6 +394,7 @@ export function Home({ data }: { data: HomeData }) {
   const { site } = data;
   return (
     <Layout site={site}>
+      <h1 className="sr-only">오늘의 AI·IT 뉴스</h1>
       <div className="layout">
         <div className="primary">
           {data.featured.length > 0 && (
@@ -395,14 +402,21 @@ export function Home({ data }: { data: HomeData }) {
           )}
           <section className="latest" aria-labelledby="latest-h">
             <div className="section-head">
-              <p className="label">Latest</p>
+              <p className="label">최신 기사</p>
               {data.num_pages > 1 && (
                 <p className="label">
                   {data.page} / {data.num_pages}
                 </p>
               )}
             </div>
-            <h2 id="latest-h">최신 기사</h2>
+            <h2 id="latest-h" className="sr-only">
+              최신 기사
+            </h2>
+            <p className="latest-share" data-slot="latest-share-link">
+              <a className="side-link" href={data.sidebar.share_url}>
+                {data.sidebar.share_label}
+              </a>
+            </p>
             <div className="grid">
               {data.articles.length === 0 && (
                 <p className="empty">아직 게시된 기사가 없습니다.</p>

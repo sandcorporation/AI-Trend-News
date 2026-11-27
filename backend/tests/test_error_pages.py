@@ -3,6 +3,9 @@
 from datetime import UTC, datetime
 
 import pytest
+from django.conf import settings
+from django.db.utils import OperationalError
+from django.http.response import HttpResponseBase
 from django.test import Client, RequestFactory
 from pytest_django import DjangoAssertNumQueries
 from sandcorp_authkit.testing import FixedClock
@@ -73,3 +76,73 @@ def test_500_is_korean_and_needs_no_database(
     assert "secret-detail" not in html
     with django_assert_num_queries(0):
         assert urls.handler500(RequestFactory().get("/")).status_code == 500
+
+
+def assert_korean_screen(response: HttpResponseBase, status: int, heading: str) -> None:
+    assert response.status_code == status
+    html = response.content.decode()  # type: ignore[attr-defined]
+    assert '<html lang="ko">' in html
+    assert f"<h1>{heading}</h1>" in html
+    assert '<meta name="robots" content="noindex, nofollow">' in html
+    assert '<a href="/">홈으로</a>' in html
+    assert "secret-detail" not in html
+
+
+@pytest.mark.parametrize(
+    ("name", "status", "heading"),
+    [
+        ("handler400", 400, "잘못된 요청입니다"),
+        ("handler403", 403, "접근할 수 없습니다"),
+    ],
+)
+def test_400_and_403_are_korean_and_need_no_database(
+    django_assert_num_queries: DjangoAssertNumQueries, name: str, status: int, heading: str
+) -> None:
+    handler = getattr(urls, name)
+    with django_assert_num_queries(0):
+        response = handler(RequestFactory().get("/"), Exception("secret-detail"))
+    assert_korean_screen(response, status, heading)
+
+
+def test_disallowed_host_shows_the_korean_400(client: Client) -> None:
+    response = client.get("/", headers={"host": "evil.example"})
+    assert_korean_screen(response, 400, "잘못된 요청입니다")
+
+
+def test_csrf_failure_shows_the_korean_403(
+    django_assert_num_queries: DjangoAssertNumQueries,
+) -> None:
+    with django_assert_num_queries(0):
+        response = Client(enforce_csrf_checks=True).post(f"/{settings.ADMIN_PATH}logout/")
+    assert_korean_screen(response, 403, "요청을 확인할 수 없습니다")
+
+
+@pytest.mark.parametrize("path", ["/api/no-such", "/api/public/no-such/", "/mcp/", "/mcp/no-such"])
+def test_unknown_machine_paths_are_json_404_without_database(
+    client: Client, django_assert_num_queries: DjangoAssertNumQueries, path: str
+) -> None:
+    with django_assert_num_queries(0):
+        response = client.get(path)
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found"}
+
+
+@pytest.mark.parametrize("path", ["/apiary", "/mcpx"])
+def test_lookalike_paths_keep_the_public_404(client: Client, path: str) -> None:
+    response = client.get(path)
+    assert response.status_code == 404
+    assert "<h1>페이지를 찾을 수 없습니다</h1>" in response.content.decode()
+
+
+def test_404_that_cannot_read_the_db_falls_back_to_the_500_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB가 없으면 404 화면의 최신 기사 조회가 실패한다."""
+
+    def down(*args: object) -> None:
+        raise OperationalError("secret-detail")
+
+    monkeypatch.setattr(svc, "public_recent", down)
+    response = Client(raise_request_exception=False).get("/no-such-page")
+
+    assert_korean_screen(response, 500, "일시적인 오류가 났습니다")

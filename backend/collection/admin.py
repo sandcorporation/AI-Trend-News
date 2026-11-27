@@ -48,7 +48,8 @@ class SourceAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 �
 
     @admin.action(description="선택한 소스 끄기", permissions=["change"])
     def disable_sources(self, request: HttpRequest, queryset: QuerySet[Source]) -> None:
-        queryset.update(enabled=False)
+        n = queryset.update(enabled=False)
+        self.message_user(request, f"소스 {n}건을 껐습니다.", messages.SUCCESS)
 
 
 @admin.register(Item)

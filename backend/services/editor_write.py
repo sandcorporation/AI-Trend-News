@@ -20,7 +20,7 @@ from adapters.fetch import Fetcher, FetchError
 from articles.models import ARTICLE_SLUG_RE, Article
 from collection.models import Item
 from services import editor_prompts
-from services.articles import make_slug, unique_article_slug
+from services.articles import MAX_TAG_LENGTH, make_slug, unique_article_slug
 from services.editor_classify import (
     JSON,
     CategoryInput,
@@ -308,6 +308,8 @@ def _rule_errors(title: str | None, summary: str | None, tags: list[str] | None)
             errors.append(f"태그는 {TAGS_MIN}~{TAGS_MAX}개여야 한다(지금 {len(names)}개)")
         if any(not n for n in names) or len(set(names)) != len(names):
             errors.append("태그에 빈 값이나 중복이 있다")
+        if any(len(n) > MAX_TAG_LENGTH for n in names):
+            errors.append(f"태그 이름은 {MAX_TAG_LENGTH}자까지다")
     return errors
 
 

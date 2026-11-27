@@ -56,6 +56,8 @@ def test_read_item_returns_text_and_does_not_store_it() -> None:
     item = make_items(1)[0]
     fetcher = FakeFetcher({item.url: (FIXTURES / "article-page.html").read_bytes()})
     result = reading.read_item(item.pk, fetcher)
+    assert fetcher.deadlines == [reading.FETCH_DEADLINE_SECONDS]
+    assert reading.FETCH_DEADLINE_SECONDS < 30  # gunicorn --timeout
     assert result["item_id"] == item.pk
     assert result["url"] == item.url
     assert result["reason"] == ""

@@ -7,6 +7,8 @@ import importlib
 import json
 import os
 import socket
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Iterator
@@ -17,7 +19,11 @@ from django.db import close_old_connections, connections
 from django.http import HttpResponse
 from django.test import Client
 
-# 시험은 속도를 위해 1초로 줄인다. 운영 값은 test_web_process_*가 본다.
+from config import database
+
+# 시험은 속도를 위해 1초로 줄인다(mysqlclient의 시간 제한은 정수 초라 더 못 줄인다).
+# 운영 값은 test_connect_timeout_*·test_web_process_*가 본다. 실제로 기다리는 시험은
+# 접속 제한·읽기 제한을 지나는 둘뿐이고, 나머지 화면·헬스 분기는 대기 없는 시험이 본다.
 FAST_TIMEOUT = 1
 
 
@@ -56,13 +62,13 @@ class FreezableProxy:
 
 
 @pytest.fixture
-def proxy(db: None) -> Iterator[FreezableProxy]:
+def proxy(db: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[FreezableProxy]:
     """기본 연결을 중계를 거치는 새 연결로 바꾼다(트랜잭션 밖, 읽기만 한다)."""
     original = connections["default"]
     config = original.settings_dict
     relay = FreezableProxy((config["HOST"], int(config["PORT"])))
-    options = {**config["OPTIONS"], "connect_timeout": FAST_TIMEOUT}
-    options |= {"read_timeout": FAST_TIMEOUT, "write_timeout": FAST_TIMEOUT}
+    monkeypatch.setattr(database, "CONNECT_TIMEOUT_SECONDS", FAST_TIMEOUT)
+    options = {**config["OPTIONS"], **database.mysql_options(FAST_TIMEOUT)}
     through = type(original)(
         {**config, "HOST": "127.0.0.1", "PORT": relay.port, "OPTIONS": options}, "default"
     )
@@ -83,15 +89,12 @@ def serve(path: str) -> HttpResponse:
     return response  # type: ignore[return-value]
 
 
-@pytest.mark.parametrize("path", ["/api/health?scope=ready", "/api/health"])
-def test_health_503_db_in_time_on_a_live_connection_and_recovers(
-    proxy: FreezableProxy, path: str
-) -> None:
+def test_health_503_db_in_time_on_a_live_connection_and_recovers(proxy: FreezableProxy) -> None:
     assert serve("/api/health?scope=ready").status_code == 200  # 남는 연결을 만든다
     proxy.flowing.clear()
 
     started = time.monotonic()
-    response = serve(path)
+    response = serve("/api/health")
     elapsed = time.monotonic() - started
 
     assert response.status_code == 503
@@ -103,12 +106,11 @@ def test_health_503_db_in_time_on_a_live_connection_and_recovers(
     assert json.loads(serve("/api/health?scope=ready").content) == {"status": "ok"}
 
 
-@pytest.mark.parametrize("path", ["/predictions", "/no-such-page"])
-def test_public_pages_show_the_500_screen_when_db_hangs(proxy: FreezableProxy, path: str) -> None:
+def test_public_page_shows_the_500_screen_when_db_hangs(proxy: FreezableProxy) -> None:
     proxy.flowing.clear()
 
     started = time.monotonic()
-    response = serve(path)
+    response = serve("/predictions")
 
     assert time.monotonic() - started < 2 * FAST_TIMEOUT
     assert response.status_code == 500
@@ -123,14 +125,37 @@ def test_web_process_limits_reads_and_writes(monkeypatch: pytest.MonkeyPatch) ->
     """gunicorn이 읽는 config.wsgi만 읽기·쓰기 제한을 켠다(migrate·scheduler는 긴 쿼리 허용)."""
     monkeypatch.setattr(os, "environ", dict(os.environ))
     import config.wsgi
-    from config.database import mysql_options
 
-    os.environ.pop("DB_IO_TIMEOUT", None)
-    assert "read_timeout" not in mysql_options(os.environ)
+    monkeypatch.setattr(database, "web_io_timeout", 0)
+    os.environ.pop("WEB_DB_IO_TIMEOUT", None)
+    assert "read_timeout" not in database.mysql_options(database.web_io_timeout)
 
     importlib.reload(config.wsgi)
-    options = mysql_options(os.environ)
+    options = database.mysql_options(database.web_io_timeout)
 
     assert options["read_timeout"] == options["write_timeout"] == 5
     # 남은 연결 ping + 다시 접속이 gunicorn --timeout 30보다 훨씬 짧아야 한다.
     assert int(options["read_timeout"]) + int(options["connect_timeout"]) < 30
+
+
+@pytest.mark.parametrize(("value", "expected"), [("9", 9), ("0", 0)])
+def test_web_process_timeout_comes_from_web_db_io_timeout(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: int
+) -> None:
+    monkeypatch.setattr(os, "environ", {**os.environ, "WEB_DB_IO_TIMEOUT": value})
+    monkeypatch.setattr(database, "web_io_timeout", 0)
+    import config.wsgi
+
+    importlib.reload(config.wsgi)
+
+    assert database.web_io_timeout == expected
+
+
+def test_environment_alone_does_not_limit_other_processes() -> None:
+    """.env의 값은 wsgi를 거치지 않는 migrate·scheduler에 닿지 않는다."""
+    code = "from config import settings; print(sorted(settings.DATABASES['default']['OPTIONS']))"
+    env = {**os.environ, "WEB_DB_IO_TIMEOUT": "9"}
+    out = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "['charset', 'connect_timeout']"
