@@ -527,6 +527,17 @@ def public_list(category: str = "") -> QuerySet[Article]:
     return qs.filter(category__slug=category) if category else qs
 
 
+def public_related(article: Article, limit: int = 3) -> list[Article]:
+    """같은 분야의 게시된 다른 기사, 최신순 limit개. 쿼리 1개(태그는 읽지 않는다)."""
+    qs = (
+        Article.objects.filter(published=True, category_id=article.category_id)
+        .exclude(pk=article.pk)
+        .select_related("category", "commentary")
+        .order_by("-published_at", "-id")
+    )
+    return list(qs[:limit])
+
+
 def public_article(slug: str) -> Article:
     """게시된 기사 하나. 없거나 게시 전이면 ArticleNotFound. 묶인 수집물과 소스를 함께 읽는다."""
     try:

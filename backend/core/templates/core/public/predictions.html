@@ -2,7 +2,7 @@
 <main id="main" class="main" tabindex="-1">
   <section class="predictions-page" data-slot="predictions">
     <h1>전망 기록표</h1>
-    <p class="lead">AI 분석의 예측 문장을 모아 두고, 기한이 지나면 대표가 적중 여부를 기록합니다. AI가 스스로 채점하지 않습니다.</p>
+    <p class="lead">AI 분석의 예측 문장을 모아 두고, 기한이 지나면 편집부가 적중 여부를 기록합니다. AI가 스스로 채점하지 않습니다.</p>
     <nav class="tabs" aria-label="기간">
       {% for p in data.periods %}<a href="{{ p.url }}"{% if p.key == data.period %} aria-current="page"{% endif %}>{{ p.label }}</a>
       {% endfor %}
@@ -11,9 +11,11 @@
       <dl class="metrics">
         <div class="metric"><dt class="label">적중률</dt><dd>{% if data.rate.percent is None %}—{% else %}<strong>{{ data.rate.percent }}%</strong>{% endif %}</dd></div>
         <div class="metric"><dt class="label">평가</dt><dd>{{ data.rate.judged }}</dd></div>
+        <div class="metric"><dt class="label">판단 불가</dt><dd>{{ data.rate.undecidable }}</dd></div>
         <div class="metric"><dt class="label">대기</dt><dd>{{ data.rate.pending }}</dd></div>
       </dl>
-      <p class="metrics-note">{% if data.rate.percent is None %}아직 평가된 예측이 없습니다.{% else %}평가 {{ data.rate.judged }}건 중 {{ data.rate.hits }}건 적중{% if data.rate.undecidable %} · 판단 불가 {{ data.rate.undecidable }}건 제외{% endif %}{% endif %}</p>
+      {% if data.rate.judged %}<p class="metrics-note">평가 {{ data.rate.judged }}건 중 {{ data.rate.hits }}건 적중{% if data.rate.undecidable %} · 판단 불가 {{ data.rate.undecidable }}건 제외{% endif %}</p>
+      {% elif not data.rate.undecidable %}<p class="metrics-note">아직 평가된 예측이 없습니다.</p>{% endif %}
     </div>
     {% if data.rows %}
     <ul class="prediction-list">

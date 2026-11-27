@@ -255,6 +255,8 @@ test("기사 상세는 요약·태그와 새 창으로 열리는 원문 링크�
       url: "https://news.sandcorp.co.kr/a/rate-freeze",
       x_url: "https://twitter.com/intent/tweet?text=x&url=y",
     },
+    related_title: "같은 분야 기사",
+    related: [],
     article: {
       ...card,
       commentary: null,
@@ -297,8 +299,26 @@ function articleData(): ArticlePageData {
       x_url: "https://twitter.com/intent/tweet?x=1",
     },
     article: { ...card, items: [], commentary: null },
+    related_title: "같은 분야 기사",
+    related: [],
   };
 }
+
+test("같은 분야 기사는 CTA 앞에 카드로 그리고, 없으면 칸이 없다", () => {
+  const data = articleData();
+  const { container, rerender } = render(<App data={data} />);
+  expect(container.querySelector('[data-slot="related"]')).toBeNull();
+
+  data.related = [{ ...card, slug: "b", title: "이웃 기사", url: "/a/b" }];
+  rerender(<App data={{ ...data }} />);
+  const block = q(container, '[data-slot="related"]');
+  expect(block).toHaveTextContent("같은 분야 기사");
+  expect(q(block, ".card h3 a")).toHaveAttribute("href", "/a/b");
+  expect(
+    block.compareDocumentPosition(q(container, '[data-slot="article-cta"]')) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
 
 test("기사 상세 하단에 CTA 링크와 X 공유 링크가 있다", () => {
   render(<App data={articleData()} />);
@@ -605,6 +625,9 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   expect(q(block, ".predictions")).toHaveTextContent("근거: 물가 둔화");
   expect(q(block, ".predictions")).toHaveTextContent("기한 2027.1.23");
   expect(block.querySelector('[data-slot="verdict"]')).toBeNull(); // 미평가는 배지 없음
+  expect(
+    screen.getByRole("link", { name: "전망 기록표 →" }),
+  ).toHaveAttribute("href", "/predictions");
   // 요약 아래, 출처 목록 다음(#72)
   const html = container.innerHTML;
   expect(html.indexOf('class="summary"')).toBeLessThan(html.indexOf("commentary"));
@@ -613,6 +636,7 @@ test("분석이 있으면 두 관점·의견·예측 목록을 그리고, 없으
   data.article.commentary = { ...data.article.commentary, predictions: [] };
   rerender(<App data={{ ...data }} />);
   expect(container.querySelector(".predictions")).toBeNull();
+  expect(screen.queryByRole("link", { name: "전망 기록표 →" })).toBeNull();
 });
 
 test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록으로 그린다", () => {
@@ -726,6 +750,23 @@ test("전망 기록표: 적중률·기간 탭·목록", () => {
   expect(q(container, '.tabs a[aria-current="page"]')).toHaveTextContent("전체");
   expect(q(container, ".prediction-list")).toHaveTextContent("금리가 내린다");
   expect(q(container, ".prediction-list a")).toHaveAttribute("href", "/a/rates");
+});
+
+test("전망 기록표: 빈 상태 문구는 적중·빗나감·판단 불가가 모두 0일 때만", () => {
+  const data: PredictionsPageData = {
+    kind: "predictions",
+    site: homeData().site,
+    period: "3m",
+    periods: [],
+    rate: { percent: null, judged: 0, hits: 0, undecidable: 2, pending: 0 },
+    rows: [],
+  };
+  const { container, rerender } = render(<App data={data} />);
+  const rate = () => q(container, '[data-slot="hit-rate"]');
+  expect(rate()).toHaveTextContent("판단 불가");
+  expect(rate()).not.toHaveTextContent("아직 평가된 예측이 없습니다.");
+  rerender(<App data={{ ...data, rate: { ...data.rate, undecidable: 0 } }} />);
+  expect(rate()).toHaveTextContent("아직 평가된 예측이 없습니다.");
 });
 
 const dayData: DayPageData = {

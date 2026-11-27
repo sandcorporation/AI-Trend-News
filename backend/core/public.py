@@ -51,6 +51,8 @@ from services import og_card, outbound
 from services import predictions as predictions_svc
 
 PAGE_SIZE = 12
+RELATED_COUNT = 3
+RELATED_TITLE = "같은 분야 기사"
 FEATURED_COUNT = 6
 # Sandcorp links always go through the tracked inflow link (services/outbound.py); label lives here.
 SANDCORP_LABEL = "Sandcorp"
@@ -351,13 +353,14 @@ def _share(title: str, url: str) -> ShareData:
     return {"url": url, "x_url": f"https://twitter.com/intent/tweet?{query}"}
 
 
-def _card(article: Article) -> CardData:
+def _card(article: Article, *, with_tags: bool = True) -> CardData:
+    """`with_tags=False`는 태그를 그리지 않는 목록용(태그 조회 쿼리를 내지 않는다)."""
     return {
         "slug": article.slug,
         "title": article.title,
         "summary": article.summary,
         "category": {"name": article.category.name, "slug": article.category.slug},
-        "tags": [t.name for t in article.tags.all()],
+        "tags": [t.name for t in article.tags.all()] if with_tags else [],
         "published_at": article.published_at.isoformat(),
         "published_label": _relative_label(article.published_at),
         "image_url": article.image_url,
@@ -571,6 +574,8 @@ def article_detail(request: HttpRequest, slug: str) -> HttpResponse:
         "article": detail,
         "cta": _cta(article.slug),
         "share": _share(article.title, request.build_absolute_uri(request.path)),
+        "related_title": RELATED_TITLE,
+        "related": [_card(a, with_tags=False) for a in svc.public_related(article, RELATED_COUNT)],
     }
     meta = PageMeta(
         title=f"{article.title} - {SITE_NAME}",
@@ -618,7 +623,7 @@ PERIODS = {"all": "전체", "3m": "3개월"}
 
 
 def predictions_page(request: HttpRequest) -> HttpResponse:
-    """전망 기록표: 평가된 예측의 적중률과 목록. `?period=3m`이면 기한이 최근 3개월인 것만."""
+    """전망 기록표: 평가된 예측의 적중률과 목록. `?period=3m`은 기한이 최근 90일(오늘까지)."""
     period = request.GET.get("period", "all")
     if period not in PERIODS:
         raise Http404("없는 기간입니다.")
