@@ -1,5 +1,6 @@
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 import { Layout } from "./Layout";
+import { ShareFragment } from "./Share";
 import type { ArticlePageData, CommentaryData } from "./types";
 
 export function ArticlePage({ data }: { data: ArticlePageData }) {
@@ -44,12 +45,7 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
           </ul>
         </section>
         {a.commentary && <Commentary c={a.commentary} />}
-        <div className="share" data-slot="share">
-          <a className="btn" href={data.share.x_url} target="_blank" rel="noopener">
-            X에 공유
-          </a>
-          <CopyLinkButton url={data.share.url} />
-        </div>
+        <ShareFragment share={data.share} title={a.title} text={a.summary} />
         <section className="cta" data-slot="article-cta">
           <p>{data.cta.text}</p>
           <p className="cta-actions">
@@ -63,36 +59,6 @@ export function ArticlePage({ data }: { data: ArticlePageData }) {
         </section>
       </article>
     </Layout>
-  );
-}
-
-/** Copies the article URL; if the clipboard API is unavailable or refuses, shows the URL to copy by hand. */
-export function CopyLinkButton({ url }: { url: string }) {
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setState("copied");
-    } catch {
-      setState("failed");
-    }
-  };
-  return (
-    <>
-      <button className="btn" type="button" onClick={copy}>
-        {state === "copied" ? "복사됨" : "링크 복사"}
-      </button>
-      {state === "failed" && (
-        <input
-          className="copy-fallback"
-          readOnly
-          value={url}
-          aria-label="기사 주소"
-          onFocus={(e) => e.currentTarget.select()}
-          ref={(el) => el?.select()}
-        />
-      )}
-    </>
   );
 }
 

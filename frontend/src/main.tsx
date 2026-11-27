@@ -1,17 +1,9 @@
 import "./sentryInit";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { App } from "./App";
+import { mount } from "./mount";
 import { readPageData } from "./pageData";
 import "sandcorp-design/css";
 import "sandcorp-design/fonts.css";
 import "./styles.css";
 
 const root = document.getElementById("root");
-if (root) {
-  createRoot(root).render(
-    <StrictMode>
-      <App data={readPageData()} />
-    </StrictMode>,
-  );
-}
+if (root) mount(root, readPageData());

@@ -136,10 +136,12 @@ def test_share_meta(client: Client) -> None:
     assert data["share"]["title"] == "10월 26일 AI·IT 뉴스 4건 — Foresight"  # type: ignore[index]
 
 
-# React의 같은 목록은 frontend/src/App.test.tsx 「날짜 페이지 공유 조각」
-def test_share_fragment_matches_react(client: Client) -> None:
-    at("기사", datetime(2026, 10, 26, 1, 0, tzinfo=UTC))
-    html = client.get("/news/2026-10-26").content.decode()
+# React의 같은 목록은 frontend/src/App.test.tsx 「… 페이지 공유 조각」
+@pytest.mark.parametrize("page", ["day", "article"])
+def test_share_fragment_matches_react(client: Client, page: str) -> None:
+    article = at("기사", datetime(2026, 10, 26, 1, 0, tzinfo=UTC))
+    path = "/news/2026-10-26" if page == "day" else f"/a/{article.slug}"
+    html = client.get(path).content.decode()
     share = page_data(html)["share"]
     fragment = re.search(r'<div class="share" data-slot="share">(.*?)</div>', html, re.S)
     assert fragment
@@ -149,6 +151,7 @@ def test_share_fragment_matches_react(client: Client) -> None:
         f'<input class="share-url" readonly value="{url}" aria-label="공유 주소">',
         # JS가 있어야 도는 버튼은 서버 HTML에서 숨긴다(주소는 입력칸에서 고른다)
         '<button class="btn" type="button" hidden>링크 복사</button>',
+        '<span class="sr-only" role="status" aria-live="polite"></span>',
         f'<a class="btn" href="{x_url}" target="_blank" rel="noopener">X에 공유</a>',
     ]
 

@@ -1,67 +1,7 @@
-import { useRef, useState } from "react";
 import { Card } from "./Home";
 import { Layout } from "./Layout";
+import { ShareFragment } from "./Share";
 import type { DayPageData } from "./types";
-
-/** 주소 입력칸 + 「링크 복사」. 서버 HTML과 같은 조각이며, 서버에서는 JS가 필요한 버튼만 숨긴다. */
-function ShareUrl({ url }: { url: string }) {
-  const input = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-    } catch {
-      // 클립보드가 막히면 손으로 복사할 수 있게 주소를 고른다.
-      setCopied(false);
-      input.current?.focus();
-      input.current?.select();
-    }
-  };
-  return (
-    <>
-      <input
-        ref={input}
-        className="share-url"
-        readOnly
-        value={url}
-        aria-label="공유 주소"
-        onFocus={(e) => e.currentTarget.select()}
-      />
-      <button className="btn" type="button" onClick={copy}>
-        {copied ? "복사됨" : "링크 복사"}
-      </button>
-    </>
-  );
-}
-
-/** 「공유…」: 브라우저가 Web Share를 지원할 때만 보인다(모바일에서 카카오톡을 고를 수 있다). */
-function NativeShareButton({
-  title,
-  text,
-  url,
-}: {
-  title: string;
-  text: string;
-  url: string;
-}) {
-  const [supported] = useState(
-    () => typeof navigator !== "undefined" && typeof navigator.share === "function",
-  );
-  if (!supported) return null;
-  const share = async () => {
-    try {
-      await navigator.share({ title, text, url });
-    } catch {
-      // 사용자가 닫은 경우 등: 할 일이 없다.
-    }
-  };
-  return (
-    <button className="btn" type="button" onClick={share}>
-      공유…
-    </button>
-  );
-}
 
 /** 날짜별 뉴스: 하루치 기사 모음과 공유 조각(서버 HTML과 같은 내용). */
 export function DayPage({ data }: { data: DayPageData }) {
@@ -86,22 +26,11 @@ export function DayPage({ data }: { data: DayPageData }) {
             </a>
           ))}
         </nav>
-        <div className="share" data-slot="share">
-          <ShareUrl url={data.share.url} />
-          <a
-            className="btn"
-            href={data.share.x_url}
-            target="_blank"
-            rel="noopener"
-          >
-            X에 공유
-          </a>
-          <NativeShareButton
-            title={data.share.title}
-            text={data.share.text}
-            url={data.share.url}
-          />
-        </div>
+        <ShareFragment
+          share={data.share}
+          title={data.share.title}
+          text={data.share.text}
+        />
         {data.count === 0 && data.category && (
           <p data-slot="day-all">
             <a href={data.all_url}>이 날 전체 뉴스 보기 →</a>
