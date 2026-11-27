@@ -970,6 +970,24 @@ class ContactForm(TypedDict):
     errors: dict[str, str]
 
 
+# 화면에 놓인 순서. 칸의 id는 `contact-<이름>`(종류는 첫 라디오)이다.
+_CONTACT_FIELD_LABELS = (
+    ("kind", "종류"),
+    ("name", "이름"),
+    ("company", "회사"),
+    ("contact", "연락처"),
+    ("message", "내용"),
+)
+
+
+def _error_summary(errors: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {"href": f"#contact-{key}", "text": f"{label}: {errors[key]}"}
+        for key, label in _CONTACT_FIELD_LABELS
+        if key in errors
+    ]
+
+
 def _client_ip(request: HttpRequest) -> str:
     """NPMplus가 덧붙인 X-Forwarded-For의 오른쪽 끝 한 칸만 믿는다(왼쪽은 방문자가 꾸밀 수 있다)."""
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
@@ -1018,6 +1036,7 @@ def contact(request: HttpRequest) -> HttpResponse:
         "site": site,
         "state": state,
         "form": form,
+        "error_summary": _error_summary(form["errors"]),
         "kinds": list(Inquiry.Kind.values),
     }
     meta = PageMeta(

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Layout } from "./Layout";
 import type { CardData, HomeData, SectionData, SiteData } from "./types";
 
@@ -109,6 +109,8 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
     () => typeof document !== "undefined" && document.hidden,
   );
   const touchX = useRef<number | null>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const refocusSlide = useRef(false);
 
   useEffect(() => {
     const onVisibility = () => setTabHidden(document.hidden);
@@ -136,6 +138,15 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
 
   const go = (to: number) => setIndex(((to % total) + total) % total);
 
+  // 이전 장은 inert가 되어 안의 초점이 body로 떨어지므로, 새 장의 제목 링크로 옮긴다.
+  useLayoutEffect(() => {
+    if (!refocusSlide.current) return;
+    refocusSlide.current = false;
+    track.current
+      ?.querySelector<HTMLElement>(".hero-slide.is-active h3 a")
+      ?.focus({ preventScroll: true });
+  }, [index]);
+
   return (
     <section
       className="home-hero"
@@ -151,8 +162,9 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
       }}
       onKeyDown={(e) => {
         if (!multi) return;
-        if (e.key === "ArrowLeft") go(index - 1);
-        else if (e.key === "ArrowRight") go(index + 1);
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        refocusSlide.current = !!track.current?.contains(e.target as Node);
+        go(e.key === "ArrowLeft" ? index - 1 : index + 1);
       }}
       onTouchStart={(e) => {
         setTouching(true);
@@ -171,7 +183,11 @@ function Hero({ cards, site }: { cards: CardData[]; site: SiteData }) {
       <h2 id="hero-h" className="sr-only">
         추천
       </h2>
-      <div className="hero-track" aria-live={auto ? "off" : "polite"}>
+      <div
+        ref={track}
+        className="hero-track"
+        aria-live={auto ? "off" : "polite"}
+      >
         {cards.map((card, i) => (
           <article
             key={card.slug}
