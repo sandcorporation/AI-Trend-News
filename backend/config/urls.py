@@ -7,6 +7,9 @@ from core.api import api
 from core.auth_adapter import protected_resource_metadata
 from mcpserver.views import mcp_endpoint
 
+handler404 = public.not_found
+handler500 = public.server_error
+
 urlpatterns = [
     # No password login: the admin's login view starts the sandcorp-auth code flow.
     path(f"{settings.ADMIN_PATH}login/", auth_adapter.login_start, name="admin_login_start"),

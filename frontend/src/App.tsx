@@ -2,6 +2,7 @@ import { ArticlePage } from "./ArticlePage";
 import { ContactPage } from "./ContactPage";
 import { DayPage } from "./DayPage";
 import { Home } from "./Home";
+import { NotFoundPage } from "./NotFoundPage";
 import { PredictionsPage } from "./PredictionsPage";
 import { isPageData } from "./types";
 
@@ -9,6 +10,7 @@ import { isPageData } from "./types";
 export function App({ data }: { data: unknown }) {
   if (isPageData(data)) {
     if (data.kind === "home") return <Home data={data} />;
+    if (data.kind === "not_found") return <NotFoundPage data={data} />;
     if (data.kind === "day") return <DayPage data={data} />;
     if (data.kind === "contact") return <ContactPage data={data} />;
     if (data.kind === "predictions") return <PredictionsPage data={data} />;
