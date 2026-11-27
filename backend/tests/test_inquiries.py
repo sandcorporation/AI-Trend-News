@@ -111,6 +111,14 @@ def test_invalid_input_is_rejected_with_field_errors(
     assert Inquiry.objects.count() == 0 and fake_portfolio.sent == []
 
 
+def test_invalid_submissions_do_not_count_toward_rate_limit(client: Client) -> None:
+    for _ in range(5):
+        assert post(client, message="").status_code == 400
+    for _ in range(5):
+        assert post(client).status_code == 200
+    assert post(client).status_code == 429
+
+
 def test_unconfigured_only_queues(client: Client, fake_portfolio: FakeGateway) -> None:
     with override_settings(PORTFOLIO_INQUIRY_URL="", PORTFOLIO_INQUIRY_SECRET=""):
         assert "접수했습니다" in post(client).content.decode()
