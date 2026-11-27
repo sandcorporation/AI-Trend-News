@@ -804,3 +804,13 @@ test("메인 사이드바에 오늘 뉴스 공유 링크", () => {
     "/news/2026-10-23",
   );
 });
+
+test("첫 초점 가능한 요소는 본문 건너뛰기 링크이고 목표 main은 초점을 받는다", () => {
+  const { container } = render(<App data={homeData()} />);
+  const first = q(container, "a[href], button, input, select, textarea");
+  expect(first).toHaveTextContent("본문 바로가기");
+  expect(first).toHaveAttribute("href", "#main");
+  const main = screen.getByRole("main");
+  expect(main).toHaveAttribute("id", "main");
+  expect(main).toHaveAttribute("tabindex", "-1");
+});
