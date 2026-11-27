@@ -4,7 +4,7 @@
   {% for card in data.featured %}
   <article class="hero-card hero-main hero-slide{% if forloop.first %} is-active{% endif %}" role="group" aria-roledescription="slide" aria-label="{{ forloop.counter }} / {{ data.featured|length }}"{% if not forloop.first %} aria-hidden="true" inert{% endif %}>
     <div class="hero-text">
-      <p class="meta"><span>추천</span> · <span>№ {{ forloop.counter|stringformat:"02d" }}/{{ data.featured|length|stringformat:"02d" }}</span> · <span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> · <time datetime="{{ card.published_at }}">{{ card.published_label }}</time></p>
+      <p class="meta"><span>추천</span> · <span>№ {{ forloop.counter|stringformat:"02d" }}/{{ data.featured|length|stringformat:"02d" }}</span> · <span class="chip tone-{{ card.tone }}">{{ card.category.name }}</span> · <time datetime="{{ card.published_at }}">{{ card.published_label }}</time>{% if card.has_commentary %} <span class="badge-analysis">분석</span>{% endif %}</p>
       <h3><a href="{{ card.url }}">{{ card.title }}</a></h3>
       <p class="summary">{{ card.summary }}</p>
       <p class="read-more"><a href="{{ card.url }}" tabindex="-1" aria-hidden="true">읽기 →</a></p>

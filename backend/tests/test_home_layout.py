@@ -9,7 +9,7 @@ from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from sandcorp_authkit.testing import FixedClock
 
-from articles.models import Article, ArticleView
+from articles.models import Article, ArticleView, Commentary
 from services import articles as svc
 from tests.test_public_site import make_article
 
@@ -150,3 +150,27 @@ def test_hero_carries_up_to_six_featured_slides_with_only_the_first_visible(
     assert 'aria-label="1 / 6"' in hero and 'aria-label="6 / 6"' in hero
     assert hero.count('aria-hidden="true" inert') == 5
     assert hero.count("추천 0") >= 1 and "추천 6" not in hero
+
+
+def test_home_has_h1_korean_latest_label_hero_badge_and_narrow_share_link(
+    client: Client,
+) -> None:
+    article = make_article("분석 있는 추천", category="AI", featured=True)
+    Commentary.objects.create(
+        article=article,
+        background="배경",
+        significance="의미",
+        outlook_bull="낙관",
+        outlook_bear="회의",
+        opinion="의견",
+    )
+
+    html = client.get("/").content.decode()
+
+    assert html.count("<h1") == 1 and '<h1 class="sr-only">오늘의 AI·IT 뉴스</h1>' in html
+    assert '<p class="label">최신 기사</p>' in html and "Latest" not in html
+    hero = html.split('id="hero-h"')[1].split("</section>")[0]
+    assert hero.count('class="badge-analysis"') == 1
+    share_url = page_data(html)["sidebar"]["share_url"]  # type: ignore[index]
+    latest = html.split('class="latest"')[1].split('class="grid"')[0]
+    assert 'data-slot="latest-share-link"' in latest and f'href="{share_url}"' in latest

@@ -146,11 +146,32 @@ img {
   min-width: 0;
 }
 
-/* 좁은 화면: 로고 줄 56px를 지키려고 설명 글을 숨긴다(sandcorp-design 머리띠 규칙) */
+/* 좁은 화면: 설명 글은 숨기고, sandcorp-design이 숨기는 날짜·갱신 시각 줄은 로고 아래 줄로 내린다. */
 @media (max-width: 767px) {
   .masthead-desc {
     display: none;
   }
+
+  .masthead .sc-masthead-row {
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 0;
+    height: auto;
+    min-height: var(--masthead-height);
+    padding: 0.5rem 0;
+  }
+
+  .masthead .masthead-meta {
+    display: block;
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}
+
+/* 내비는 가로 스크롤 대신 줄바꿈해 모든 항목이 보인다. */
+.site-nav {
+  flex-wrap: wrap;
+  overflow-x: visible;
 }
 
 .brand {
@@ -423,6 +444,25 @@ img {
   align-content: start;
 }
 
+.hero-main h3,
+.hero-main .summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 잘라내기(overflow)가 링크의 초점 테두리를 가리므로 제목 상자에 그린다. */
+.hero-main h3:has(a:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.hero-main h3 a:focus-visible {
+  outline: none;
+}
+
 .hero-main h3 {
   font-size: var(--text-hero);
   font-weight: 700;
@@ -486,22 +526,40 @@ img {
 
 .hero-dots {
   display: flex;
-  gap: 0.4rem;
 }
 
+/* 누르는 영역은 24px, 보이는 점은 가운데 8px. */
 .hero-dot {
-  width: 0.5rem;
-  height: 0.5rem;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
-  border: 1px solid var(--color-muted);
-  border-radius: 0;
+  border: 0;
   background: transparent;
   cursor: pointer;
 }
 
-.hero-dot.is-active {
+.hero-dot::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--color-muted);
+}
+
+.hero-dot.is-active::before {
   border-color: var(--color-accent);
   background: var(--color-accent);
+}
+
+.latest .section-head {
+  margin-bottom: 0.75rem;
+}
+
+/* 사이드바가 본문 아래로 내려가는 폭에서만 최신 기사 머리에도 공유 링크를 둔다. */
+.latest-share {
+  display: none;
+  margin-bottom: 0.75rem;
 }
 
 /* Latest grid: three columns split only by hairlines. */
@@ -733,6 +791,10 @@ img {
 }
 
 @media (max-width: 1023px) {
+  .latest-share {
+    display: block;
+  }
+
   .layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;

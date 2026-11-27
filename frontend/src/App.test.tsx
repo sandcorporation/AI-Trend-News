@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "./App";
 import type {
   ArticlePageData,
@@ -639,13 +639,27 @@ test("긴 분석은 빈 줄마다 문단을 나누고 지켜볼 신호를 목록
   expect(items).toEqual(["물가 지표가 2%대면 낙관 쪽", "환율이 오르면 회의 쪽"]);
 });
 
-test("분석 배지는 메인 카드에만 있고 캐러셀 장에는 없다", () => {
+test("분석 배지는 카드와 캐러셀 장에 같은 꼬리표로 붙는다", () => {
   const data = homeData();
-  data.featured = data.featured.map((f) => ({ ...f, has_commentary: true }));
+  data.featured = data.featured.map((f, i) => ({ ...f, has_commentary: i === 0 }));
   data.articles = data.articles.map((f, i) => ({ ...f, has_commentary: i === 0 }));
   const { container } = render(<App data={data} />);
-  expect(container.querySelector('[data-slot="hero"] .badge-analysis')).toBeNull();
+  const hero = container.querySelectorAll('[data-slot="hero"] .badge-analysis');
+  expect(hero).toHaveLength(1);
+  expect(hero[0]).toHaveTextContent("분석");
   expect(container.querySelectorAll(".card .badge-analysis")).toHaveLength(1);
+});
+
+test("홈은 h1 하나, 「최신 기사」 라벨, 좁은 화면용 공유 링크를 둔다", () => {
+  const { container } = render(<App data={homeData()} />);
+  expect(container.querySelectorAll("h1")).toHaveLength(1);
+  expect(q(container, "h1")).toHaveTextContent("오늘의 AI·IT 뉴스");
+  expect(q(container, ".latest .section-head .label")).toHaveTextContent("최신 기사");
+  expect(container).not.toHaveTextContent("Latest");
+  expect(q(container, '[data-slot="latest-share-link"] a')).toHaveAttribute(
+    "href",
+    "/news/2026-10-23",
+  );
 });
 
 test("기사 예측 목록: 평가된 것만 결과 배지", () => {
@@ -848,7 +862,8 @@ test("메인 사이드바에 오늘 뉴스 공유 링크", () => {
     num_pages: 1,
   };
   render(<App data={data} />);
-  expect(screen.getByRole("link", { name: "오늘 뉴스 공유 →" })).toHaveAttribute(
+  const sidebarEl = within(screen.getByRole("complementary", { name: "사이드바" }));
+  expect(sidebarEl.getByRole("link", { name: "오늘 뉴스 공유 →" })).toHaveAttribute(
     "href",
     "/news/2026-10-23",
   );
