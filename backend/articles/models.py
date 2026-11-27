@@ -83,6 +83,9 @@ class Tag(models.Model):
 class Article(models.Model):
     """수집물을 묶어 만든 한국어 기사(GLOSSARY: 기사)."""
 
+    # DB 열이 아니다. 방금 부른 `update_article`이 대표가 고친 칸이라 무시한 칸 이름.
+    ignored_fields: tuple[str, ...] = ()
+
     title = models.CharField("제목", max_length=300)
     summary = models.TextField("요약", blank=True)
     slug = models.SlugField(
@@ -103,6 +106,12 @@ class Article(models.Model):
     featured_overridden = models.BooleanField("추천: 대표 덮어씀", default=False, editable=False)
     published_at_overridden = models.BooleanField(
         "발행 시각: 대표 덮어씀", default=False, editable=False
+    )
+    title_overridden = models.BooleanField(
+        "제목: 대표 덮어씀", default=False, db_default=False, editable=False
+    )
+    summary_overridden = models.BooleanField(
+        "요약: 대표 덮어씀", default=False, db_default=False, editable=False
     )
     image_url = models.URLField("대표 이미지 URL", max_length=2000, blank=True)
     published_at = models.DateTimeField(

@@ -149,6 +149,8 @@ class ArticleOut(Schema):
     featured: bool
     published_overridden: bool
     featured_overridden: bool
+    title_overridden: bool
+    summary_overridden: bool
     items: list[ItemRef]
 
     @classmethod
@@ -163,6 +165,8 @@ class ArticleOut(Schema):
             featured=article.featured,
             published_overridden=article.published_overridden,
             featured_overridden=article.featured_overridden,
+            title_overridden=article.title_overridden,
+            summary_overridden=article.summary_overridden,
             items=[
                 ItemRef(id=link.item.pk, url=link.item.url) for link in article.article_items.all()
             ],

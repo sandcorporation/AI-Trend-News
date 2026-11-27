@@ -10,6 +10,7 @@
 |---|---|
 | 저장함 | `saved`(`article`에 기사, 뺀 수집물은 `output["saved"]`) |
 | 수집물이 이미 묶임·버림 | 그 수집물만 빼고 저장. 남은 것이 없으면 `skipped` |
+| 대표가 고친 제목·요약 | 그 칸만 두고 `saved`(`output["saved"]["ignored_fields"]`+`error`) |
 | 분야가 지워짐·대상 기사가 없음 | `failed` |
 | 숨긴 분석·추천/게시가 풀린 기사·올린 포스트 | `skipped`(하나라도 저장했으면 `saved`+`error`) |
 """
@@ -150,10 +151,19 @@ def _mark_saved(call: EditorCall, article: Article, wanted: list[int]) -> None:
     dropped = [i for i in wanted if i not in bound]
     call.output = {
         **_obj(call.output),
-        "saved": {"article_id": article.pk, "slug": article.slug, "dropped_item_ids": dropped},
+        "saved": {
+            "article_id": article.pk,
+            "slug": article.slug,
+            "dropped_item_ids": dropped,
+            "ignored_fields": list(article.ignored_fields),
+        },
     }
+    notes = []
     if dropped:
-        call.error = f"이미 묶임·버림이라 뺀 수집물 {dropped}"
+        notes.append(f"이미 묶임·버림이라 뺀 수집물 {dropped}")
+    if article.ignored_fields:
+        notes.append(f"대표가 고친 칸이라 무시: {', '.join(article.ignored_fields)}")
+    call.error = "; ".join(notes)
 
 
 def _predictions(raw: JSON) -> list[PredictionIn]:
