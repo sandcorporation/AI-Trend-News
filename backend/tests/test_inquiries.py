@@ -1,8 +1,10 @@
 """문의 폼 → portfolio 전달(ADR 0003). 경계는 /contact HTTP와 resend_inquiries 명령, 가짜 어댑터."""
 
+import json
 from datetime import timedelta
 
 import pytest
+from bs4 import BeautifulSoup
 from django.core.management import call_command
 from django.test import Client, override_settings
 from sandcorp_authkit.testing import FixedClock
@@ -109,6 +111,50 @@ def test_invalid_input_is_rejected_with_field_errors(
     html = response.content.decode()
     assert "이름을(를) 입력해 주세요." in html and "내용을(를) 입력해 주세요." in html
     assert Inquiry.objects.count() == 0 and fake_portfolio.sent == []
+
+
+def test_errors_are_tied_to_fields_and_summarized_for_screen_readers(client: Client) -> None:
+    response = post(client, name=" ", company="가" * 101, kind="없는 종류")
+    assert response.status_code == 400
+    html = response.content.decode()
+    page = BeautifulSoup(html, "html.parser")
+
+    summary = page.select_one(".error-summary")
+    assert summary is not None
+    assert summary["role"] == "alert" and summary["tabindex"] == "-1"
+    assert summary.has_attr("autofocus")
+    links = [str(a["href"]) for a in summary.select("a")]
+    assert links == ["#contact-kind", "#contact-name", "#contact-company"]
+    assert all(page.select_one(href) for href in links)
+
+    for field in ("kind", "name", "company"):
+        control = page.select_one(f"#contact-{field}")
+        assert control is not None
+        assert control["aria-invalid"] == "true"
+        assert control["aria-describedby"] == f"contact-{field}-error"
+        assert page.select_one(f"#contact-{field}-error")
+    assert page.select_one("fieldset.kind #contact-kind-error")
+    for field in ("contact", "message"):
+        control = page.select_one(f"#contact-{field}")
+        assert control is not None and not control.has_attr("aria-invalid")
+
+    data = page.select_one("#page-data")
+    assert data is not None
+    assert [e["href"] for e in json.loads(data.get_text())["error_summary"]] == links
+
+
+def test_form_without_errors_has_no_summary(client: Client) -> None:
+    html = client.get("/contact").content.decode()
+    page = BeautifulSoup(html, "html.parser")
+    assert not page.select(".error-summary, [aria-invalid], [aria-describedby], [autofocus]")
+
+
+def test_invalid_submissions_do_not_count_toward_rate_limit(client: Client) -> None:
+    for _ in range(5):
+        assert post(client, message="").status_code == 400
+    for _ in range(5):
+        assert post(client).status_code == 200
+    assert post(client).status_code == 429
 
 
 def test_unconfigured_only_queues(client: Client, fake_portfolio: FakeGateway) -> None:

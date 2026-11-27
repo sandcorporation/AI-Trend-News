@@ -1,5 +1,5 @@
 {% include "core/public/_chrome_top.html" %}
-<main class="main">
+<main id="main" class="main" tabindex="-1">
   <section class="day-page" data-slot="day">
     <p class="label"><a href="{{ data.home_url }}">← 홈</a></p>
     <h1>{{ data.heading }}</h1>
@@ -8,9 +8,7 @@
       {% for tab in data.tabs %}<a href="{{ tab.url }}"{% if tab.current %} aria-current="page"{% endif %}>{{ tab.label }}</a>
       {% endfor %}
     </nav>
-    <div class="share" data-slot="share">
-      <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
-    </div>
+    {% include "core/public/_share.html" %}
     {% if not data.count and data.category %}<p data-slot="day-all"><a href="{{ data.all_url }}">이 날 전체 뉴스 보기 →</a></p>{% endif %}
     {% if data.articles %}
     <div class="grid">

@@ -77,6 +77,8 @@ DAY_EMPTY_DESCRIPTION = "이 날은 게시된 기사가 없습니다. 다른 날
 SIDEBAR_SHARE_LABEL = "오늘 뉴스 공유 →"
 OG_CACHE_SECONDS = 3600
 OG_CARD_TTL = 24 * 3600
+NOT_FOUND_HEADING = "페이지를 찾을 수 없습니다"
+NOT_FOUND_LATEST_COUNT = 5
 logger = logging.getLogger(__name__)
 
 
@@ -682,6 +684,34 @@ def predictions_page(request: HttpRequest) -> HttpResponse:
     )
 
 
+def not_found(request: HttpRequest, exception: Exception) -> HttpResponse:
+    """handler404: 없는 경로와 뷰의 `Http404`가 모두 같은 화면. 예외 문구는 내보내지 않는다."""
+    data: dict[str, object] = {
+        "kind": "not_found",
+        "site": _site(),
+        "heading": NOT_FOUND_HEADING,
+        "home_url": "/",
+        "home_label": "홈으로",
+        "latest_title": "최신 기사",
+        "latest": [
+            {"title": a.title, "url": reverse("article", args=[a.slug])}
+            for a in svc.public_recent(NOT_FOUND_LATEST_COUNT)
+        ],
+    }
+    meta = PageMeta(
+        title=f"{NOT_FOUND_HEADING} - {SITE_NAME}", description=SITE_DESCRIPTION, robots=NOINDEX
+    )
+    body = render_to_string(
+        "core/public/not_found.html", {"data": data, "site": data["site"]}, request
+    )
+    return render_shell(request, meta, status=404, data=data, body=body)
+
+
+def server_error(request: HttpRequest) -> HttpResponse:
+    """handler500: 무엇이 깨졌는지 모르므로 DB·static 매니페스트·컨텍스트 없이 그린다."""
+    return HttpResponse(render_to_string("core/public/server_error.html"), status=500)
+
+
 def day_path(day: date) -> str:
     return f"/news/{day.isoformat()}"
 
@@ -940,6 +970,24 @@ class ContactForm(TypedDict):
     errors: dict[str, str]
 
 
+# 화면에 놓인 순서. 칸의 id는 `contact-<이름>`(종류는 첫 라디오)이다.
+_CONTACT_FIELD_LABELS = (
+    ("kind", "종류"),
+    ("name", "이름"),
+    ("company", "회사"),
+    ("contact", "연락처"),
+    ("message", "내용"),
+)
+
+
+def _error_summary(errors: dict[str, str]) -> list[dict[str, str]]:
+    return [
+        {"href": f"#contact-{key}", "text": f"{label}: {errors[key]}"}
+        for key, label in _CONTACT_FIELD_LABELS
+        if key in errors
+    ]
+
+
 def _client_ip(request: HttpRequest) -> str:
     """NPMplus가 덧붙인 X-Forwarded-For의 오른쪽 끝 한 칸만 믿는다(왼쪽은 방문자가 꾸밀 수 있다)."""
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
@@ -988,6 +1036,7 @@ def contact(request: HttpRequest) -> HttpResponse:
         "site": site,
         "state": state,
         "form": form,
+        "error_summary": _error_summary(form["errors"]),
         "kinds": list(Inquiry.Kind.values),
     }
     meta = PageMeta(

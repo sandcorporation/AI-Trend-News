@@ -83,6 +83,9 @@ class Tag(models.Model):
 class Article(models.Model):
     """수집물을 묶어 만든 한국어 기사(GLOSSARY: 기사)."""
 
+    # DB 열이 아니다. 방금 부른 `update_article`이 대표가 고친 칸이라 무시한 칸 이름.
+    ignored_fields: tuple[str, ...] = ()
+
     title = models.CharField("제목", max_length=300)
     summary = models.TextField("요약", blank=True)
     slug = models.SlugField(
@@ -103,6 +106,12 @@ class Article(models.Model):
     featured_overridden = models.BooleanField("추천: 대표 덮어씀", default=False, editable=False)
     published_at_overridden = models.BooleanField(
         "발행 시각: 대표 덮어씀", default=False, editable=False
+    )
+    title_overridden = models.BooleanField(
+        "제목: 대표 덮어씀", default=False, db_default=False, editable=False
+    )
+    summary_overridden = models.BooleanField(
+        "요약: 대표 덮어씀", default=False, db_default=False, editable=False
     )
     image_url = models.URLField("대표 이미지 URL", max_length=2000, blank=True)
     published_at = models.DateTimeField(
@@ -266,7 +275,7 @@ class Prediction(models.Model):
     )
     claim = models.CharField("예측 문장", max_length=120)
     horizon = models.CharField("기간", max_length=3)
-    basis = models.CharField("근거", max_length=200, blank=True)
+    basis = models.CharField("근거", max_length=300, blank=True)
     due_date = models.DateField("평가 기한", help_text="분석 작성일 + 기간")
     verdict = models.CharField("결과", max_length=12, choices=Verdict.choices, default="pending")
     verdict_note = models.CharField("평가 메모", max_length=300, blank=True)

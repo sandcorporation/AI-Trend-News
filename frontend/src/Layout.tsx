@@ -11,6 +11,9 @@ export function Layout({
 }) {
   return (
     <div className="site">
+      <a className="skip-link" href="#main">
+        본문 바로가기
+      </a>
       <header className="masthead">
         <div className="sc-masthead-row">
           <p className="masthead-brand">
@@ -39,7 +42,9 @@ export function Layout({
           ))}
         </nav>
       </header>
-      <main className="main">{children}</main>
+      <main id="main" className="main" tabIndex={-1}>
+        {children}
+      </main>
       <footer className="site-footer">
         <p className="footer-lead">
           {site.name} — AI와 IT 뉴스를 한국어로 골라 요약하고, 전망을 적어

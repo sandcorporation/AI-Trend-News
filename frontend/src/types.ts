@@ -188,6 +188,8 @@ export interface ContactPageData {
   site: SiteData;
   state: "form" | "done" | "limited";
   form: ContactFormData;
+  /** 화면 순서의 오류 목록. href는 해당 칸의 `#id`. */
+  error_summary: { href: string; text: string }[];
   kinds: string[];
 }
 
@@ -217,7 +219,18 @@ export interface PredictionsPageData {
   rows: PredictionRowData[];
 }
 
+export interface NotFoundPageData {
+  kind: "not_found";
+  site: SiteData;
+  heading: string;
+  home_url: string;
+  home_label: string;
+  latest_title: string;
+  latest: { title: string; url: string }[];
+}
+
 export type PageData =
+  | NotFoundPageData
   | HomeData
   | ArticlePageData
   | DayPageData
@@ -228,6 +241,7 @@ export function isPageData(value: unknown): value is PageData {
   if (typeof value !== "object" || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
   return kind === "home" ||
+    kind === "not_found" ||
     kind === "article" ||
     kind === "day" ||
     kind === "contact" ||

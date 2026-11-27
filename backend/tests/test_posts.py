@@ -1,6 +1,8 @@
 """포스트 초안(#14): MCP 편집자 도구, 서비스 규칙, admin 목록·올림 표시."""
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import Client
 from django.urls import reverse
 
@@ -116,3 +118,51 @@ def test_editor_cannot_mark_posted(mcp: McpClient) -> None:
     with pytest.raises(svc.OwnerOnly):
         svc.mark_post_posted(Actor.EDITOR, post_id)
     assert Article.objects.count() == 1
+
+
+def staff_client(client: Client, *codenames: str) -> Client:
+    staff = get_user_model().objects.create_user("staff", password=None, is_staff=True)
+    staff.user_permissions.set(
+        Permission.objects.filter(content_type__app_label="posts", codename__in=codenames)
+    )
+    client.force_login(staff)
+    return client
+
+
+def try_mark_posted(client: Client, post_id: object) -> None:
+    client.post(
+        reverse("admin:posts_post_changelist"),
+        {"action": "mark_posted", "_selected_action": [post_id]},
+    )
+
+
+@pytest.mark.django_db
+def test_staff_without_permission_cannot_see_or_mark_posts(mcp: McpClient, client: Client) -> None:
+    post_id = mcp.ok("upsert_post_draft", draft_args(featured_article(mcp)))["id"]
+    staff = staff_client(client)
+
+    assert staff.get(reverse("admin:posts_post_changelist")).status_code == 403
+    assert staff.get(reverse("admin:posts_post_change", args=[post_id])).status_code == 403
+    assert reverse("admin:posts_post_changelist") not in staff.get(reverse("admin:index")).text
+    try_mark_posted(staff, post_id)
+    assert Post.objects.get().status == Post.Status.DRAFT
+
+
+@pytest.mark.django_db
+def test_staff_with_view_permission_sees_posts_but_cannot_mark(
+    mcp: McpClient, client: Client
+) -> None:
+    post_id = mcp.ok("upsert_post_draft", draft_args(featured_article(mcp)))["id"]
+    staff = staff_client(client, "view_post")
+
+    page = staff.get(reverse("admin:posts_post_changelist"))
+    assert page.status_code == 200 and 'value="mark_posted"' not in page.text
+    try_mark_posted(staff, post_id)
+    assert Post.objects.get().status == Post.Status.DRAFT
+
+
+@pytest.mark.django_db
+def test_staff_with_change_permission_can_mark(mcp: McpClient, client: Client) -> None:
+    post_id = mcp.ok("upsert_post_draft", draft_args(featured_article(mcp)))["id"]
+    try_mark_posted(staff_client(client, "change_post"), post_id)
+    assert Post.objects.get().status == Post.Status.POSTED

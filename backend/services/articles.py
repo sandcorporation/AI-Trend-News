@@ -361,6 +361,11 @@ def get_article(article_id: int) -> Article:
         raise ArticleNotFound(f"없는 기사입니다: {article_id}") from None
 
 
+def is_text_changed(old: str, new: str) -> bool:
+    """줄바꿈 표기(admin textarea는 CRLF)와 앞뒤 공백만 다른 것은 바꾼 것이 아니다."""
+    return old.replace("\r\n", "\n").strip() != new.replace("\r\n", "\n").strip()
+
+
 @transaction.atomic
 def update_article(
     actor: Actor,
@@ -372,14 +377,26 @@ def update_article(
     tags: Iterable[str] | None = None,
     image_url: str | None = None,
 ) -> Article:
-    """slug와 플래그는 건드리지 않는다(플래그는 set_flags)."""
+    """slug와 플래그는 건드리지 않는다(플래그는 set_flags).
+
+    대표가 제목·요약을 바꾸면 그 칸에 표시가 남는다. 편집자는 표시가 선 칸을 못 바꾼다 —
+    오류 없이 나머지만 반영하고 `article.ignored_fields`에 무시한 칸을 남긴다.
+    """
     article = get_article(article_id)
     _bind(article, add_item_ids)
     _sync_published_at(article, only_earlier=True)
-    if title is not None:
-        article.title = title
-    if summary is not None:
-        article.summary = summary
+    ignored: list[str] = []
+    for name, value in (("title", title), ("summary", summary)):
+        if value is None:
+            continue
+        if actor is Actor.OWNER:
+            if is_text_changed(getattr(article, name), value):
+                setattr(article, f"{name}_overridden", True)
+        elif getattr(article, f"{name}_overridden"):
+            ignored.append(name)
+            continue
+        setattr(article, name, value)
+    article.ignored_fields = tuple(ignored)
     if image_url is not None:
         article.image_url = image_url
     article.save()

@@ -66,8 +66,7 @@ def test_health_503_lists_db_when_database_is_down(
 
     assert response.status_code == 503
     body = response.json()
-    assert body["status"] == "error"
-    assert "db" in body["failed"]
+    assert body == {"status": "error", "failed": ["db"]}
     assert "connection refused" not in response.content.decode()
 
 

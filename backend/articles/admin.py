@@ -1,8 +1,10 @@
 from datetime import timedelta
+from typing import Any
 
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.db.models import Q, QuerySet, Sum
-from django.forms import ModelForm
+from django.forms import BaseModelFormSet, ModelForm
 from django.http import HttpRequest
 from django.template.response import TemplateResponse
 from django.utils import timezone
@@ -18,8 +20,11 @@ from articles.models import (
     Tag,
 )
 from services import articles as svc
+from services import commentary as commentary_svc
 from services import outbound
 from services import predictions as predictions_svc
+
+_JSON_FIELDS = ("predictions", "watchpoints")
 
 
 class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
@@ -46,10 +51,52 @@ class ArticleItemInline(admin.TabularInline):  # type: ignore[type-arg]  # 런�
         return False
 
 
+class CommentaryForm(ModelForm):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+    """분석 칸을 고치면 편집자 경로와 같은 검사(`commentary.clean_fields`)를 거친다.
+
+    숨김만 바꿀 때는 검사하지 않는다(검사가 생기기 전 값이 남은 분석도 숨길 수 있어야 한다).
+    """
+
+    class Meta:
+        model = Commentary
+        fields = (
+            "background",
+            "significance",
+            "outlook_bull",
+            "outlook_bear",
+            "opinion",
+            "predictions",
+            "watchpoints",
+            "hidden",
+        )
+
+    def clean(self) -> dict[str, Any]:
+        data: dict[str, Any] = super().clean() or {}
+        checked = commentary_svc.CommentaryFields.__annotations__
+        # 칸 자체의 오류(빈 칸·JSON 문법)가 있으면 그 오류만 보인다.
+        if self.errors or not set(checked) & set(self.changed_data):
+            return data
+        written = self.instance.created_at or get_clock().now()
+        try:
+            predictions, watchpoints = commentary_svc.parse_json_fields(
+                data["predictions"], data["watchpoints"]
+            )
+            cleaned = commentary_svc.clean_fields(
+                **{name: data[name] for name in checked if name not in _JSON_FIELDS},
+                predictions=predictions,
+                watchpoints=watchpoints,
+                created=timezone.localtime(written).date(),
+            )
+        except commentary_svc.CommentaryError as error:
+            raise ValidationError(str(error)) from None
+        return data | cleaned
+
+
 class CommentaryInline(admin.StackedInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
     """대표가 분석을 고치거나 숨긴다(편집자는 서비스로만 쓴다)."""
 
     model = Commentary
+    form = CommentaryForm
     extra = 0
     max_num = 1
     can_delete = True
@@ -70,6 +117,8 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
     search_fields = ("title", "summary")
     readonly_fields = (
         "old_slugs",
+        "title_overridden",
+        "summary_overridden",
         "published_overridden",
         "featured_overridden",
         "published_at_overridden",
@@ -103,7 +152,7 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         form: ModelForm,  # type: ignore[type-arg]
         change: bool,
     ) -> None:
-        """admin은 대표의 도구다. 플래그 변경은 서비스 함수(대표 주체)를 거쳐 덮어씀을 표시한다."""
+        """admin은 대표의 도구다. 바꾼 제목·요약·발행 시각·플래그는 덮어씀을 표시한다."""
         if not change:
             if not obj.slug:
                 obj.slug = svc.make_slug(obj.title, Article, "news")
@@ -112,6 +161,10 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         published, featured = obj.published, obj.featured
         stored = Article.objects.get(pk=obj.pk)
         obj.published, obj.featured = stored.published, stored.featured
+        if svc.is_text_changed(stored.title, obj.title):
+            obj.title_overridden = True
+        if svc.is_text_changed(stored.summary, obj.summary):
+            obj.summary_overridden = True
         if obj.published_at != stored.published_at:
             obj.published_at_overridden = True
         if not obj.slug:
@@ -123,6 +176,20 @@ class ArticleAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 
         obj.save()
         svc.set_flags(svc.Actor.OWNER, obj.pk, published=published, featured=featured)
         obj.refresh_from_db()
+
+    def save_formset(
+        self,
+        request: HttpRequest,
+        form: ModelForm,  # type: ignore[type-arg]
+        formset: BaseModelFormSet,  # type: ignore[type-arg]
+        change: bool,
+    ) -> None:
+        super().save_formset(request, form, formset, change)
+        if formset.model is not Commentary:
+            return
+        saved = [*formset.new_objects, *(obj for obj, _ in formset.changed_objects)]
+        for commentary in saved:
+            predictions_svc.sync_predictions(commentary)
 
     def delete_queryset(self, request: HttpRequest, queryset: QuerySet[Article]) -> None:
         for article in queryset:
@@ -230,18 +297,18 @@ class PredictionAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
                 row.pk, verdict, row.verdict_note, now=get_clock().now()
             )
 
-    @admin.action(description="적중으로 표시")
+    @admin.action(description="적중으로 표시", permissions=["change"])
     def mark_hit(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.HIT)
 
-    @admin.action(description="빗나감으로 표시")
+    @admin.action(description="빗나감으로 표시", permissions=["change"])
     def mark_miss(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.MISS)
 
-    @admin.action(description="판단 불가로 표시")
+    @admin.action(description="판단 불가로 표시", permissions=["change"])
     def mark_undecidable(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.UNDECIDABLE)
 
-    @admin.action(description="미평가로 되돌림")
+    @admin.action(description="미평가로 되돌림", permissions=["change"])
     def mark_pending(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.PENDING)

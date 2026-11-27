@@ -376,3 +376,18 @@ def test_article_page_badges_only_judged(client: Client, frozen_clock: FixedCloc
         "맞은 예측": "hit",
         "대기 예측": "",
     }
+
+
+@pytest.mark.parametrize("length", [201, 300])
+def test_upsert_saves_longest_allowed_basis(length: int) -> None:
+    commentary_svc.upsert_commentary(
+        Actor.EDITOR,
+        featured_article_id(),
+        background="b",
+        significance="s",
+        outlook_bull="u",
+        outlook_bear="d",
+        opinion="o",
+        predictions=[PredictionIn(claim="긴 근거", horizon="3m", basis="가" * length)],
+    )
+    assert Prediction.objects.get().basis == "가" * length

@@ -24,10 +24,11 @@ class PostAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제
     def has_change_permission(self, request: HttpRequest, obj: Post | None = None) -> bool:
         return False
 
-    def has_view_permission(self, request: HttpRequest, obj: Post | None = None) -> bool:
-        return True
+    def has_mark_permission(self, request: HttpRequest) -> bool:
+        """액션 권한. 폼은 읽기 전용이라 `has_change_permission`과 따로 `change_post`를 본다."""
+        return request.user.has_perm("posts.change_post")
 
-    @admin.action(description="올림으로 표시")
+    @admin.action(description="올림으로 표시", permissions=["mark"])
     def mark_posted(self, request: HttpRequest, queryset: QuerySet[Post]) -> None:
         for post in queryset:
             svc.mark_post_posted(Actor.OWNER, post.pk)
