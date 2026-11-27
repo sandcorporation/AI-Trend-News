@@ -53,7 +53,7 @@ const site = {
   privacy_url: "https://sandcorporation.github.io/privacy-and-terms/errors/",
 };
 const sidebar = {
-  share_label: "오늘 뉴스 공유 →",
+  share_label: "오늘 뉴스 공유",
   share_url: "/news/2026-10-23",
   most_read_title: "많이 읽은 기사",
   sandcorp_title: "Sandcorp",
@@ -680,6 +680,12 @@ test("홈은 h1 하나, 「최신 기사」 라벨, 좁은 화면용 공유 링�
   expect(q(container, "h1")).toHaveTextContent("오늘의 AI·IT 뉴스");
   expect(q(container, ".latest .section-head .label")).toHaveTextContent("최신 기사");
   expect(container).not.toHaveTextContent("Latest");
+  // 화살표는 .side-link::after 하나뿐이다. 라벨에는 넣지 않는다.
+  for (const slot of ["day-share-link", "latest-share-link"]) {
+    const link = q(container, `[data-slot="${slot}"] a`);
+    expect(link).toHaveClass("side-link");
+    expect(link.textContent).toBe("오늘 뉴스 공유");
+  }
   expect(q(container, '[data-slot="latest-share-link"] a')).toHaveAttribute(
     "href",
     "/news/2026-10-23",
@@ -904,7 +910,7 @@ test("메인 사이드바에 오늘 뉴스 공유 링크", () => {
   };
   render(<App data={data} />);
   const sidebarEl = within(screen.getByRole("complementary", { name: "사이드바" }));
-  expect(sidebarEl.getByRole("link", { name: "오늘 뉴스 공유 →" })).toHaveAttribute(
+  expect(sidebarEl.getByRole("link", { name: "오늘 뉴스 공유" })).toHaveAttribute(
     "href",
     "/news/2026-10-23",
   );

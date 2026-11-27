@@ -7,7 +7,7 @@
   <section class="latest" aria-labelledby="latest-h">
     <div class="section-head"><p class="label">최신 기사</p>{% if data.num_pages > 1 %}<p class="label">{{ data.page }} / {{ data.num_pages }}</p>{% endif %}</div>
     <h2 id="latest-h" class="sr-only">최신 기사</h2>
-    <p class="latest-share" data-slot="latest-share-link"><a class="more" href="{{ data.sidebar.share_url }}">{{ data.sidebar.share_label }}</a></p>
+    <p class="latest-share" data-slot="latest-share-link"><a class="side-link" href="{{ data.sidebar.share_url }}">{{ data.sidebar.share_label }}</a></p>
     <div class="grid">
     {% for card in data.articles %}{% include "core/public/_card.html" %}{% empty %}<p class="empty">아직 게시된 기사가 없습니다.</p>{% endfor %}
     </div>

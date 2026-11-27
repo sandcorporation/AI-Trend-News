@@ -174,3 +174,11 @@ def test_home_has_h1_korean_latest_label_hero_badge_and_narrow_share_link(
     share_url = page_data(html)["sidebar"]["share_url"]  # type: ignore[index]
     latest = html.split('class="latest"')[1].split('class="grid"')[0]
     assert 'data-slot="latest-share-link"' in latest and f'href="{share_url}"' in latest
+
+
+def test_share_links_get_their_only_arrow_from_css(client: Client) -> None:
+    html = client.get("/").content.decode()
+
+    assert page_data(html)["sidebar"]["share_label"] == "오늘 뉴스 공유"  # type: ignore[index]
+    share_links = re.findall(r'<a class="side-link" href="/news/[^"]+">([^<]+)</a>', html)
+    assert share_links == ["오늘 뉴스 공유", "오늘 뉴스 공유"]
