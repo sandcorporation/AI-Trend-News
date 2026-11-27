@@ -230,18 +230,18 @@ class PredictionAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임�
                 row.pk, verdict, row.verdict_note, now=get_clock().now()
             )
 
-    @admin.action(description="적중으로 표시")
+    @admin.action(description="적중으로 표시", permissions=["change"])
     def mark_hit(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.HIT)
 
-    @admin.action(description="빗나감으로 표시")
+    @admin.action(description="빗나감으로 표시", permissions=["change"])
     def mark_miss(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.MISS)
 
-    @admin.action(description="판단 불가로 표시")
+    @admin.action(description="판단 불가로 표시", permissions=["change"])
     def mark_undecidable(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.UNDECIDABLE)
 
-    @admin.action(description="미평가로 되돌림")
+    @admin.action(description="미평가로 되돌림", permissions=["change"])
     def mark_pending(self, request: HttpRequest, queryset: QuerySet[Prediction]) -> None:
         self._judge(queryset, Prediction.Verdict.PENDING)
