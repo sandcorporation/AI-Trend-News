@@ -47,16 +47,17 @@
         <form method="post">{% csrf_token %}
           <input type="hidden" name="name" value="{{ row.name }}">
           {% if row.secret %}
-            <input type="password" name="value" value="" autocomplete="new-password" placeholder="비워 두면 기존 값 유지">
+            <input type="password" name="value" aria-label="{{ row.name }}" value="" autocomplete="new-password" placeholder="비워 두면 기존 값 유지">
             <button type="submit" name="op" value="save">저장</button>
             <button type="submit" name="op" value="test">연결 시험</button>
           {% elif row.choices %}
-            <select name="value">
+            <select name="value" aria-label="{{ row.name }}">
+              {% if row.current not in row.choices %}<option value="{{ row.current }}" selected>(지금 값: {{ row.current|default:"(빈 값)" }} — 목록 밖)</option>{% endif %}
               {% for choice in row.choices %}<option value="{{ choice }}"{% if choice == row.current %} selected{% endif %}>{{ choice|default:"(빈 값)" }}</option>{% endfor %}
             </select>
             <button type="submit" name="op" value="save">저장</button>
           {% else %}
-            <input type="text" name="value" value="{{ row.current }}">
+            <input type="text" name="value" aria-label="{{ row.name }}" value="{{ row.current }}">
             <button type="submit" name="op" value="save">저장</button>
           {% endif %}
           {% if row.in_db %}

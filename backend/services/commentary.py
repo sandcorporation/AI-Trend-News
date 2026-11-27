@@ -118,21 +118,36 @@ _PREDICTIONS_JSON = TypeAdapter(list[PredictionIn])
 _WATCHPOINTS_JSON = TypeAdapter(list[str])
 
 
-def parse_json_fields(
-    predictions: object, watchpoints: object
-) -> tuple[list[PredictionIn], list[str]]:
+def parse_predictions_json(value: object) -> list[PredictionIn]:
     """admin 폼의 JSON 칸을 `clean_fields` 입력으로. 빈 칸은 빈 목록, 모양이 틀리면 거절."""
     try:
-        parsed = _PREDICTIONS_JSON.validate_python([] if predictions is None else predictions)
+        return _PREDICTIONS_JSON.validate_python([] if value is None else value)
     except ValidationError:
         raise InvalidCommentary(
             '예측 문장 형식은 [{"claim": 문장, "horizon": 기간, "basis": 근거}] 목록입니다.'
         ) from None
+
+
+def parse_watchpoints_json(value: object) -> list[str]:
     try:
-        signals = _WATCHPOINTS_JSON.validate_python([] if watchpoints is None else watchpoints)
+        return _WATCHPOINTS_JSON.validate_python([] if value is None else value)
     except ValidationError:
         raise InvalidCommentary("지켜볼 신호 형식은 문자열 목록입니다.") from None
-    return parsed, signals
+
+
+_TEXT_RULES = {
+    "background": ("배경", MAX_TEXT_LENGTH),
+    "significance": ("의미", MAX_TEXT_LENGTH),
+    "outlook_bull": ("낙관 관점", MAX_TEXT_LENGTH),
+    "outlook_bear": ("회의 관점", MAX_TEXT_LENGTH),
+    "opinion": ("의견", MAX_OPINION_LENGTH),
+}
+
+
+def clean_text(name: str, value: str) -> str:
+    """글 칸 하나의 길이를 검사하고 다듬는다."""
+    label, limit = _TEXT_RULES[name]
+    return _clean(label, value, limit)
 
 
 class CommentaryFields(TypedDict):
@@ -162,14 +177,21 @@ def clean_fields(
     `upsert_commentary`와 편집 파이프라인 3단계(`services/editor_commentary.py`)가 함께 쓴다.
     """
     return {
-        "background": _clean("배경", background, MAX_TEXT_LENGTH),
-        "significance": _clean("의미", significance, MAX_TEXT_LENGTH),
-        "outlook_bull": _clean("낙관 관점", outlook_bull, MAX_TEXT_LENGTH),
-        "outlook_bear": _clean("회의 관점", outlook_bear, MAX_TEXT_LENGTH),
-        "opinion": _clean("의견", opinion, MAX_OPINION_LENGTH),
+        "background": clean_text("background", background),
+        "significance": clean_text("significance", significance),
+        "outlook_bull": clean_text("outlook_bull", outlook_bull),
+        "outlook_bear": clean_text("outlook_bear", outlook_bear),
+        "opinion": clean_text("opinion", opinion),
         "predictions": _clean_predictions(predictions, created),
         "watchpoints": _clean_watchpoints(watchpoints or []),
     }
+
+
+def clean_json_field(name: str, value: object, *, created: date) -> object:
+    """admin 폼의 JSON 칸(`predictions`·`watchpoints`) 하나를 읽고 검사한다."""
+    if name == "predictions":
+        return _clean_predictions(parse_predictions_json(value), created)
+    return _clean_watchpoints(parse_watchpoints_json(value))
 
 
 @transaction.atomic

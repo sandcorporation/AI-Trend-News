@@ -2,13 +2,15 @@
 
 import pytest
 from django.contrib import admin
+from django.contrib.admin import AdminSite
+from django.contrib.admin.options import ActionLocation
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from articles.models import Prediction
+from articles.models import Article, ArticleItem, Prediction
 from collection.models import Item, Source
 from tests.test_collection import make_source
 from tests.test_predictions import featured_article_id, write
@@ -89,13 +91,51 @@ def test_change_staff_can_see_and_run(client: Client, app: str, model: str, acti
     assert state(action, pk) != before
 
 
+def actions_without_permissions(site: AdminSite) -> list[str]:
+    """목록·변경 폼 액션과 인라인에 단 액션 가운데 `allowed_permissions`가 없는 것."""
+    missing = []
+    for model_admin in site._registry.values():
+        found: list[tuple[type, str, object]] = [
+            (type(model_admin), action.name, action.func)
+            for location in ActionLocation
+            for action in model_admin._get_base_actions(location)  # type: ignore[attr-defined]
+        ]
+        for inline in model_admin.inlines:  # Django는 인라인 `actions`를 모른다 — 선언을 직접 본다
+            for entry in getattr(inline, "actions", None) or []:
+                func = entry if callable(entry) else getattr(inline, entry)
+                found.append((inline, getattr(func, "__name__", str(entry)), func))
+        missing += [
+            f"{owner.__qualname__}.{name}"
+            for owner, name, func in found
+            if name != "delete_selected" and not getattr(func, "allowed_permissions", None)
+        ]
+    return sorted(set(missing))
+
+
 def test_every_admin_action_declares_permissions() -> None:
     """`allowed_permissions`가 없는 액션은 Django가 조회 권한만으로 실행시킨다."""
-    missing = [
-        f"{type(model_admin).__qualname__}.{action.name}"
-        for model_admin in admin.site._registry.values()
-        for action in model_admin._get_base_actions()  # type: ignore[attr-defined]
-        if action.name != "delete_selected"
-        and not getattr(action.func, "allowed_permissions", None)
-    ]
-    assert missing == []
+    assert actions_without_permissions(admin.site) == []
+
+
+def test_action_sweep_covers_change_form_and_inline_actions() -> None:
+    @admin.action(location=ActionLocation.CHANGE_FORM)
+    def on_form(model_admin: object, request: object, queryset: object) -> None: ...
+
+    @admin.action
+    def on_inline(model_admin: object, request: object, queryset: object) -> None: ...
+
+    class Inline(admin.TabularInline):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+        model = ArticleItem
+        actions = [on_inline]
+
+    class Parent(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제네릭 아님
+        actions = [on_form]
+        inlines = [Inline]
+
+    site = AdminSite(name="sweep")
+    site.register(Article, Parent)
+
+    assert {name.rsplit(".", 1)[1] for name in actions_without_permissions(site)} == {
+        "on_form",
+        "on_inline",
+    }
