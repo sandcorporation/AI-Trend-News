@@ -413,7 +413,7 @@ export function Home({ data }: { data: HomeData }) {
               최신 기사
             </h2>
             <p className="latest-share" data-slot="latest-share-link">
-              <a className="more" href={data.sidebar.share_url}>
+              <a className="side-link" href={data.sidebar.share_url}>
                 {data.sidebar.share_label}
               </a>
             </p>
