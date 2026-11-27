@@ -187,17 +187,25 @@ def test_admin_category_slug_never_takes_an_old_alias(admin_client: Client) -> N
     assert Category.objects.get(name="Economy").slug.startswith("economy-")
 
 
-@pytest.mark.parametrize("bad", ["가" * 51, "  "], ids=["too-long", "blank"])
-def test_tag_name_length_is_checked_by_service(bad: str) -> None:
+def test_long_tag_name_is_rejected_by_service() -> None:
     article = make_article(make_items(1))
 
     with pytest.raises(svc.InvalidTag):
-        svc.update_article(Actor.EDITOR, article.pk, title="바뀌면 안 됨", tags=["정상", bad])
+        svc.update_article(Actor.EDITOR, article.pk, title="바뀌면 안 됨", tags=["정상", "가" * 51])
 
     article.refresh_from_db()
     assert article.title != "바뀌면 안 됨" and not Tag.objects.exists()
     svc.update_article(Actor.EDITOR, article.pk, tags=["가" * 50])
     assert Tag.objects.get().name == "가" * 50
+
+
+def test_blank_tag_names_are_dropped_by_service() -> None:
+    article = make_article(make_items(1), tags=("", "정상", "  "))
+
+    assert [t.name for t in article.tags.all()] == ["정상"]
+    svc.update_article(Actor.EDITOR, article.pk, tags=[" ", "새 태그", ""])
+    assert [t.name for t in article.tags.all()] == ["새 태그"]
+    assert not Tag.objects.filter(name="").exists()
 
 
 def test_admin_rejects_long_tag_name(admin_client: Client) -> None:
