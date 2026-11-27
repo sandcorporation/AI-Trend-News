@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import pytest
 from django.core.cache import cache
 from django.test import Client
+from django.utils.html import escape
 from PIL import Image
 from sandcorp_authkit.testing import FixedClock
 
@@ -133,6 +134,23 @@ def test_share_meta(client: Client) -> None:
     assert data["heading"] == "2026년 10월 26일 (월) AI·IT 뉴스"
     assert data["count"] == 4
     assert data["share"]["title"] == "10월 26일 AI·IT 뉴스 4건 — Foresight"  # type: ignore[index]
+
+
+# React의 같은 목록은 frontend/src/App.test.tsx 「날짜 페이지 공유 조각」
+def test_share_fragment_matches_react(client: Client) -> None:
+    at("기사", datetime(2026, 10, 26, 1, 0, tzinfo=UTC))
+    html = client.get("/news/2026-10-26").content.decode()
+    share = page_data(html)["share"]
+    fragment = re.search(r'<div class="share" data-slot="share">(.*?)</div>', html, re.S)
+    assert fragment
+    lines = [line.strip() for line in fragment.group(1).strip().splitlines()]
+    url, x_url = share["url"], escape(share["x_url"])  # type: ignore[index]
+    assert lines == [
+        f'<input class="share-url" readonly value="{url}" aria-label="공유 주소">',
+        # JS가 있어야 도는 버튼은 서버 HTML에서 숨긴다(주소는 입력칸에서 고른다)
+        '<button class="btn" type="button" hidden>링크 복사</button>',
+        f'<a class="btn" href="{x_url}" target="_blank" rel="noopener">X에 공유</a>',
+    ]
 
 
 def test_description_fits_160_chars(client: Client) -> None:

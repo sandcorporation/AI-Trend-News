@@ -740,7 +740,6 @@ test("날짜 페이지: 제목·건수·카드·공유 버튼·이전 날 링크
   ).toBeInTheDocument();
   expect(screen.getByText("게시된 기사 2건")).toBeInTheDocument();
   expect(screen.getAllByRole("article")).toHaveLength(2);
-  expect(screen.getByRole("button", { name: "링크 복사" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "X에 공유" })).toHaveAttribute(
     "href",
     dayData.share.x_url,
@@ -834,4 +833,40 @@ test("404 화면: 사이트 틀·제목·홈·최신 기사 링크", () => {
   expect(container.querySelector(".site-footer")).not.toBeNull();
   rerender(<App data={{ ...data, latest: [] }} />);
   expect(screen.queryByRole("heading", { name: "최신 기사" })).toBeNull();
+});
+
+// 서버 HTML의 같은 목록은 backend/tests/test_news_day.py::test_share_fragment_matches_react
+test("날짜 페이지 공유 조각: 서버 HTML과 같은 항목·순서", () => {
+  Object.defineProperty(navigator, "share", { value: undefined, configurable: true });
+  const { container } = render(<App data={dayData} />);
+  const items = [...q(container, '[data-slot="share"]').children];
+  expect(
+    items.map((el) => [el.tagName.toLowerCase(), el.getAttribute("aria-label") ?? el.textContent]),
+  ).toEqual([
+    ["input", "공유 주소"],
+    ["button", "링크 복사"],
+    ["a", "X에 공유"],
+  ]);
+  expect(items[0]).toHaveValue(dayData.share.url);
+  expect(items[0]).toHaveAttribute("readonly");
+  expect(items[1]).toBeVisible();
+});
+
+test("날짜 페이지 링크 복사: 성공하면 복사됨, 막히면 주소 입력칸을 고른다", async () => {
+  const writeText = vi.fn().mockRejectedValueOnce(new Error("denied")).mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  render(<App data={dayData} />);
+  const input = screen.getByRole<HTMLInputElement>("textbox", { name: "공유 주소" });
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+  });
+  expect(input).toHaveFocus();
+  expect(input.selectionEnd).toBe(dayData.share.url.length);
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "링크 복사" }));
+  });
+  expect(writeText).toHaveBeenLastCalledWith(dayData.share.url);
+  expect(screen.getByRole("button", { name: "복사됨" })).toBeInTheDocument();
 });

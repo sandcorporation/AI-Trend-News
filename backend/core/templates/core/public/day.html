@@ -9,6 +9,8 @@
       {% endfor %}
     </nav>
     <div class="share" data-slot="share">
+      <input class="share-url" readonly value="{{ data.share.url }}" aria-label="공유 주소">
+      <button class="btn" type="button" hidden>링크 복사</button>
       <a class="btn" href="{{ data.share.x_url }}" target="_blank" rel="noopener">X에 공유</a>
     </div>
     {% if not data.count and data.category %}<p data-slot="day-all"><a href="{{ data.all_url }}">이 날 전체 뉴스 보기 →</a></p>{% endif %}

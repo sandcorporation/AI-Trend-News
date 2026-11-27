@@ -1,8 +1,39 @@
-import { useState } from "react";
-import { CopyLinkButton } from "./ArticlePage";
+import { useRef, useState } from "react";
 import { Card } from "./Home";
 import { Layout } from "./Layout";
 import type { DayPageData } from "./types";
+
+/** 주소 입력칸 + 「링크 복사」. 서버 HTML과 같은 조각이며, 서버에서는 JS가 필요한 버튼만 숨긴다. */
+function ShareUrl({ url }: { url: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+    } catch {
+      // 클립보드가 막히면 손으로 복사할 수 있게 주소를 고른다.
+      setCopied(false);
+      input.current?.focus();
+      input.current?.select();
+    }
+  };
+  return (
+    <>
+      <input
+        ref={input}
+        className="share-url"
+        readOnly
+        value={url}
+        aria-label="공유 주소"
+        onFocus={(e) => e.currentTarget.select()}
+      />
+      <button className="btn" type="button" onClick={copy}>
+        {copied ? "복사됨" : "링크 복사"}
+      </button>
+    </>
+  );
+}
 
 /** 「공유…」: 브라우저가 Web Share를 지원할 때만 보인다(모바일에서 카카오톡을 고를 수 있다). */
 function NativeShareButton({
@@ -56,7 +87,7 @@ export function DayPage({ data }: { data: DayPageData }) {
           ))}
         </nav>
         <div className="share" data-slot="share">
-          <CopyLinkButton url={data.share.url} />
+          <ShareUrl url={data.share.url} />
           <a
             className="btn"
             href={data.share.x_url}
