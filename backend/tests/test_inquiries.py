@@ -30,7 +30,8 @@ FORM = {
 
 
 def post(client: Client, ip: str = "203.0.113.9", **overrides: str):  # type: ignore[no-untyped-def]
-    return client.post("/contact", {**FORM, **overrides}, HTTP_X_FORWARDED_FOR=ip)
+    """제출하고, 성공(303)이면 따라가 성공 화면을 돌려준다."""
+    return client.post("/contact", {**FORM, **overrides}, follow=True, HTTP_X_FORWARDED_FOR=ip)
 
 
 def test_form_page_renders_and_is_noindex(client: Client) -> None:
@@ -49,6 +50,73 @@ def test_submit_reaches_portfolio_with_site_and_kind(
     assert "접수했습니다" in response.content.decode()
     assert fake_portfolio.sent == [{**FORM, "kind": "제안", "site": "news"}]
     assert Inquiry.objects.count() == 0
+
+
+@pytest.mark.parametrize("overrides", [{}, {"website": "http://spam.example"}])
+def test_success_redirects_so_reload_does_not_resubmit(
+    client: Client, fake_portfolio: FakeGateway, overrides: dict[str, str]
+) -> None:
+    response = client.post("/contact", {**FORM, **overrides})
+    assert response.status_code == 303
+    assert response["Location"] == "/contact?sent=1"
+    sent = len(fake_portfolio.sent)
+
+    for _ in range(2):  # 성공 화면과 그 새로고침
+        done = client.get(response["Location"])
+        assert done.status_code == 200
+        assert done["Cache-Control"] == "no-store"
+        page = BeautifulSoup(done.content, "html.parser")
+        status = page.select_one('[data-slot="contact"] [role="status"]')
+        assert status is not None and "접수했습니다" in status.get_text()
+        assert not page.select("form.contact-form")
+        data = page.select_one("#page-data")
+        assert data is not None and json.loads(data.get_text())["state"] == "done"
+    assert len(fake_portfolio.sent) == sent
+
+
+@pytest.mark.parametrize(
+    "contact",
+    [
+        "hong@example.com",
+        " a.b+c@mail.example.co.kr ",
+        "010-1234-5678",
+        "+82 10 1234 5678",
+        "(02) 123-4567",
+        "021234567",
+    ],
+)
+def test_email_or_phone_contact_is_accepted(
+    client: Client, fake_portfolio: FakeGateway, contact: str
+) -> None:
+    assert "접수했습니다" in post(client, contact=contact).content.decode()
+    assert len(fake_portfolio.sent) == 1
+
+
+@pytest.mark.parametrize(
+    "contact",
+    [
+        "abc",
+        "010",
+        "12345678",
+        "kbd@example",
+        "kbd@.com",
+        "kbd@example.",
+        "a b@example.com",
+        "@example.com",
+        "010-1234-5678 홍길동",
+        "---------",
+    ],
+)
+def test_unreachable_contact_is_rejected(
+    client: Client, fake_portfolio: FakeGateway, contact: str
+) -> None:
+    response = post(client, contact=contact)
+    assert response.status_code == 400
+    page = BeautifulSoup(response.content, "html.parser")
+    error = page.select_one("#contact-contact-error")
+    assert error is not None and error.get_text() == "이메일이나 전화번호를 적어 주세요."
+    assert Inquiry.objects.count() == 0 and fake_portfolio.sent == []
+    assert SubmitAttempt.objects.count() == 0
 
 
 def test_transient_failure_keeps_it_queued_then_resend_clears_it(
@@ -109,7 +177,7 @@ def test_invalid_input_is_rejected_with_field_errors(
     response = post(client, name=" ", message="")
     assert response.status_code == 400
     html = response.content.decode()
-    assert "이름을(를) 입력해 주세요." in html and "내용을(를) 입력해 주세요." in html
+    assert "이름을 입력해 주세요." in html and "내용을 입력해 주세요." in html
     assert Inquiry.objects.count() == 0 and fake_portfolio.sent == []
 
 

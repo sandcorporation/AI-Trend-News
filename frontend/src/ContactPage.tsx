@@ -3,7 +3,7 @@ import { restoreFocus, type ContactDraft } from "./contactDraft";
 import { Layout } from "./Layout";
 import type { ContactPageData } from "./types";
 
-/** 문의 폼. JS 없이도 되는 일반 POST 폼이다(서버가 결과를 같은 페이지로 다시 그린다). */
+/** 문의 폼. JS 없이도 되는 일반 POST 폼이다(오류는 같은 페이지, 성공은 303 뒤 `?sent=1`). */
 export function ContactPage({
   data,
   draft = null,
@@ -14,17 +14,17 @@ export function ContactPage({
   // JS가 늦게 붙으면 서버 HTML 폼에 이미 친 값이 초깃값이다.
   const form = { ...data.form, ...draft?.values };
   const summary = useRef<HTMLDivElement>(null);
-  const formElement = useRef<HTMLFormElement>(null);
+  const section = useRef<HTMLElement>(null);
   const initialFocus = useRef(draft?.focus);
-  // 마운트 때 한 번: 보던 칸이 있으면 그 칸, 없으면 400 화면의 오류 요약이다.
+  // 마운트 때 한 번: 초점이 있던 요소가 있으면 거기, 없으면 400 화면의 오류 요약이다.
   useEffect(() => {
-    if (formElement.current && initialFocus.current)
-      restoreFocus(formElement.current, initialFocus.current);
+    if (section.current && initialFocus.current)
+      restoreFocus(section.current, initialFocus.current);
     else summary.current?.focus();
   }, []);
   return (
     <Layout site={data.site}>
-      <section className="contact" data-slot="contact">
+      <section ref={section} className="contact" data-slot="contact">
         <h1>문의</h1>
         {data.state === "done" ? (
           <>
@@ -63,7 +63,6 @@ export function ContactPage({
               </div>
             )}
             <form
-              ref={formElement}
               method="post"
               action="/contact"
               className="contact-form"

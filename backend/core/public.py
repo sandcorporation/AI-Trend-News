@@ -1028,8 +1028,12 @@ def contact(request: HttpRequest) -> HttpResponse:
             state = "limited"
             status = 429
         else:
-            state = "done"
-            form = {**form, "name": "", "company": "", "contact": "", "message": ""}
+            # PRG: 성공 화면을 GET으로 옮겨 새로고침이 문의를 다시 보내지 않게 한다.
+            redirect = HttpResponseRedirect(f"{CONTACT_PATH}?sent=1")
+            redirect.status_code = 303
+            return redirect
+    elif request.GET.get("sent") == "1":
+        state = "done"
     site = _site("contact")
     data: dict[str, object] = {
         "kind": "contact",

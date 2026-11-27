@@ -332,7 +332,7 @@ def test_validation_failure_retries_once_with_error_note(
     (call,) = commentary_calls()
     assert (call.status, call.attempt) == ("succeeded", 1)
     retry = fake_llm.requests[3]["messages"][0]["content"]
-    assert isinstance(retry, str) and "의견은(는) 1~240자" in retry
+    assert isinstance(retry, str) and "의견은 1~240자" in retry
 
 
 @pytest.mark.parametrize(
@@ -477,7 +477,7 @@ def test_batch_runs_commentary_after_all_writes_end(
         [f"r{pk}-commentary-1"],
     ]
     retry = fake_llm.batch_requests[2][0]["params"]["messages"][0]["content"]
-    assert isinstance(retry, str) and "의견은(는) 1~240자" in retry
+    assert isinstance(retry, str) and "의견은 1~240자" in retry
     (call,) = commentary_calls()
     assert (call.status, call.attempt, call.via_batch) == ("succeeded", 1, True)
     assert call.output is not None and call.output["post"]["text"].endswith("/a/openai-new-model")
