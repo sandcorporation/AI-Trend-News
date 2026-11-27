@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 from django.conf import settings
+from django.db.utils import OperationalError
 from django.http.response import HttpResponseBase
 from django.test import Client, RequestFactory
 from pytest_django import DjangoAssertNumQueries
@@ -131,3 +132,17 @@ def test_lookalike_paths_keep_the_public_404(client: Client, path: str) -> None:
     response = client.get(path)
     assert response.status_code == 404
     assert "<h1>페이지를 찾을 수 없습니다</h1>" in response.content.decode()
+
+
+def test_404_that_cannot_read_the_db_falls_back_to_the_500_screen(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DB가 없으면 404 화면의 최신 기사 조회가 실패한다."""
+
+    def down(*args: object) -> None:
+        raise OperationalError("secret-detail")
+
+    monkeypatch.setattr(svc, "public_recent", down)
+    response = Client(raise_request_exception=False).get("/no-such-page")
+
+    assert_korean_screen(response, 500, "일시적인 오류가 났습니다")
