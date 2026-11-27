@@ -1021,13 +1021,15 @@ img {
 /* ---------- predictions record ---------- */
 
 .predictions-page,
-.contact {
+.contact,
+.not-found {
   display: grid;
   gap: 1.5rem;
 }
 
 .predictions-page h1,
-.contact h1 {
+.contact h1,
+.not-found h1 {
   font-size: clamp(2.5rem, 6vw, 4.5rem);
   font-weight: 800;
   letter-spacing: -0.03em;

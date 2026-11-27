@@ -5,6 +5,7 @@ import type {
   CardData,
   DayPageData,
   HomeData,
+  NotFoundPageData,
   PredictionsPageData,
 } from "./types";
 import { readPageData } from "./pageData";
@@ -813,4 +814,24 @@ test("첫 초점 가능한 요소는 본문 건너뛰기 링크이고 목표 mai
   const main = screen.getByRole("main");
   expect(main).toHaveAttribute("id", "main");
   expect(main).toHaveAttribute("tabindex", "-1");
+});
+
+test("404 화면: 사이트 틀·제목·홈·최신 기사 링크", () => {
+  const data: NotFoundPageData = {
+    kind: "not_found",
+    site,
+    heading: "페이지를 찾을 수 없습니다",
+    home_url: "/",
+    home_label: "홈으로",
+    latest_title: "최신 기사",
+    latest: [{ title: "금리 동결", url: "/a/rate-freeze" }],
+  };
+  const { container, rerender } = render(<App data={data} />);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(data.heading);
+  expect(screen.getByRole("link", { name: "홈으로" })).toHaveAttribute("href", "/");
+  expect(screen.getByRole("link", { name: "금리 동결" })).toHaveAttribute("href", "/a/rate-freeze");
+  expect(screen.getByRole("link", { name: "본문 바로가기" })).toBeInTheDocument();
+  expect(container.querySelector(".site-footer")).not.toBeNull();
+  rerender(<App data={{ ...data, latest: [] }} />);
+  expect(screen.queryByRole("heading", { name: "최신 기사" })).toBeNull();
 });

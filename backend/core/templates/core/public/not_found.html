@@ -1,0 +1,15 @@
+{% include "core/public/_chrome_top.html" %}
+<main id="main" class="main" tabindex="-1">
+  <section class="not-found" data-slot="not-found">
+    <h1>{{ data.heading }}</h1>
+    <p><a class="btn" href="{{ data.home_url }}">{{ data.home_label }}</a></p>
+    {% if data.latest %}
+    <h2>{{ data.latest_title }}</h2>
+    <ul class="title-list">
+      {% for a in data.latest %}<li><a href="{{ a.url }}">{{ a.title }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</main>
+{% include "core/public/_chrome_bottom.html" %}
