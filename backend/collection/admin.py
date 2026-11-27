@@ -46,7 +46,7 @@ class SourceAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 �
     def filtered_7d(self, obj: Source) -> int:
         return int(getattr(obj, "_filtered_7d", 0))
 
-    @admin.action(description="선택한 소스 끄기")
+    @admin.action(description="선택한 소스 끄기", permissions=["change"])
     def disable_sources(self, request: HttpRequest, queryset: QuerySet[Source]) -> None:
         queryset.update(enabled=False)
 
@@ -68,7 +68,11 @@ class ItemAdmin(admin.ModelAdmin):  # type: ignore[type-arg]  # 런타임에 제
     search_fields = ("title", "url")
     actions = ["revive_filtered"]
 
-    @admin.action(description="되살리기(걸러냄 → 미처리)")
+    def has_revive_permission(self, request: HttpRequest) -> bool:
+        """액션 권한. 폼은 읽기 전용이라 `has_change_permission`과 따로 `change_item`을 본다."""
+        return request.user.has_perm("collection.change_item")
+
+    @admin.action(description="되살리기(걸러냄 → 미처리)", permissions=["revive"])
     def revive_filtered(self, request: HttpRequest, queryset: QuerySet[Item]) -> None:
         n = queryset.filter(status=Item.Status.FILTERED).update(
             status=Item.Status.PENDING, filter_reason=""

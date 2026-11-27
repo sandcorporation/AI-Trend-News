@@ -8,20 +8,28 @@
     {% else %}
     <p class="lead">문의나 제안을 남겨 주세요.</p>
     {% if data.state == "limited" %}<p class="notice err" role="alert">요청이 너무 많습니다. 잠시 뒤에 다시 시도해 주세요.</p>{% endif %}
+    {% if data.error_summary %}<div class="notice err error-summary" role="alert" tabindex="-1" autofocus>
+      <p>입력한 내용을 확인해 주세요.</p>
+      <ul>
+        {% for e in data.error_summary %}<li><a href="{{ e.href }}">{{ e.text }}</a></li>
+        {% endfor %}
+      </ul>
+    </div>{% endif %}
     <form method="post" action="/contact" class="contact-form">
       <div class="hp" aria-hidden="true"><label>웹사이트 <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
       <fieldset class="kind"><legend>종류</legend>
-        {% for k in data.kinds %}<label><input type="radio" name="kind" value="{{ k }}"{% if k == data.form.kind %} checked{% endif %}> {{ k }}</label>
+        {% for k in data.kinds %}<label><input type="radio" name="kind" value="{{ k }}"{% if forloop.first %} id="contact-kind"{% endif %}{% if k == data.form.kind %} checked{% endif %}{% if data.form.errors.kind %} aria-invalid="true" aria-describedby="contact-kind-error"{% endif %}> {{ k }}</label>
         {% endfor %}
+        {% if data.form.errors.kind %}<p class="field-error" id="contact-kind-error">{{ data.form.errors.kind }}</p>{% endif %}
       </fieldset>
-      <label>이름 <input name="name" required maxlength="50" autocomplete="name" value="{{ data.form.name }}"></label>
-      {% if data.form.errors.name %}<p class="field-error">{{ data.form.errors.name }}</p>{% endif %}
-      <label>회사 (선택) <input name="company" maxlength="100" autocomplete="organization" value="{{ data.form.company }}"></label>
-      <label>연락처 (이메일 또는 전화) <input name="contact" required maxlength="200" value="{{ data.form.contact }}"></label>
-      {% if data.form.errors.contact %}<p class="field-error">{{ data.form.errors.contact }}</p>{% endif %}
-      <label>내용 <textarea name="message" required rows="6" maxlength="5000">{{ data.form.message }}</textarea></label>
-      {% if data.form.errors.message %}<p class="field-error">{{ data.form.errors.message }}</p>{% endif %}
-      {% if data.form.errors.kind %}<p class="field-error">{{ data.form.errors.kind }}</p>{% endif %}
+      <label>이름 <input name="name" id="contact-name"{% if data.form.errors.name %} aria-invalid="true" aria-describedby="contact-name-error"{% endif %} required maxlength="50" autocomplete="name" value="{{ data.form.name }}"></label>
+      {% if data.form.errors.name %}<p class="field-error" id="contact-name-error">{{ data.form.errors.name }}</p>{% endif %}
+      <label>회사 (선택) <input name="company" id="contact-company"{% if data.form.errors.company %} aria-invalid="true" aria-describedby="contact-company-error"{% endif %} maxlength="100" autocomplete="organization" value="{{ data.form.company }}"></label>
+      {% if data.form.errors.company %}<p class="field-error" id="contact-company-error">{{ data.form.errors.company }}</p>{% endif %}
+      <label>연락처 (이메일 또는 전화) <input name="contact" id="contact-contact"{% if data.form.errors.contact %} aria-invalid="true" aria-describedby="contact-contact-error"{% endif %} required maxlength="200" value="{{ data.form.contact }}"></label>
+      {% if data.form.errors.contact %}<p class="field-error" id="contact-contact-error">{{ data.form.errors.contact }}</p>{% endif %}
+      <label>내용 <textarea name="message" id="contact-message"{% if data.form.errors.message %} aria-invalid="true" aria-describedby="contact-message-error"{% endif %} required rows="6" maxlength="5000">{{ data.form.message }}</textarea></label>
+      {% if data.form.errors.message %}<p class="field-error" id="contact-message-error">{{ data.form.errors.message }}</p>{% endif %}
       <button class="btn primary" type="submit">보내기</button>
     </form>
     {% endif %}

@@ -188,6 +188,8 @@ export interface ContactPageData {
   site: SiteData;
   state: "form" | "done" | "limited";
   form: ContactFormData;
+  /** 화면 순서의 오류 목록. href는 해당 칸의 `#id`. */
+  error_summary: { href: string; text: string }[];
   kinds: string[];
 }
 

@@ -334,6 +334,7 @@ test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확�
         site,
         state: "form",
         form,
+        error_summary: [],
         kinds: ["문의", "제안"],
       }}
     />,
@@ -353,11 +354,65 @@ test("문의 폼은 필드·종류·honeypot을 그리고, 접수 뒤에는 확�
         site,
         state: "done",
         form,
+        error_summary: [],
         kinds: ["문의", "제안"],
       }}
     />,
   );
   expect(screen.getByText(/접수했습니다/)).toBeInTheDocument();
+});
+
+test("문의 폼 오류는 칸과 이어지고, 요약에 초점이 가며, 종류·회사 오류도 제자리에 나온다", () => {
+  const errors = {
+    kind: "종류를 고르세요.",
+    name: "이름을(를) 입력해 주세요.",
+    company: "100자 이하로 입력해 주세요.",
+  };
+  const { container } = render(
+    <App
+      data={{
+        kind: "contact",
+        site,
+        state: "form",
+        form: {
+          name: " ",
+          company: "x",
+          contact: "a@b.c",
+          message: "내용",
+          kind: "",
+          errors,
+        },
+        error_summary: [
+          { href: "#contact-kind", text: `종류: ${errors.kind}` },
+          { href: "#contact-name", text: `이름: ${errors.name}` },
+          { href: "#contact-company", text: `회사: ${errors.company}` },
+        ],
+        kinds: ["문의", "제안"],
+      }}
+    />,
+  );
+  const summary = screen.getByRole("alert");
+  expect(summary).toHaveFocus();
+  const links = [...summary.querySelectorAll("a")];
+  expect(links.map((a) => a.getAttribute("href"))).toEqual([
+    "#contact-kind",
+    "#contact-name",
+    "#contact-company",
+  ]);
+  for (const a of links) q(container, a.getAttribute("href") ?? "");
+  for (const [field, text] of Object.entries(errors)) {
+    const control = q(container, `#contact-${field}`);
+    expect(control).toHaveAttribute("aria-invalid", "true");
+    expect(control).toHaveAccessibleDescription(text);
+  }
+  q(container, "fieldset.kind #contact-kind-error");
+  expect(
+    q(container, "#contact-company").closest("label")?.nextElementSibling,
+  ).toHaveAttribute("id", "contact-company-error");
+  for (const field of ["contact", "message"])
+    expect(q(container, `#contact-${field}`)).not.toHaveAttribute(
+      "aria-invalid",
+    );
 });
 
 describe("히어로 캐러셀", () => {

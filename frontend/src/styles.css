@@ -1220,6 +1220,11 @@ img {
   font-size: 0.875rem;
 }
 
+.contact-form .kind .field-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .notice {
   padding: 0.85rem 1rem;
   border: 1px solid var(--color-line);
@@ -1230,6 +1235,15 @@ img {
 .notice.err {
   margin: 0;
   border-color: var(--color-danger);
+}
+
+.error-summary p,
+.error-summary ul {
+  margin: 0;
+}
+
+.error-summary a {
+  color: inherit;
 }
 
 /* ---------- motion ---------- */
