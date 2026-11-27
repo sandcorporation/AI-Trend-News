@@ -4,6 +4,8 @@ import os
 from decimal import Decimal
 from pathlib import Path
 
+from config.database import mysql_options
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -82,7 +84,8 @@ DATABASES = {
         "PASSWORD": env("DB_PASSWORD", "news"),
         "HOST": env("DB_HOST", "127.0.0.1"),
         "PORT": env("DB_PORT", "3306"),
-        "OPTIONS": {"charset": "utf8mb4"},
+        # 접속·읽기·쓰기 시간 제한(#228, config/database.py).
+        "OPTIONS": mysql_options(os.environ),
         "CONN_MAX_AGE": 60,
         "CONN_HEALTH_CHECKS": True,
         "TEST": {"CHARSET": "utf8mb4", "COLLATION": "utf8mb4_0900_as_cs"},

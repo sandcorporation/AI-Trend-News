@@ -43,7 +43,8 @@ def health(request: HttpRequest, scope: str = "") -> Status[Health]:
             cursor.execute("SELECT 1")
     except DatabaseError:
         failed.append("db")
-    if scope != "ready":
+    # DB가 없으면 신호를 읽을 수 없다. 또 조회하면 접속 시간 제한을 한 번 더 기다린다(#228).
+    if scope != "ready" and not failed:
         try:
             if not heartbeat.is_alive("scheduler"):
                 failed.append("scheduler")
